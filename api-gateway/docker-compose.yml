@@ -1,0 +1,64 @@
+services:
+  # ────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL database
+  # ────────────────────────────────────────────────────────────────────────────
+  pg-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      # <-- ADD THIS
+      - "5433:5432" # <-- ADD THIS
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      # ... rest of your file stays the same
+      POSTGRES_PASSWORD: ${PGPASSWORD:-admin}
+      POSTGRES_DB: ${PGDATABASE:-flow_gateway}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flow_gateway}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Redis Cache / Rate Limiter
+  # ────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Node.js API Gateway
+  # ────────────────────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Connect via the host bridge gateway to bypass Linux kernel bridge routing blocks
+      PGHOST: 172.18.0.1
+      PGPORT: 5433
+      REDIS_URL: redis://172.18.0.1:6379
+    depends_on:
+      pg-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    driver: local
