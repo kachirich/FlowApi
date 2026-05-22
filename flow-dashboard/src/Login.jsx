@@ -33,7 +33,7 @@ export default function Login() {
 
     if (requires2FA) {
       try {
-        const res = await fetch("http://localhost:3000/api/auth/login/verify", {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login/verify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ userId: tempUserId, token: twoFactorCode }),
@@ -57,8 +57,8 @@ export default function Login() {
     }
 
     const endpoint = isRegister
-      ? "http://localhost:3000/api/auth/register"
-      : "http://localhost:3000/api/auth/login";
+      ? `${import.meta.env.VITE_API_URL}/api/auth/register`
+      : `${import.meta.env.VITE_API_URL}/api/auth/login`;
 
     try {
       const res = await fetch(endpoint, {
