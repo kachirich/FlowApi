@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Loader2, Mail, ArrowLeft, Zap } from "lucide-react";
+import { Loader2, Mail, ArrowLeft, Zap, Database, Route, TestTube, Code } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
 const API = import.meta.env.VITE_API_BASE_URL;
@@ -334,7 +334,7 @@ export default function Login() {
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="relative flex min-h-screen flex-col lg:flex-row items-center justify-center bg-zinc-950 px-4 lg:px-20 font-sans text-zinc-100 gap-12 lg:gap-24 pb-12 lg:pb-0 overflow-y-auto">
+    <div className="relative flex min-h-screen flex-col lg:flex-row items-center lg:justify-center bg-zinc-950 px-4 lg:px-20 font-sans text-zinc-100 gap-12 lg:gap-24 py-12 overflow-y-auto">
       <Toaster
         position="top-center"
         toastOptions={{
@@ -349,32 +349,77 @@ export default function Login() {
         }}
       />
 
-      {/* Top Left Logo */}
-      <div className="absolute top-8 left-8 z-50 flex items-center gap-2 text-xl font-bold tracking-tight text-white">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-black">
-          <Zap className="h-5 w-5 fill-current" />
-        </div>
-        FlowAPI
-      </div>
-
-      {/* Hero Content (Video & Headline) */}
+      {/* Left-hand column (logo, headline, and sub-headline) */}
       <div className="flex w-full max-w-2xl flex-col mt-24 lg:mt-0 pt-8 lg:pt-24 justify-center">
+        {/* Brand Logo */}
+        <div className="flex items-center gap-2 text-xl font-bold tracking-tight text-white mb-6">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-black">
+            <Zap className="h-5 w-5 fill-current" />
+          </div>
+          FlowAPI
+        </div>
+
         <h1 className="text-4xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
           Enterprise Lead <br/>
           <span className="text-emerald-500">Routing Infrastructure</span>
         </h1>
-        <p className="text-lg text-zinc-400 mb-10 max-w-lg">
+        <p className="text-lg text-zinc-400 max-w-lg">
           Zero data loss. Tax avoidance. Vaulted lead data. Watch how FlowGateway protects your CRM in real-time.
         </p>
 
-        {/* Video Container */}
-        <div className="relative w-full overflow-hidden rounded-xl border border-zinc-800 bg-black shadow-2xl shadow-emerald-500/10" style={{ paddingBottom: '56.25%' }}>
-          <iframe 
-            src="/launch-video.html" 
-            className="absolute inset-0 w-full h-full border-0"
-            title="FlowGateway Launch Video"
-            allow="autoplay"
-          />
+        {/* Feature Highlights */}
+        <div className="flex flex-col gap-6 mt-8 max-w-lg">
+          {/* Feature 1 */}
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+              <Database className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-medium text-white text-base">The Lead Ledger</h3>
+              <p className="text-sm text-zinc-400 mt-1">
+                Maintain an immutable, vaulted audit trail of every incoming request.
+              </p>
+            </div>
+          </div>
+
+          {/* Feature 2 */}
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+              <Route className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-medium text-white text-base">Dynamic Destination Mapping</h3>
+              <p className="text-sm text-zinc-400 mt-1">
+                Route and map incoming leads to custom CRM endpoints instantly.
+              </p>
+            </div>
+          </div>
+
+          {/* Feature 3 */}
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+              <TestTube className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-medium text-white text-base">Sandbox Environment</h3>
+              <p className="text-sm text-zinc-400 mt-1">
+                Safely simulate traffic and test webhooks using isolated mock URLs.
+              </p>
+            </div>
+          </div>
+
+          {/* Feature 4 */}
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+              <Code className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="font-medium text-white text-base">Deep JSON Analytics</h3>
+              <p className="text-sm text-zinc-400 mt-1">
+                Monitor, inspect, and debug raw payload data in real-time.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
