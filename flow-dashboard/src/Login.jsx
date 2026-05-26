@@ -334,7 +334,7 @@ export default function Login() {
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="flex min-h-screen flex-col lg:flex-row items-center justify-center bg-zinc-950 px-4 lg:px-20 font-sans text-zinc-100 gap-12 lg:gap-24 pb-12 lg:pb-0 overflow-y-auto">
+    <div className="relative flex min-h-screen flex-col lg:flex-row items-center justify-center bg-zinc-950 px-4 lg:px-20 font-sans text-zinc-100 gap-12 lg:gap-24 pb-12 lg:pb-0 overflow-y-auto">
       <Toaster
         position="top-center"
         toastOptions={{
@@ -350,7 +350,7 @@ export default function Login() {
       />
 
       {/* Top Left Logo */}
-      <div className="absolute left-6 top-6 flex items-center gap-2 text-xl font-bold tracking-tight text-white">
+      <div className="absolute top-8 left-8 z-50 flex items-center gap-2 text-xl font-bold tracking-tight text-white">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-black">
           <Zap className="h-5 w-5 fill-current" />
         </div>
@@ -358,7 +358,7 @@ export default function Login() {
       </div>
 
       {/* Hero Content (Video & Headline) */}
-      <div className="flex w-full max-w-2xl flex-col mt-28 lg:mt-0">
+      <div className="flex w-full max-w-2xl flex-col mt-24 lg:mt-0 pt-8 lg:pt-24 justify-center">
         <h1 className="text-4xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
           Enterprise Lead <br/>
           <span className="text-emerald-500">Routing Infrastructure</span>
