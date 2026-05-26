@@ -6,12 +6,11 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     ports:
-      # <-- ADD THIS
-      - "5433:5432" # <-- ADD THIS
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
       # ... rest of your file stays the same
-      POSTGRES_PASSWORD: ${PGPASSWORD:-admin}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-flow_secure_admin@123}
       POSTGRES_DB: ${PGDATABASE:-flow_gateway}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -29,7 +28,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import {
   Terminal,
   Zap,
@@ -42,9 +42,23 @@ import {
   Trash2,
   ChevronsUpDown,
   ChevronsDownUp,
+  PhoneCall,
+  CreditCard,
+  Activity,
+  Settings,
+  Lock,
 } from "lucide-react";
 
-const GATEWAY_URL = "http://localhost:3001";
+import BookingWidget from "./components/BookingWidget";
+import Pricing from "./components/Pricing";
+import WebhookLogs from "./components/WebhookLogs";
+import UpgradeModal from "./components/UpgradeModal";
+import WebhookConfig from "./components/WebhookConfig";
+import SetupTutorial from "./components/SetupTutorial";
+import { useAuth } from "./context/AuthContext";
+
+
+const GATEWAY_URL = import.meta.env.VITE_API_BASE_URL;
 const STATUS_URL = `${GATEWAY_URL}/api/auth/guest/status`;
 const API_BASE = `${GATEWAY_URL}/api/admin`;
 const POLL_INTERVAL = 3000;
@@ -75,7 +89,7 @@ const GHL_STANDARD_SCHEMA = {
 const tourSteps = [
   {
     title: "Welcome to the Gateway",
-    copy: "Welcome to the Gateway. This is your central command for routing leads, bypassing Zapier taxes, and protecting your CRM."
+    copy: "Welcome to the Gateway. This is your central command for routing leads, bypassing taxes, and protecting your CRM."
   },
   {
     title: "Your Arsenal",
@@ -91,7 +105,7 @@ const tourSteps = [
   },
   {
     title: "The Scoreboard",
-    copy: "The Scoreboard. Watch your Zapier savings grow and malicious bots get blocked in real-time. You are now live."
+    copy: "The Scoreboard. Watch your savings grow and malicious bots get blocked in real-time. You are now live."
   }
 ];
 
@@ -318,7 +332,7 @@ function LivePipeline({ session, polling, stats, isSandbox = false, sandboxStatu
                 <span className="text-slate-600">|</span>
                 <span className="text-xs text-emerald-400/60">Payload routed to destination</span>
                 <span className="text-slate-600">|</span>
-                <span className="text-xs text-emerald-400/60">Zapier Tax Avoided: $0.05</span>
+                <span className="text-xs text-emerald-400/60">Tax Avoided: $0.05</span>
               </div>
             )}
             {stats.totalLeads > 1 && (
@@ -328,7 +342,7 @@ function LivePipeline({ session, polling, stats, isSandbox = false, sandboxStatu
                 <span className="text-slate-600">|</span>
                 <span className="text-xs text-emerald-400/60">Payload routed to destination</span>
                 <span className="text-slate-600">|</span>
-                <span className="text-xs text-emerald-400/60">Zapier Tax Avoided: $0.05</span>
+                <span className="text-xs text-emerald-400/60">Tax Avoided: $0.05</span>
               </div>
             )}
 
@@ -630,7 +644,7 @@ function StackCards({ onCardClick }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Webhook Tools Panel — Generator, Zapier Counter, Schema Export
+   Webhook Tools Panel — Generator, Tax Counter, Schema Export
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, generating, toast, destinationUrl, onDestinationChange, onSaveDestination, savingDestination, onRefreshStats, refreshingStats, onFireTestPayload, hasWebhook }) {
@@ -769,16 +783,6 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
           </div>
         </div>
       </div>
-
-      {/* Toast Notification */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-3.5 shadow-xl shadow-black/30 ${
-          toast.type === "success" ? "border-emerald-500/30 bg-surface-raised text-emerald-400" : "border-rose-500/30 bg-surface-raised text-rose-400"
-        } ${toast.leaving ? "animate-toast-out" : "animate-toast-in"}`}>
-          {toast.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
-          <span className="text-sm font-medium">{toast.message}</span>
-        </div>
-      )}
     </section>
   );
 }
@@ -810,7 +814,7 @@ const FEATURES = [
       "Memory-cached rate limiting blocks malicious bot traffic before it hits your CRM.",
   },
   {
-    title: "Zapier Tax Bypass",
+    title: "Tax Bypass",
     accent: "violet",
     icon: DollarSign,
     description:
@@ -887,146 +891,6 @@ function FeaturesModal({ onClose }) {
         </div>
       </div>
     </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
-   Setup Tutorial — 3-Step Onboarding Guide
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TUTORIAL_STEPS = [
-  {
-    step: 1,
-    title: "Configure Destination",
-    accent: "cyan",
-    description:
-      'Paste your downstream webhook URL into FlowAPI and click "Generate Webhook". FlowAPI creates a unique, secure ingest URL with a 32-character API key baked in.',
-    tip: "FlowAPI uses zero-retention architecture — your lead data is processed in memory and never stored on our servers.",
-  },
-  {
-    step: 2,
-    title: "Reroute GoHighLevel",
-    accent: "amber",
-    description:
-      'In your GHL workflow, replace your old Zapier webhook with your new secure FlowAPI URL. All leads will now flow through FlowAPI\'s Spam Shield and Lead Scoring Engine before reaching your destination.',
-    tip: "You can run FlowAPI alongside Zapier during a transition period. Once validated, remove Zapier and keep your margins.",
-  },
-  {
-    step: 3,
-    title: "Catch & Map",
-    accent: "violet",
-    description:
-      'FlowAPI will intercept the lead, block bots via the Spam Shield, append an AI_Lead_Score (0–100), and instantly forward the clean, enriched payload to your destination webhook.',
-    tip: "The enriched payload includes the original GHL fields plus AI_Lead_Score and scored_at timestamp — map them directly in your downstream tool.",
-  },
-];
-
-const tutorialAccents = {
-  cyan: {
-    border: "border-cyan-500/30",
-    bg: "bg-cyan-500/[0.06]",
-    text: "text-cyan-400",
-    num: "bg-cyan-500/15 text-cyan-400",
-    tipBorder: "border-cyan-500/20",
-    tipBg: "bg-cyan-500/[0.03]",
-  },
-  amber: {
-    border: "border-amber-500/30",
-    bg: "bg-amber-500/[0.06]",
-    text: "text-amber-400",
-    num: "bg-amber-500/15 text-amber-400",
-    tipBorder: "border-amber-500/20",
-    tipBg: "bg-amber-500/[0.03]",
-  },
-  violet: {
-    border: "border-violet-500/30",
-    bg: "bg-violet-500/[0.06]",
-    text: "text-violet-400",
-    num: "bg-violet-500/15 text-violet-400",
-    tipBorder: "border-violet-500/20",
-    tipBg: "bg-violet-500/[0.03]",
-  },
-};
-
-function SetupTutorial({ onOpenFeatures }) {
-  return (
-    <section className="space-y-6 animate-fade-in">
-      {/* Section header */}
-      <div className="mb-2">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-4 w-4 text-slate-500" />
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-              Setup Tutorial
-            </h2>
-          </div>
-          <button 
-            onClick={onOpenFeatures}
-            className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition-opacity hover:opacity-80"
-          >
-            <Info className="h-3.5 w-3.5" />
-            System Features
-          </button>
-        </div>
-        <p className="text-sm text-slate-400 leading-relaxed max-w-2xl">
-          Route your GoHighLevel leads through FlowAPI’s zero-retention scoring engine
-          in three simple steps. No data stored, no Zapier fees.
-        </p>
-      </div>
-
-      {/* Steps */}
-      <div className="space-y-4">
-        {TUTORIAL_STEPS.map((item) => {
-          const a = tutorialAccents[item.accent];
-          return (
-            <div
-              key={item.step}
-              className={`group rounded-2xl border ${a.border} ${a.bg} p-6 transition-all duration-300`}
-            >
-              <div className="flex gap-5">
-                {/* Step number */}
-                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${a.num} font-mono text-lg font-extrabold`}>
-                  {item.step}
-                </div>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <h3 className={`mb-2 text-base font-bold ${a.text}`}>
-                    {item.title}
-                  </h3>
-                  <p className="text-sm leading-relaxed text-slate-300">
-                    {item.description}
-                  </p>
-
-                  {/* Pro tip */}
-                  <div className={`mt-4 rounded-xl border ${a.tipBorder} ${a.tipBg} px-4 py-3`}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Sparkles className={`h-3 w-3 ${a.text}`} />
-                      <span className={`text-[10px] font-bold uppercase tracking-widest ${a.text} opacity-70`}>
-                        Pro Tip
-                      </span>
-                    </div>
-                    <p className="text-xs leading-relaxed text-slate-400">
-                      {item.tip}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Bottom CTA */}
-      <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 text-center">
-        <p className="text-sm font-semibold text-emerald-400 mb-1">
-          Ready to go?
-        </p>
-        <p className="text-xs text-slate-400">
-          Switch to the Live Dashboard tab to generate your first webhook and start capturing leads.
-        </p>
-      </div>
-    </section>
   );
 }
 
@@ -1114,9 +978,30 @@ function OneTimeSecretModal({ webhook, onClose }) {
    Webhooks Table Component (Smart List)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function WebhooksTable({ webhooks, onRevoke, isCollapsed, onToggleCollapse, onDeleteAll }) {
+function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleCollapse, onDeleteAll, planType, setUpgradeModal, onTestPing }) {
   const [expanded, setExpanded] = useState(false);
+  const [configModal, setConfigModal] = useState(null);
+  const [configTargetUrl, setConfigTargetUrl] = useState("");
+  const [configMethod, setConfigMethod] = useState("POST");
+  const [configSaving, setConfigSaving] = useState(false);
   const displayWebhooks = expanded ? webhooks : webhooks.slice(0, 5);
+
+  const openConfigModal = (wh) => {
+    setConfigModal(wh);
+    setConfigTargetUrl(wh.target_url || "");
+    setConfigMethod(wh.http_method || "POST");
+  };
+
+  const handleSaveConfig = async () => {
+    if (!configModal) return;
+    setConfigSaving(true);
+    try {
+      await onConfigure(configModal.id, configTargetUrl, configMethod);
+      setConfigModal(null);
+    } finally {
+      setConfigSaving(false);
+    }
+  };
 
   return (
     <div className="rounded-2xl border border-slate-800/60 bg-surface p-6 animate-fade-in mb-6">
@@ -1158,9 +1043,10 @@ function WebhooksTable({ webhooks, onRevoke, isCollapsed, onToggleCollapse, onDe
           <thead>
             <tr className="border-b border-slate-800 text-slate-400">
               <th className="pb-3 font-semibold px-2">Webhook ID (Masked)</th>
-              <th className="pb-3 font-semibold px-2">Destination URL</th>
-              <th className="pb-3 font-semibold text-emerald-400 px-2">Clean Leads (Success)</th>
-              <th className="pb-3 font-semibold text-rose-400 px-2">Bots Blocked (Failed)</th>
+              <th className="pb-3 font-semibold px-2">Target URL</th>
+              <th className="pb-3 font-semibold px-2">Method</th>
+              <th className="pb-3 font-semibold text-emerald-400 px-2">Clean Leads</th>
+              <th className="pb-3 font-semibold text-rose-400 px-2">Blocked</th>
               <th className="pb-3 font-semibold text-right px-2">Actions</th>
             </tr>
           </thead>
@@ -1168,22 +1054,44 @@ function WebhooksTable({ webhooks, onRevoke, isCollapsed, onToggleCollapse, onDe
             {displayWebhooks.map((wh) => (
               <tr key={wh.id} className="transition-colors hover:bg-slate-800/20">
                 <td className="py-3 px-2 font-mono text-[11px] text-amber-400/70">{wh.masked_key}</td>
-                <td className="py-3 px-2 font-mono text-[11px] max-w-[200px] truncate" title={wh.destination_url}>{wh.destination_url || "—"}</td>
-                <td className="py-3 px-2 text-emerald-400/90 font-medium">{wh.total_success}</td>
-                <td className="py-3 px-2 text-rose-400/90 font-medium">{wh.total_blocked}</td>
+                <td className="py-3 px-2 font-mono text-[11px] max-w-[200px] truncate" title={wh.target_url}>{wh.target_url || <span className="text-slate-500 italic">Not configured</span>}</td>
+                <td className="py-3 px-2">
+                  <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-400 border border-slate-700/50">
+                    {wh.http_method || "POST"}
+                  </span>
+                </td>
+                <td className="py-3 px-2 text-emerald-400/90 font-medium">{wh.clean_leads}</td>
+                <td className="py-3 px-2 text-rose-400/90 font-medium">{wh.blocked_leads}</td>
                 <td className="py-3 px-2 text-right">
-                  <button
-                    onClick={() => onRevoke(wh.id)}
-                    className="rounded bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-400 transition-colors hover:bg-rose-500/20"
-                  >
-                    Revoke
-                  </button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => onTestPing(wh.id)}
+                      className="rounded bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-400 transition-colors hover:bg-amber-500/20 border border-amber-500/20"
+                      title="Send Test Payload"
+                    >
+                      <Zap className="h-3 w-3 inline-block mr-0.5 -mt-px" />
+                      Test
+                    </button>
+                    <button
+                      onClick={() => openConfigModal(wh)}
+                      className="rounded bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-400 transition-colors hover:bg-cyan-500/20 border border-cyan-500/20"
+                    >
+                      <Settings className="h-3 w-3 inline-block mr-0.5 -mt-px" />
+                      Configure
+                    </button>
+                    <button
+                      onClick={() => onRevoke(wh.id)}
+                      className="rounded bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-400 transition-colors hover:bg-rose-500/20"
+                    >
+                      Revoke
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
             {webhooks.length === 0 && (
               <tr>
-                <td colSpan="5" className="py-8 text-center text-slate-500 italic">
+                <td colSpan="6" className="py-8 text-center text-slate-500 italic">
                   No active webhooks. Generate one above.
                 </td>
               </tr>
@@ -1191,6 +1099,20 @@ function WebhooksTable({ webhooks, onRevoke, isCollapsed, onToggleCollapse, onDe
           </tbody>
         </table>
       </div>
+
+      {/* Configure Webhook Modal */}
+      {configModal && (
+        <WebhookConfig 
+          configModal={configModal}
+          onClose={() => setConfigModal(null)}
+          onSave={async (id, url, method) => {
+            await onConfigure(id, url, method);
+            setConfigModal(null);
+          }}
+          planType={planType}
+          setUpgradeModal={setUpgradeModal}
+        />
+      )}
     </div>
   );
 }
@@ -1199,7 +1121,27 @@ function WebhooksTable({ webhooks, onRevoke, isCollapsed, onToggleCollapse, onDe
    Lead Ledger Component
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefire }) {
+function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefire, onCancelJob, planType, setActiveTab }) {
+  if (planType === 'free') {
+    return (
+      <div id="tour-lead-ledger" className="rounded-2xl border border-slate-800/60 bg-surface p-6 animate-fade-in flex flex-col items-center justify-center min-h-[300px] text-center">
+        <div className="h-12 w-12 rounded-xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center mb-4">
+          <Lock className="h-5 w-5 text-slate-400" />
+        </div>
+        <h3 className="text-base font-bold text-slate-200 mb-2">Lead Ledger Locked</h3>
+        <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+          Upgrade to the Basic tier to view raw JSON payloads, debug failed webhooks, and prove delivery to your clients.
+        </p>
+        <button
+          onClick={() => setActiveTab && setActiveTab("pricing")}
+          className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-5 py-2.5 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+        >
+          Upgrade to Basic
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div id="tour-lead-ledger" className="rounded-2xl border border-slate-800/60 bg-surface p-6 animate-fade-in">
       <div className="mb-4 flex items-center justify-between border-b border-slate-800/60 pb-3">
@@ -1245,10 +1187,17 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
               
               const deliveryStatus = lead.deliveryStatus || 'PENDING';
               let deliveryBadgeColor = "";
-              if (deliveryStatus === 'DELIVERED') {
+              let displayStatusText = deliveryStatus;
+
+              if (lead.is_test) {
+                deliveryBadgeColor = "bg-yellow-500/10 text-yellow-500 border-yellow-500/20 shadow-glow-amber";
+                displayStatusText = "TEST SUCCESS";
+              } else if (deliveryStatus === 'DELIVERED') {
                 deliveryBadgeColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-glow";
               } else if (deliveryStatus === 'FAILED') {
                 deliveryBadgeColor = "bg-rose-500/10 text-rose-450 border-rose-500/20 shadow-glow-rose";
+              } else if (deliveryStatus === 'CANCELED') {
+                deliveryBadgeColor = "bg-slate-500/10 text-slate-400 border-slate-500/20";
               } else {
                 deliveryBadgeColor = "bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-glow-amber";
               }
@@ -1272,8 +1221,17 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
                   <td className="py-3 px-2">
                     <div className="flex items-center gap-1.5">
                       <span className={`inline-flex items-center justify-center rounded-md border px-2 py-0.5 font-mono text-[10px] font-bold ${deliveryBadgeColor}`}>
-                        {deliveryStatus}
+                        {displayStatusText}
                       </span>
+                      {deliveryStatus === 'RETRYING' && lead.job_id && (
+                        <button
+                          onClick={() => onCancelJob && onCancelJob(lead.id)}
+                          className="flex items-center justify-center rounded p-1 text-rose-500 hover:bg-rose-500/10 border border-rose-500/20 transition-colors"
+                          title="Stop/Cancel Auto-Retry"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
                       {deliveryStatus === 'FAILED' && lead.lastDeliveryError && (
                         <span 
                           className="text-rose-400 hover:text-rose-350 cursor-help"
@@ -1660,8 +1618,43 @@ function EgressTester({ leads }) {
    Dashboard (Main Export)
    ═══════════════════════════════════════════════════════════════════════════ */
 
+const getBrandConfig = (plan) => {
+  const planRankStr = plan ? String(plan).toLowerCase() : 'free';
+  if (planRankStr === 'basic') return 'text-blue-500 bg-blue-500/10 border-blue-500/20 drop-shadow-md';
+  if (planRankStr === 'pro') return 'text-purple-500 bg-purple-500/10 border-purple-500/20 drop-shadow-lg';
+  if (planRankStr === 'plus') return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20 animate-pulse drop-shadow-xl';
+  return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user, setUser } = useAuth();
+
+  // Auto-Session Sync on Mount
+  useEffect(() => {
+    const syncUser = async () => {
+      const token = localStorage.getItem("flow_token") || localStorage.getItem("token");
+      if (!token) return;
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setUser(data.user);
+          if (data.user?.plan_type) {
+            setStats((prev) => ({ ...prev, planType: data.user.plan_type }));
+          }
+        }
+      } catch (err) {
+        // Silently fail if network error
+      }
+    };
+    syncUser();
+  }, [setUser]);
+
+
+
   const [session, setSession] = useState(null);
   const [polling, setPolling] = useState(true);
   const [sandboxStatus, setSandboxStatus] = useState("idle"); // "idle" | "loading" | "success" | "error"
@@ -1679,7 +1672,7 @@ export default function Dashboard() {
       localStorage.removeItem("just_registered");
     }
   }, []);
-  const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00" });
+  const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00", planType: "free" });
   const [generatedWebhook, setGeneratedWebhook] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState(null);
@@ -1699,13 +1692,19 @@ export default function Dashboard() {
   const [refreshingStats, setRefreshingStats] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
 
+  // Step-Up Authentication States
+  const [showStepUpModal, setShowStepUpModal] = useState(false);
+  const [stepUpOtp, setStepUpOtp] = useState("");
+  const [stepUpLoading, setStepUpLoading] = useState(false);
+  const [stepUpAction, setStepUpAction] = useState({ type: "generate" }); // { type: 'generate' } or { type: 'delete', id }
+
+  // Paywall Modal State
+  const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: "", tier: "" });
+
   // Guided Onboarding & 2FA Gate States
   const [mfaGateInterception, setMfaGateInterception] = useState(false);
-  const [tourActive, setTourActive] = useState(false);
-  const [currentTourStep, setCurrentTourStep] = useState(0);
 
   const handleCompleteOnboarding = async () => {
-    setTourActive(false);
     setStats((prev) => ({ ...prev, hasCompletedOnboarding: true }));
     const token = localStorage.getItem("flow_token");
     if (!token) return;
@@ -1773,7 +1772,7 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchStatus, polling]);
 
-  /** Fetch admin stats (lead count for Zapier counter). */
+  /** Fetch admin stats (lead count for tax counter). */
   const fetchStats = useCallback(async () => {
     const token = localStorage.getItem("flow_token");
     if (!token) return;
@@ -1893,13 +1892,6 @@ export default function Dashboard() {
     setMfaGateInterception(false);
   }, []);
 
-  /** Reset onboarding state and relaunch the setup tour */
-  const handleRelaunchTour = useCallback(() => {
-    setStats((prev) => ({ ...prev, hasCompletedOnboarding: false }));
-    setActiveTab("dashboard");
-    setTourActive(true);
-    setCurrentTourStep(0);
-  }, []);
 
   // Get logged in user's email from JWT token
   const userEmail = useMemo(() => {
@@ -2034,6 +2026,36 @@ export default function Dashboard() {
     }
   };
 
+  /** Cancel a delayed or waiting auto-retry job from BullMQ queue */
+  const handleCancelJob = async (id) => {
+    const token = localStorage.getItem("flow_token");
+    if (!token || !id) return;
+
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/webhooks/queue/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("Webhook retry queue job canceled successfully.");
+        // Instantly update the lead status in local state to CANCELED
+        setLeads(prevLeads =>
+          prevLeads.map(lead =>
+            lead.id === id ? { ...lead, deliveryStatus: "CANCELED" } : lead
+          )
+        );
+      } else {
+        showToast(data.message || "Failed to cancel retry job", "error");
+      }
+    } catch (err) {
+      showToast("Network error cancelling retry job", "error");
+    }
+  };
+
   /** Fire simulated GoHighLevel schema payload */
   const handleFireTestPayload = async () => {
     let targetWebhookUrl = null;
@@ -2116,74 +2138,156 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchLeads, fetchWebhooks]);
 
-  // Guided tour trigger and view synchronization
-  useEffect(() => {
-    if (activeTab === "dashboard" && stats.hasCompletedOnboarding === false && !tourActive) {
-      setTourActive(true);
-      setCurrentTourStep(0);
-    }
-  }, [activeTab, stats.hasCompletedOnboarding, tourActive]);
 
-  useEffect(() => {
-    if (tourActive) {
-      setSidebarCollapsed(false);
-    }
-  }, [tourActive]);
 
-  useEffect(() => {
-    if (!tourActive) return;
-    const targets = [
-      "tour-control-panel",
-      "tour-webhook-generator",
-      "tour-destination-sandbox",
-      "tour-lead-ledger",
-      "tour-metrics-panel"
-    ];
-    const targetId = targets[currentTourStep];
-    const element = document.getElementById(targetId);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [tourActive, currentTourStep]);
-
-  /** Generate a new webhook key + URL. */
-  const handleGenerateWebhook = async (bypass2faCheck = false) => {
-    if (bypass2faCheck !== true && !stats.twoFactorEnabled) {
-      setMfaGateInterception(true);
-      setShowSecurityModal(true);
-      if (!twoFactorDetails) {
-        handleGenerate2FA();
-      }
-      return;
-    }
+  /** Trigger Step-Up 2FA Flow for Webhook Generation */
+  const handleGenerateWebhook = async () => {
     const token = localStorage.getItem("flow_token");
     if (!token) return;
-    setGenerating(true);
-    try {
-      const res = await fetch(`${API_BASE}/generate-webhook`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+
+    // Pre-Check Limit Capacity
+    const currentCount = webhooks.length;
+    const plan = (stats.planType || "free").toLowerCase();
+    
+    let isLimitReached = false;
+    let nextTier = "";
+
+    if (plan === "free" && currentCount >= 2) {
+      isLimitReached = true;
+      nextTier = "Basic";
+    } else if (plan === "basic" && currentCount >= 10) {
+      isLimitReached = true;
+      nextTier = "Pro";
+    } else if (plan === "pro" && currentCount >= 50) {
+      isLimitReached = true;
+      nextTier = "Plus";
+    }
+
+    if (isLimitReached) {
+      setUpgradeModal({
+        isOpen: true,
+        feature: "Expanded Webhook Capacity",
+        tier: nextTier
       });
-      const data = await res.json();
-      if (data.success) {
-        setGeneratedWebhook(data);
-        setShowSecretModal(true);
-        setDestinationUrl(""); // clear on new generation
-        showToast("Webhook generated successfully");
-        // Refresh stats
-        fetchStats();
-        fetchLeads();
-        fetchWebhooks();
-      } else {
-        showToast(data.message || "Failed to generate webhook", "error");
+      return;
+    }
+
+    if (!stats.twoFactorEnabled) {
+      showToast("Action denied: You must enable 2FA in your account settings first.", "error");
+      return;
+    }
+
+    setStepUpAction({ type: "generate" });
+    setShowStepUpModal(true);
+    setStepUpOtp("");
+  };
+
+  const generateWebhookAPI = async (token, otp) => {
+    const trustedToken = localStorage.getItem("trusted_device_token");
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    if (trustedToken) {
+      headers["x-trusted-device-token"] = trustedToken;
+    }
+
+    const res = await fetch(`${API_BASE}/generate-webhook`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(otp ? { totpToken: otp } : {}),
+    });
+    const data = await res.json();
+
+    if (res.status === 401) {
+      showToast(data.error || "Invalid or expired verification code", "error");
+      return false;
+    }
+
+    if (res.status === 403 || data.error?.includes("Plan limit reached")) {
+      setShowStepUpModal(false);
+      setActiveTab("pricing");
+      showToast("Webhook limit reached. Please upgrade to Pro to create more.", "error");
+      return false;
+    }
+
+    if (data.success) {
+      if (data.trustedDeviceToken) {
+        localStorage.setItem("trusted_device_token", data.trustedDeviceToken);
       }
-    } catch {
-      showToast("Network error — is the API running?", "error");
+      setGeneratedWebhook(data);
+      setShowStepUpModal(false);
+      setShowSecretModal(true);
+      setDestinationUrl("");
+      setStepUpOtp("");
+      showToast("Webhook generated successfully");
+      fetchStats();
+      fetchLeads();
+      fetchWebhooks();
+      return true;
+    } else {
+      showToast(data.message || data.error || "Failed to generate webhook", "error");
+      return false;
+    }
+  };
+
+  const deleteWebhookAPI = async (token, webhookId, otp) => {
+    const trustedToken = localStorage.getItem("trusted_device_token");
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+    if (trustedToken) {
+      headers["x-trusted-device-token"] = trustedToken;
+    }
+
+    const res = await fetch(`${API_BASE}/webhooks/${webhookId}`, {
+      method: "DELETE",
+      headers,
+      body: JSON.stringify(otp ? { totpToken: otp } : {}),
+    });
+    const data = await res.json();
+
+    if (res.status === 401) {
+      showToast(data.error || "Invalid or expired verification code", "error");
+      return false;
+    }
+
+    if (res.ok && data.success) {
+      if (data.trustedDeviceToken) {
+        localStorage.setItem("trusted_device_token", data.trustedDeviceToken);
+      }
+      setShowStepUpModal(false);
+      showToast("Webhook revoked successfully");
+      fetchStats();
+      fetchLeads();
+      fetchWebhooks();
+      return true;
+    } else {
+      showToast(data.message || data.error || "Failed to revoke webhook", "error");
+      return false;
+    }
+  };
+
+  /** Verify OTP and Execute Action (Generate or Delete) */
+  const handleVerifyStepUp = async () => {
+    const token = localStorage.getItem("flow_token");
+    if (!token) return;
+    if (!stepUpOtp || stepUpOtp.length < 6) {
+      showToast("Please enter a valid 6-digit code", "error");
+      return;
+    }
+    setStepUpLoading(true);
+    try {
+      if (stepUpAction.type === "generate") {
+        await generateWebhookAPI(token, stepUpOtp);
+      } else if (stepUpAction.type === "delete") {
+        await deleteWebhookAPI(token, stepUpAction.id, stepUpOtp);
+      }
+    } catch (err) {
+      showToast(err?.response?.data?.message || err?.message || "Network error verifying code", "error");
     } finally {
-      setGenerating(false);
+      setStepUpLoading(false);
     }
   };
 
@@ -2223,19 +2327,52 @@ export default function Dashboard() {
     if (!confirm("Are you sure you want to revoke this webhook?")) return;
     const token = localStorage.getItem("flow_token");
     if (!token) return;
+    setStepUpAction({ type: "delete", id });
+    setShowStepUpModal(true);
+    setStepUpOtp("");
+  };
+
+  /** Configure a webhook's target_url and http_method. */
+  const handleConfigureWebhook = async (id, targetUrl, httpMethod) => {
+    const token = localStorage.getItem("flow_token");
+    if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/webhooks/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
+      const res = await fetch(`${GATEWAY_URL}/api/webhooks/${id}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ target_url: targetUrl, http_method: httpMethod }),
       });
-      if (res.ok) {
-        showToast("Webhook revoked successfully");
-        fetchLeads();
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast("Webhook configuration saved");
         fetchWebhooks();
-        fetchStats();
+      } else {
+        showToast(data.message || "Failed to save configuration", "error");
       }
     } catch {
-      showToast("Failed to revoke webhook", "error");
+      showToast("Network error saving configuration", "error");
+    }
+  };
+
+  /** Send a test ping to the dynamic dispatcher route */
+  const handleTestPing = async (id) => {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/catch/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flow_api_test: "Successful connection established", timestamp: new Date() }),
+      });
+      if (res.ok) {
+        showToast("Test payload delivered successfully.");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.message || data.error || "Failed to deliver test payload", "error");
+      }
+    } catch (err) {
+      showToast(err?.message || "Network error — is the API running?", "error");
     }
   };
 
@@ -2264,8 +2401,11 @@ export default function Dashboard() {
     setActiveModal(null);
   };
 
+  const displayName = user?.display_name || 'Architect';
+
   return (
     <div className="relative min-h-screen bg-surface flex flex-col md:flex-row">
+
       {/* ── Ambient background ───────────────────────────────────────── */}
       <div className="pointer-events-none fixed inset-0 z-0">
         <div className="absolute -left-40 top-20 h-[500px] w-[500px] rounded-full bg-emerald-500/[0.02] blur-[140px]" />
@@ -2276,13 +2416,25 @@ export default function Dashboard() {
       <aside className={`hidden md:flex flex-col border-r border-slate-800/60 bg-surface/80 backdrop-blur-xl h-screen sticky top-0 z-40 transition-all duration-300 ${sidebarCollapsed ? "w-20" : "w-64"}`}>
         <div className={`p-6 flex items-center justify-between border-b border-slate-800/60 ${sidebarCollapsed ? "flex-col gap-3 px-2 py-6" : ""}`}>
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15">
-              <Zap className="h-4 w-4 text-emerald-400" />
-            </div>
+            {sidebarCollapsed ? (
+              <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold ${
+                (user?.plan_type || 'free') === 'basic' ? 'border-blue-500/30 text-blue-400 bg-blue-500/5' :
+                (user?.plan_type || 'free') === 'pro' ? 'border-purple-500/30 text-purple-400 bg-purple-500/5' :
+                (user?.plan_type || 'free') === 'plus' ? 'border-yellow-400/30 text-yellow-400 bg-yellow-400/5' :
+                'border-emerald-500/30 text-emerald-400 bg-emerald-500/5'
+              }`} title={displayName}>
+                {displayName.charAt(0)}
+              </div>
+            ) : (
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
+                <Zap className="h-4 w-4" />
+              </div>
+            )}
             {!sidebarCollapsed && (
               <div>
                 <h1 className="text-sm font-bold tracking-wide text-slate-100">FLOW GATEWAY</h1>
                 <p className="text-[9px] font-medium uppercase tracking-widest text-slate-500">Enterprise Lead Router</p>
+                <p className="text-xs text-slate-400 font-medium mt-1">Hi {displayName}</p>
               </div>
             )}
           </div>
@@ -2302,19 +2454,33 @@ export default function Dashboard() {
           <button id="tour-destination-sandbox" onClick={() => setActiveTab("sandbox")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Destination Sandbox" : ""}>
             <FlaskConical className="h-4 w-4" /> {!sidebarCollapsed && "Destination Sandbox"}
           </button>
+          <button 
+            onClick={() => {
+              if (stats.planType === 'free') {
+                setUpgradeModal({ isOpen: true, feature: 'Analytics Dashboard', tier: 'Basic or higher' });
+              } else {
+                setActiveTab("logs");
+              }
+            }} 
+            className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "logs" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} 
+            title={sidebarCollapsed ? "Analytics" : ""}
+          >
+            {stats.planType === 'free' ? <Lock className="h-4 w-4 text-slate-500" /> : <Activity className="h-4 w-4" />} 
+            {!sidebarCollapsed && "Analytics"}
+          </button>
           <button onClick={() => setActiveTab("tutorial")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "tutorial" ? "bg-violet-500/15 text-violet-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Setup Tutorial" : ""}>
             <BookOpen className="h-4 w-4" /> {!sidebarCollapsed && "Setup Tutorial"}
+          </button>
+          <button onClick={() => setActiveTab("consulting")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "consulting" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Consulting" : ""}>
+            <PhoneCall className="h-4 w-4" /> {!sidebarCollapsed && "Consulting"}
+          </button>
+          <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "pricing" ? "bg-indigo-500/15 text-indigo-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Billing" : ""}>
+            <CreditCard className="h-4 w-4" /> {!sidebarCollapsed && "Billing"}
           </button>
         </nav>
 
         <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
-          <button
-            onClick={handleRelaunchTour}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg border border-slate-800 bg-surface px-4 py-2.5 text-xs font-semibold text-slate-400 transition-colors hover:bg-slate-800 hover:text-slate-200 ${sidebarCollapsed ? "px-2" : ""}`}
-            title={sidebarCollapsed ? "Relaunch Setup Tour" : ""}
-          >
-            <Play className="h-4 w-4 text-emerald-400" /> {!sidebarCollapsed && "Relaunch Setup Tour"}
-          </button>
+
 
           <a
             href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}
@@ -2323,6 +2489,14 @@ export default function Dashboard() {
           >
             <Mail className="h-4 w-4 text-cyan-400" /> {!sidebarCollapsed && "Contact Support"}
           </a>
+
+          {!sidebarCollapsed && (
+            <div className="pt-1 text-center">
+              <Link to="/terms" target="_blank" className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Terms</Link>
+              <span className="text-[10px] text-slate-500"> & </span>
+              <Link to="/privacy" target="_blank" className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Privacy</Link>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -2331,8 +2505,8 @@ export default function Dashboard() {
         {/* Mobile Header */}
         <header className="md:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-800/60 bg-surface/80 px-4 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15">
-              <Zap className="h-4 w-4 text-emerald-400" />
+            <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
+              <Zap className="h-4 w-4" />
             </div>
             <h1 className="text-sm font-bold tracking-wide text-slate-100">FLOW GATEWAY</h1>
           </div>
@@ -2346,7 +2520,21 @@ export default function Dashboard() {
         <nav className="md:hidden flex overflow-x-auto border-b border-slate-800/60 bg-surface px-4 py-2 gap-2 hide-scrollbar">
           <button onClick={() => setActiveTab("dashboard")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "dashboard" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Dashboard</button>
           <button onClick={() => setActiveTab("sandbox")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-500"}`}>Sandbox</button>
+          <button 
+            onClick={() => {
+              if (stats.planType === 'free') {
+                setUpgradeModal({ isOpen: true, feature: 'Analytics Dashboard', tier: 'Basic or higher' });
+              } else {
+                setActiveTab("logs");
+              }
+            }} 
+            className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "logs" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}
+          >
+            {stats.planType === 'free' && <Lock className="h-3 w-3 text-slate-500" />} Analytics
+          </button>
           <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "tutorial" ? "bg-violet-500/15 text-violet-400" : "text-slate-500"}`}>Tutorial</button>
+          <button onClick={() => setActiveTab("consulting")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "consulting" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}>Consulting</button>
+          <button onClick={() => setActiveTab("pricing")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "pricing" ? "bg-indigo-500/15 text-indigo-400" : "text-slate-500"}`}>Billing</button>
         </nav>
 
         {/* Desktop Header (Top right tools) */}
@@ -2411,10 +2599,14 @@ export default function Dashboard() {
               {/* Active Webhooks Table (Smart List) */}
               <WebhooksTable 
                 webhooks={webhooks} 
-                onRevoke={handleRevokeWebhook} 
+                onRevoke={handleRevokeWebhook}
+                onConfigure={handleConfigureWebhook}
                 isCollapsed={webhooksCollapsed}
                 onToggleCollapse={() => setWebhooksCollapsed(!webhooksCollapsed)}
                 onDeleteAll={() => setWipeModal("webhooks")}
+                planType={stats.planType}
+                setUpgradeModal={setUpgradeModal}
+                onTestPing={handleTestPing}
               />
 
               {/* Lead Ledger Table */}
@@ -2424,12 +2616,23 @@ export default function Dashboard() {
                 onToggleCollapse={() => setLeadsCollapsed(!leadsCollapsed)}
                 onDeleteAll={() => setWipeModal("leads")}
                 onRefire={handleRefireLead}
+                onCancelJob={handleCancelJob}
+                planType={stats.planType}
+                setActiveTab={setActiveTab}
               />
             </>
           ) : activeTab === "sandbox" ? (
             <EgressTester leads={leads} />
+          ) : activeTab === "logs" ? (
+            <WebhookLogs planType={stats.planType} setUpgradeModal={setUpgradeModal} />
+          ) : activeTab === "consulting" ? (
+            <div className="w-full h-full min-h-[800px] rounded-2xl overflow-hidden border border-slate-800/60 bg-surface">
+              <BookingWidget />
+            </div>
+          ) : activeTab === "pricing" ? (
+            <Pricing setActiveTab={setActiveTab} />
           ) : (
-            <SetupTutorial onOpenFeatures={() => setShowFeatures(true)} />
+            <SetupTutorial onOpenFeatures={() => setShowFeatures(true)} setActiveTab={setActiveTab} />
           )}
         </main>
 
@@ -2452,14 +2655,14 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-4 w-full">
-              {/* Zapier Tax Avoided */}
+              {/* Tax Avoided */}
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.02] p-5 w-full">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
                     <DollarSign className="h-4 w-4 text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/60 leading-none">Zapier Tax Avoided</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/60 leading-none">Tax Avoided</p>
                     <p className="text-[9px] text-slate-500 mt-1">{stats.totalLeads} leads × $0.05</p>
                   </div>
                 </div>
@@ -2513,83 +2716,58 @@ export default function Dashboard() {
         />
       )}
 
-      {/* ── Guided Onboarding Tour ── */}
-      {tourActive && (
-        <>
-          {/* Spotlight Stacking Context Hack */}
-          <style>{`
-            #${[
-              "tour-control-panel",
-              "tour-webhook-generator",
-              "tour-destination-sandbox",
-              "tour-lead-ledger",
-              "tour-metrics-panel"
-            ][currentTourStep]} {
-              position: relative !important;
-              z-index: 50 !important;
-              box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.75), 0 0 20px 4px rgba(6, 182, 212, 0.5) !important;
-              pointer-events: none !important;
-              transition: box-shadow 0.3s ease !important;
-            }
-          `}</style>
 
-          {/* Tooltip Card Overlay */}
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 pointer-events-none">
-            <div className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-2xl border border-cyan-500/30 bg-slate-950/95 p-6 shadow-2xl backdrop-blur-md animate-modal-in">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-44 w-44 rounded-full bg-cyan-500/[0.04] blur-3xl" />
-              
-              {/* Header */}
-              <div className="relative mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-cyan-400 animate-pulse" />
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-cyan-400">
-                    System Tour &middot; Step {currentTourStep + 1} of 5
-                  </span>
-                </div>
+
+      {/* ── Step-Up Authentication Modal ────────────────────────────────────── */}
+      {showStepUpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-800/60 bg-surface-raised/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm animate-in zoom-in-95 duration-200">
+            <button 
+              onClick={() => setShowStepUpModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-semibold text-white mb-2 flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-blue-400" /> Security Verification
+            </h2>
+            <p className="text-slate-400 text-sm mb-6">
+              Enter your 6-digit Authenticator Code to {stepUpAction.type === 'delete' ? 'revoke this webhook' : 'generate a secure webhook'}.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <input
+                  type="text"
+                  maxLength="6"
+                  value={stepUpOtp}
+                  onChange={(e) => setStepUpOtp(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-4 text-center text-3xl tracking-[0.5em] text-white placeholder-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all font-mono"
+                />
               </div>
-
-              {/* Body */}
-              <p className="text-xs font-medium text-slate-200 leading-relaxed mb-6">
-                {tourSteps[currentTourStep].copy}
-              </p>
-
-              {/* Progress dots */}
-              <div className="flex items-center justify-between">
-                <div className="flex gap-1.5">
-                  {tourSteps.map((_, idx) => (
-                    <span
-                      key={idx}
-                      className={`h-1.5 w-1.5 rounded-full transition-all duration-300 ${
-                        idx === currentTourStep ? "w-4 bg-cyan-400" : "bg-slate-700"
-                      }`}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCompleteOnboarding}
-                    className="rounded-lg bg-slate-900/60 border border-slate-800 px-3 py-1.5 text-[11px] font-bold text-slate-400 hover:bg-slate-900 hover:text-slate-200 transition"
-                  >
-                    Skip Tutorial
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (currentTourStep < 4) {
-                        setCurrentTourStep(currentTourStep + 1);
-                      } else {
-                        handleCompleteOnboarding();
-                      }
-                    }}
-                    className="flex items-center gap-1 rounded-lg bg-cyan-500/10 border border-cyan-500/30 px-4 py-1.5 text-[11px] font-bold text-cyan-400 hover:bg-cyan-500/20 transition"
-                  >
-                    {currentTourStep < 4 ? "Next" : "Finish"} <ArrowRight className="h-3 w-3" />
-                  </button>
-                </div>
+              <div className="pt-2">
+                <button
+                  onClick={handleVerifyStepUp}
+                  disabled={stepUpLoading || stepUpOtp.length < 6}
+                  className={`w-full flex items-center justify-center gap-2 text-white py-2.5 rounded-lg text-sm font-medium transition-all shadow-lg ${
+                    stepUpAction.type === 'delete' 
+                      ? 'bg-red-600 hover:bg-red-500 shadow-red-500/20 disabled:bg-red-600/50 disabled:text-red-200' 
+                      : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/20 disabled:bg-blue-600/50 disabled:text-blue-200'
+                  }`}
+                >
+                  {stepUpLoading ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                      Verifying...
+                    </>
+                  ) : (
+                    stepUpAction.type === 'delete' ? 'Verify & Revoke' : 'Verify & Generate'
+                  )}
+                </button>
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* ── Security & 2FA Modal ────────────────────────────────────── */}
@@ -2833,6 +3011,28 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── SaaS Tier Upgrade Modal ─────────────────────────────────────── */}
+      <UpgradeModal 
+        isOpen={upgradeModal.isOpen} 
+        onClose={() => setUpgradeModal({ isOpen: false, feature: "", tier: "" })}
+        featureName={upgradeModal.feature}
+        requiredTier={upgradeModal.tier}
+        onNavigateToPricing={() => setActiveTab("pricing")}
+      />
+
+      {/* Toast Notification */}
+      {toast && (
+        <div 
+          style={{ zIndex: 99999 }}
+          className={`fixed bottom-6 right-6 z-[99999] flex items-center gap-3 rounded-xl border px-5 py-3.5 shadow-xl shadow-black/30 ${
+            toast.type === "success" ? "border-emerald-500/30 bg-surface-raised text-emerald-400" : "border-rose-500/30 bg-surface-raised text-rose-400"
+          } ${toast.leaving ? "animate-toast-out" : "animate-toast-in"}`}
+        >
+          {toast.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
+          <span className="text-sm font-medium">{toast.message}</span>
         </div>
       )}
     </div>

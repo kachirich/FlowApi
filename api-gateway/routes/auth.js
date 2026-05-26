@@ -6,6 +6,10 @@ import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { query } from "../db/connection.js";
 import { authenticate } from "../middleware/index.js";
+import { authRateLimiter, stepUpLimiter, redisClient } from "../middleware/rateLimiter.js";
+import { sendOtp, verifyOtp, sendStepUpOtp, register, login, forgotPassword, resetPassword, verifyResetOtp } from "../controllers/auth.controller.js";
+import { googleLogin, googleCallback, logout } from "../controllers/googleAuth.controller.js";
+import { verifyToken } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
@@ -13,174 +17,6 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "24h";
 const SALT_ROUNDS = 12;
 
-
-/**
- * POST /api/auth/register
- *
- * Accepts { email, password } in the request body.
- * - Hashes the password with bcrypt.
- * - Inserts the user into the users table in PostgreSQL.
- * - Returns a signed JWT and user details on success.
- */
-router.post("/register", async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-
-    // ── Input validation ───────────────────────────────────────────────────
-    if (!email || !password) {
-      return res.status(400).json({
-        status: 400,
-        error: "Bad Request",
-        message: "Email and password are required",
-      });
-    }
-
-    // ── Check if user already exists ────────────────────────────────────────
-    const checkResult = await query(
-      "SELECT id FROM users WHERE email = $1",
-      [email]
-    );
-    if (checkResult.rows.length > 0) {
-      return res.status(409).json({
-        status: 409,
-        error: "Conflict",
-        message: "A user with this email already exists",
-      });
-    }
-
-    // ── Hash the password ────────────────--------------------------------──
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-
-    // ── Insert the user ────────────────────────────────────────────────────
-    const insertResult = await query(
-      "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email",
-      [email, passwordHash]
-    );
-
-    const user = insertResult.rows[0];
-
-    // ── Guard: secret not configured ─────────────────────────────────────
-    if (!JWT_SECRET) {
-      const error = new Error("JWT_SECRET is not configured on the server");
-      error.name = "Internal Server Error";
-      error.status = 500;
-      return next(error);
-    }
-
-    // ── Generate JWT ────────────────────────────────----------------───────
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    return res.status(201).json({
-      status: 201,
-      message: "Registration successful",
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * POST /api/auth/login
- *
- * Accepts { email, password } in the request body.
- * - Looks up the user by email in PostgreSQL.
- * - Verifies the password with bcrypt.
- * - Returns a signed JWT on success.
- * - Returns 401 Unauthorized on any credential mismatch.
- */
-router.post("/login", async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-
-    // ── Input validation ───────────────────────────────────────────────────
-    if (!email || !password) {
-      return res.status(400).json({
-        status: 400,
-        error: "Bad Request",
-        message: "Email and password are required",
-      });
-    }
-
-    // ── Look up user ───────────────────────────────────────────────────────
-    const result = await query(
-      "SELECT id, email, password_hash, two_factor_enabled, two_factor_secret FROM users WHERE email = $1",
-      [email]
-    );
-
-    const user = result.rows[0];
-
-    if (!user) {
-      return res.status(401).json({
-        status: 401,
-        error: "Unauthorized",
-        message: "Invalid email or password",
-      });
-    }
-
-    // ── Verify password ────────────────────────────────────────────────────
-    const isMatch = await bcrypt.compare(password, user.password_hash);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        status: 401,
-        error: "Unauthorized",
-        message: "Invalid email or password",
-      });
-    }
-
-    // ── Check if 2FA is enabled ────────────────────────────────────────────
-    if (user.two_factor_enabled && user.two_factor_secret) {
-      return res.json({
-        status: 200,
-        requires2FA: true,
-        userId: user.id,
-        message: "Two-factor authentication required",
-      });
-    }
-
-    // ── Guard: secret not configured ─────────────────────────────────────
-    if (!JWT_SECRET) {
-      const error = new Error("JWT_SECRET is not configured on the server");
-      error.name = "Internal Server Error";
-      error.status = 500;
-      return next(error);
-    }
-
-    // ── Generate JWT ───────────────────────────────────────────────────────
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-      },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
-    );
-
-    return res.json({
-      status: 200,
-      message: "Login successful",
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-      },
-    });
-  } catch (err) {
-    next(err);
-  }
-});
 
 /**
  * POST /api/auth/2fa/generate
@@ -204,11 +40,8 @@ router.post("/2fa/generate", authenticate, async (req, res, next) => {
       name: `FlowAPI Gateway (${userEmail})`,
     });
 
-    // Save temporary secret (secret.base32) to the user's row
-    await query(
-      "UPDATE users SET two_factor_secret = $1, two_factor_enabled = false WHERE id = $2",
-      [secret.base32, userId]
-    );
+    // Save temporary secret to Redis for 10 minutes (do not persist in DB yet)
+    await redisClient.setEx(`2fa_setup:${userId}`, 600, secret.base32);
 
     // Generate QR Code URL
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
@@ -239,23 +72,19 @@ router.post("/2fa/enable", authenticate, async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Token is required" });
     }
 
-    // Look up the secret
-    const userResult = await query(
-      "SELECT two_factor_secret FROM users WHERE id = $1",
-      [userId]
-    );
-    const user = userResult.rows[0];
+    // Look up the temporary secret from Redis
+    const tempSecret = await redisClient.get(`2fa_setup:${userId}`);
 
-    if (!user || !user.two_factor_secret) {
+    if (!tempSecret) {
       return res.status(400).json({
         success: false,
-        message: "Two-factor authentication has not been generated for this user",
+        message: "Two-factor authentication setup session expired or not started. Please generate a new QR code.",
       });
     }
 
     // Verify token
     const verified = speakeasy.totp.verify({
-      secret: user.two_factor_secret,
+      secret: tempSecret,
       encoding: "base32",
       token,
     });
@@ -267,11 +96,14 @@ router.post("/2fa/enable", authenticate, async (req, res, next) => {
       });
     }
 
-    // Enable 2FA in DB
+    // Enable 2FA in DB and permanently save the secret
     await query(
-      "UPDATE users SET two_factor_enabled = true WHERE id = $1",
-      [userId]
+      "UPDATE users SET two_factor_secret = $1, two_factor_enabled = true WHERE id = $2",
+      [tempSecret, userId]
     );
+
+    // Clean up temporary secret
+    await redisClient.del(`2fa_setup:${userId}`);
 
     return res.json({
       success: true,
@@ -504,6 +336,104 @@ router.get("/guest/status", authenticate, async (req, res, next) => {
     return res.json({
       status: 200,
       session,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OTP (Email) Routes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * POST /api/auth/otp/send
+ *
+ * Sends an OTP via Email (Nodemailer).
+ * Rate-limited to max 5 requests per hour.
+ */
+router.post("/otp/send", authRateLimiter, sendOtp);
+
+/**
+ * POST /api/auth/otp/verify
+ *
+ * Verifies the OTP and issues a JWT session token.
+ */
+router.post("/otp/verify", authRateLimiter, verifyOtp);
+
+/**
+ * POST /api/auth/step-up-otp
+ *
+ * Sends a Step-Up 2FA OTP for sensitive actions (like webhook generation).
+ * Protected by JWT.
+ */
+router.post("/step-up-otp", authenticate, stepUpLimiter, sendStepUpOtp);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Google Auth & Logout
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+router.get("/google", googleLogin);
+router.get("/google/callback", googleCallback);
+router.post("/logout", verifyToken, logout);
+
+router.post("/register", authRateLimiter, register);
+router.post("/login", authRateLimiter, login);
+
+/**
+ * GET /api/auth/me
+ *
+ * Fetches the freshest user data from the database.
+ * Protected by JWT.
+ */
+router.get("/me", authenticate, async (req, res, next) => {
+  try {
+    const result = await query(
+      "SELECT id, email, plan_type, two_factor_enabled, has_completed_onboarding, lifetime_webhooks_created, first_name, last_name FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const user = result.rows[0];
+    user.name = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email.split('@')[0];
+
+    return res.json({
+      success: true,
+      user,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Password Reset
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+router.post("/forgot-password", authRateLimiter, forgotPassword);
+router.post("/verify-reset-otp", authRateLimiter, verifyResetOtp);
+router.post("/reset-password", authRateLimiter, resetPassword);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GDPR — Right to be Forgotten (Account Deletion)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * DELETE /api/auth/me
+ *
+ * Permanently deletes the authenticated user and all associated data.
+ * ON DELETE CASCADE in the schema handles webhook_keys, ghl_leads,
+ * webhook_logs, and otps automatically.
+ */
+router.delete("/me", authenticate, async (req, res, next) => {
+  try {
+    await query("DELETE FROM users WHERE id = $1", [req.user.id]);
+    return res.status(200).json({
+      success: true,
+      message: "Account and all associated data have been permanently deleted.",
     });
   } catch (err) {
     next(err);

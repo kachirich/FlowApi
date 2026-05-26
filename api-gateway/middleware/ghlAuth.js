@@ -14,7 +14,7 @@ export default async function ghlAuthenticate(req, res, next) {
 
   // Check against dynamically generated keys in the database using bcrypt
   try {
-    const result = await query("SELECT id, api_key, masked_key, destination_url FROM webhook_keys");
+    const result = await query("SELECT id, api_key, masked_key, target_url, http_method, user_id FROM webhook_keys");
     
     for (const row of result.rows) {
       const isMatch = await bcrypt.compare(incomingKey, row.api_key);
@@ -23,7 +23,9 @@ export default async function ghlAuthenticate(req, res, next) {
         req.webhookKey = {
           id: row.id,
           maskedKey: row.masked_key,
-          destinationUrl: row.destination_url
+          targetUrl: row.target_url,
+          httpMethod: row.http_method,
+          userId: row.user_id
         };
         return next();
       }

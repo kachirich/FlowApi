@@ -1,8 +1,10 @@
 import { Router } from "express";
 import axios from "axios";
 import authenticate from "../middleware/auth.js";
-import ghlAuthenticate from "../middleware/ghlAuth.js";
+import meteredLimiter from "../middleware/meteredLimiter.js";
 import { query } from "../db/connection.js";
+import { webhookQueue } from "../services/queue.js";
+import { validateWebhookUrl } from "../utils/security.js";
 
 const router = Router();
 
@@ -63,6 +65,159 @@ function calculateLeadScore(payload) {
 }
 
 /**
+ * GET /api/webhooks/logs
+ *
+ * Returns recent webhook logs for the authenticated user.
+ */
+router.get("/logs", authenticate, async (req, res) => {
+  try {
+    if (req.user.plan_type === "free") {
+      return res.status(403).json({
+        error: "Upgrade required",
+        message: "The Lead Ledger is only available on Basic, Pro, and Plus plans.",
+      });
+    }
+
+    const result = await query(
+      `SELECT * FROM webhook_logs 
+       WHERE user_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 100`,
+      [req.user.id]
+    );
+    return res.status(200).json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    console.error("[webhooks] Error fetching logs:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while fetching logs",
+    });
+  }
+});
+
+/**
+ * PUT /api/webhooks/:id
+ *
+ * Updates the target_url and/or http_method for a specific webhook.
+ * Body: { target_url?: string, http_method?: string }
+ * Protected by JWT.
+ */
+router.put("/:id", authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { target_url, http_method, custom_headers } = req.body;
+
+    if (target_url === undefined && http_method === undefined && custom_headers === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one of target_url, http_method or custom_headers is required",
+      });
+    }
+
+    // Validate URL if provided (SSRF Protection)
+    if (target_url) {
+      const { isValid, error } = validateWebhookUrl(target_url);
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: error === "Invalid or prohibited target URL" ? "Invalid or prohibited target URL" : "Invalid URL format for target_url",
+        });
+      }
+    }
+
+    // Validate http_method if provided
+    const validMethods = ['GET', 'POST', 'PUT', 'PATCH'];
+    if (http_method && !validMethods.includes(http_method.toUpperCase())) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid http_method. Must be one of: ${validMethods.join(', ')}`,
+      });
+    }
+
+    // Validate custom_headers if provided
+    if (custom_headers !== undefined) {
+      if (typeof custom_headers !== 'object' || custom_headers === null || Array.isArray(custom_headers)) {
+        return res.status(400).json({
+          success: false,
+          message: "custom_headers must be a valid JSON object",
+        });
+      }
+      for (const [key, value] of Object.entries(custom_headers)) {
+        if (typeof key !== 'string' || typeof value !== 'string') {
+          return res.status(400).json({
+            success: false,
+            message: "custom_headers must consist of string key-value pairs",
+          });
+        }
+      }
+    }
+
+    // Build dynamic SET clause
+    const updates = [];
+    const values = [];
+    let paramIdx = 1;
+
+    if (target_url !== undefined) {
+      updates.push(`target_url = $${paramIdx++}`);
+      values.push(target_url);
+    }
+    if (http_method !== undefined) {
+      updates.push(`http_method = $${paramIdx++}`);
+      values.push(http_method.toUpperCase());
+    }
+    if (custom_headers !== undefined) {
+      // Authoritative State: strictly rely on DB (or signed JWT) to prevent RBAC escalation
+      const planRes = await query("SELECT plan_type FROM users WHERE id = $1", [req.user.id]);
+      const planType = planRes.rows[0]?.plan_type || 'free';
+      
+      if (planType === 'free' || planType === 'basic') {
+        return res.status(403).json({
+          success: false,
+          error: "Upgrade required to access this engine"
+        });
+      }
+
+      updates.push(`custom_headers = $${paramIdx++}`);
+      values.push(JSON.stringify(custom_headers));
+    }
+
+    values.push(id);
+    values.push(req.user.id);
+
+    const result = await query(
+      `UPDATE webhook_keys SET ${updates.join(', ')} WHERE id = $${paramIdx++} AND user_id = $${paramIdx} RETURNING id, masked_key, target_url, http_method, custom_headers`,
+      values,
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Webhook not found",
+      });
+    }
+
+    const updated = result.rows[0];
+    console.log("\n" + "═".repeat(60));
+    console.log(`⚙️  WEBHOOK CONFIGURED: ${updated.masked_key}`);
+    console.log(`   Target: ${updated.target_url || '(none)'}`);
+    console.log(`   Method: ${updated.http_method}`);
+    console.log(`   Custom Headers: ${JSON.stringify(updated.custom_headers)}`);
+    console.log("═".repeat(60) + "\n");
+
+    return res.status(200).json({
+      success: true,
+      message: "Webhook configuration saved",
+      webhook: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * POST /api/webhooks/lead
  *
  * Receives simulated GoHighLevel lead data.
@@ -94,81 +249,53 @@ router.post("/lead", authenticate, (req, res) => {
 });
 
 /**
- * POST /api/webhooks/ghl
+ * DELETE /api/webhooks/queue/:id
  *
- * Receives live webhooks from GoHighLevel.
- * Runs algorithmic scoring and routes clean data to user destination.
- * Protected by GHL API Key.
+ * Looks up the job by ID (note: job cancelling is currently unavailable without job_id),
+ * and updates its status in ghl_leads and webhook_logs to CANCELED.
  */
-router.post("/ghl", ghlAuthenticate, async (req, res) => {
+router.delete("/queue/:id", authenticate, async (req, res, next) => {
   try {
-    const payload = req.body;
-    const apiKey = req.headers["x-api-key"] || req.query["x-api-key"];
+    const { id } = req.params;
 
-    // ── Smart Catcher: Core Lead Data Extraction ─────────────────────────
-    const firstName = findValue(payload, ['first_name', 'firstName', 'first']) || '';
-    const lastName = findValue(payload, ['last_name', 'lastName', 'last']) || '';
-    const email = findValue(payload, ['email', 'Email', 'emailAddress']) || '';
-    const phone = findValue(payload, ['phone', 'Phone', 'phoneNumber']) || '';
+    // Note: Since we no longer store job_id, we can't reliably cancel it from BullMQ.
+    // We only update the DB to prevent further manual retries.
+    // const job = await webhookQueue.getJob(job_id);
 
-    // ── Basic Security: Reject empty/meaningless payloads ───────────────
-    if (!firstName && !lastName && !email && !phone) {
-      return res.status(400).json({
-        success: false,
-        message: "Rejected: Payload contains zero recognizable lead data",
-      });
+    if (job) {
+      // 2. Remove the job if it is delayed or waiting
+      const state = await job.getState();
+      if (state === "delayed" || state === "waiting") {
+        await job.remove();
+      }
     }
 
-    // ── Smart Catcher: Zero Friction ID Handling ──────────────────────────
-    let contactId = findValue(payload, ['contact_id', 'contactId', 'id', 'contact_key']);
-    if (!contactId) {
-      // Create a unique, reproducible identifier if email exists, otherwise a safe unique random ID
-      const cleanEmail = email ? email.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
-      contactId = cleanEmail 
-        ? `catch_${cleanEmail}` 
-        : `catch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    }
-
-    console.log("\n" + "═".repeat(60));
-    console.log(`🚀 GOHIGHLEVEL WEBHOOK RECEIVED (Smart Catcher Mode)`);
-    console.log(`👤 Lead: ${firstName} ${lastName}`);
-    console.log(`🆔 Contact ID: ${contactId}`);
-    console.log("═".repeat(60));
-
-    // ── Algorithmic Lead Scoring ────────────────────────────────────────
-    const leadScore = calculateLeadScore(payload);
-    console.log(`🧠 AI_Lead_Score: ${leadScore}/100`);
-    console.log("═".repeat(60) + "\n");
-
-    // ── Zero-Retention DB Logging (Decoupled Queue) ────────────────────────
-    await query(
-      `INSERT INTO ghl_leads (contact_id, raw_payload, status, webhook_key_id, lead_score, first_name, last_name, email, phone, delivery_status, retry_count)
-       VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (contact_id) DO UPDATE SET
-         status = EXCLUDED.status,
-         webhook_key_id = EXCLUDED.webhook_key_id,
-         lead_score = EXCLUDED.lead_score,
-         first_name = EXCLUDED.first_name,
-         last_name = EXCLUDED.last_name,
-         email = EXCLUDED.email,
-         phone = EXCLUDED.phone,
-         delivery_status = EXCLUDED.delivery_status,
-         retry_count = EXCLUDED.retry_count`,
-      [contactId, JSON.stringify(payload), 'PENDING', req.webhookKey?.id, leadScore, firstName, lastName, email, phone, 'PENDING', 0]
+    // 3. Update the corresponding lead in ghl_leads to CANCELED
+    const leadResult = await query(
+      `UPDATE ghl_leads 
+       SET delivery_status = 'CANCELED', last_delivery_error = 'Auto-retry stopped by user' 
+       WHERE id = $1 AND user_id = $2
+       RETURNING id, webhook_key_id, raw_payload, is_test`,
+      [id, req.user.id]
     );
+
+    if (leadResult.rows.length > 0) {
+      const lead = leadResult.rows[0];
+      // 4. Update/insert a record in webhook_logs with status_code = 499 (Client Closed Request / Cancelled)
+      await query(
+        `INSERT INTO webhook_logs (user_id, webhook_id, method, status_code, request_payload, response_error, is_test)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [req.user.id, lead.webhook_key_id, 'POST', 499, JSON.stringify(lead.raw_payload), 'Auto-retry stopped by user', lead.is_test]
+      ).catch(e => console.error("Failed to write cancel log to webhook_logs:", e.message));
+    }
 
     return res.status(200).json({
       success: true,
-      message: "GoHighLevel webhook processed securely",
+      message: "Webhook retry queue job canceled successfully."
     });
-  } catch (error) {
-    console.error("[webhooks] Error processing GHL webhook:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while processing webhook",
-    });
+  } catch (err) {
+    next(err);
   }
 });
-
 
 export default router;

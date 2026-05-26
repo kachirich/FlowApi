@@ -4,14 +4,30 @@ import { createClient } from "redis";
 import { query } from "../db/connection.js";
 
 // Create a Redis client. Uses REDIS_URL from the environment.
-const redisClient = createClient({
+export const redisClient = createClient({
   url: process.env.REDIS_URL || "redis://localhost:6379",
 });
 
 // Connect to Redis. In production, you would handle connection errors robustly.
-redisClient.connect().catch((err) => {
+try {
+  if (!redisClient.isOpen) {
+    await redisClient.connect();
+  }
+} catch (err) {
   console.error("Redis connection error:", err);
-});
+}
+
+// Developer Bypass condition
+const skipRateLimit = (req) => {
+  const ip = req.ip || req.socket?.remoteAddress || "";
+  return (
+    process.env.NODE_ENV === 'development' ||
+    ip === "127.0.0.1" ||
+    ip === "::1" ||
+    ip === "::ffff:127.0.0.1" ||
+    req.hostname === "localhost"
+  );
+};
 
 /**
  * Rate-limiting middleware — throttles clients that exceed the configured
@@ -38,15 +54,7 @@ const rateLimiter = rateLimit({
   standardHeaders: "draft-7",   // RateLimit-* headers (IETF draft-7)
   legacyHeaders: false,         // Disable X-RateLimit-* headers
   // Skip rate limiting for local development / Test Sandbox traffic
-  skip: (req) => {
-    const ip = req.ip || req.socket?.remoteAddress || "";
-    return (
-      ip === "127.0.0.1" ||
-      ip === "::1" ||
-      ip === "::ffff:127.0.0.1" ||
-      req.hostname === "localhost"
-    );
-  },
+  skip: skipRateLimit,
   message: {
     status: 429,
     error: "Too Many Requests",
@@ -66,6 +74,54 @@ const rateLimiter = rateLimit({
 
     res.status(options.statusCode).json(options.message);
   },
+});
+
+export const authRateLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  skip: skipRateLimit,
+  message: { error: 'Too many login attempts. Your IP has been temporarily locked out for 1 hour for security purposes.' },
+});
+
+export const stepUpLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts
+  skip: skipRateLimit,
+  keyGenerator: (req) => {
+    // Rate limit by User ID if authenticated, else IP address
+    return req.user?.id ? `step_up_${req.user.id}` : `step_up_${req.ip || req.socket?.remoteAddress}`;
+  },
+  message: { error: 'Too many failed verification attempts. Please try again in 15 minutes.' },
+  handler: (req, res, next, options) => {
+    console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${req.user?.id || req.ip}`);
+    res.status(options.statusCode).json(options.message);
+  }
+});
+
+export const webhookIngressLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  skip: skipRateLimit,
+  keyGenerator: (req) => {
+    // Rate limit per IP address instead of webhook ID for DDoS protection
+    return `webhook_ingress_ip_${req.ip || req.socket?.remoteAddress}`;
+  },
+  message: { error: 'Too Many Requests' },
+  handler: (req, res, next, options) => {
+    console.warn(`[rate-limiter] 🚨 THREAT: Queue flooding blocked from IP ${req.ip || req.socket?.remoteAddress}`);
+    res.status(429).json(options.message);
+  }
 });
 
 export default rateLimiter;

@@ -29,7 +29,7 @@ export async function processQueue() {
   try {
     // Select leads that are PENDING or RETRYING
     const res = await query(`
-      SELECT gl.*, wk.destination_url
+      SELECT gl.*, wk.target_url, wk.http_method
       FROM ghl_leads gl
       LEFT JOIN webhook_keys wk ON gl.webhook_key_id = wk.id
       WHERE gl.delivery_status IN ('PENDING', 'RETRYING')
@@ -37,7 +37,7 @@ export async function processQueue() {
     `);
 
     for (const lead of res.rows) {
-      const destinationUrl = lead.destination_url;
+      const destinationUrl = lead.target_url;
       const enrichedPayload = {
         ...lead.raw_payload,
         AI_Lead_Score: lead.lead_score,
@@ -56,7 +56,8 @@ export async function processQueue() {
       }
 
       try {
-        await axios.post(destinationUrl, enrichedPayload, { timeout: 5000 });
+        const method = (lead.http_method || 'POST').toLowerCase();
+        await axios({ method, url: destinationUrl, data: enrichedPayload, timeout: 5000 });
         
         // Success
         await query(`

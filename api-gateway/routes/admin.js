@@ -1,9 +1,13 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
+import speakeasy from "speakeasy";
 import { query } from "../db/connection.js";
 import authenticate from "../middleware/auth.js";
+import webhookCreationLimiter from "../middleware/webhookCreationLimiter.js";
 import { generateApiKey } from "../utils/apiKeyGenerator.js";
+import { validateWebhookUrl } from "../utils/security.js";
 
 const router = Router();
 
@@ -79,8 +83,55 @@ router.get("/dashboard", authenticate, async (_req, res, next) => {
  *
  * Protected by JWT.
  */
-router.post("/generate-webhook", authenticate, async (_req, res, next) => {
+router.post("/generate-webhook", authenticate, webhookCreationLimiter, async (req, res, next) => {
   try {
+    const { totpToken } = req.body;
+
+    // Enforce 2FA verification
+    const userResult = await query(
+      "SELECT two_factor_secret, two_factor_enabled FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    const user = userResult.rows[0];
+    if (!user || !user.two_factor_secret) {
+      return res.status(403).json({ error: "2FA must be configured before generating webhooks" });
+    }
+
+    if (!totpToken) {
+      return res.status(401).json({ error: "Unauthorized: 2FA Token Required" });
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.two_factor_secret,
+      encoding: "base32",
+      token: totpToken,
+    });
+
+    if (!verified) {
+      return res.status(401).json({ error: "Invalid Code" });
+    }
+
+    // ── Enforce Billing Tiers (Lifetime Counter) ───────────────────────────
+    const userPlanResult = await query(
+      "SELECT plan_type, lifetime_webhooks_created FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    const planType = userPlanResult.rows[0]?.plan_type || 'free';
+    const lifetimeWebhooks = userPlanResult.rows[0]?.lifetime_webhooks_created || 0;
+
+    let limit = 2;
+    if (planType === 'pro') limit = 50;
+    if (planType === 'plus') limit = Infinity;
+
+    if (lifetimeWebhooks >= limit) {
+      return res.status(403).json({
+        status: 403,
+        error: "Plan limit reached. Please upgrade to create more webhooks."
+      });
+    }
+
     // Generate raw API key
     const rawKey = "flow_api_live_" + crypto.randomBytes(16).toString("hex");
     
@@ -90,25 +141,42 @@ router.post("/generate-webhook", authenticate, async (_req, res, next) => {
     // Hash key for DB
     const hashedKey = await bcrypt.hash(rawKey, 10);
 
-    // Build the webhook URL
-    const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-    const host = process.env.PUBLIC_HOST || `localhost:${process.env.PORT || 3000}`;
-    const webhookUrl = `${protocol}://${host}/api/webhooks/ghl?x-api-key=${rawKey}`;
+    // Build the webhook URL using the new dynamic dispatcher format
+    const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
     const insertResult = await query(
-      `INSERT INTO webhook_keys (api_key, masked_key, webhook_url) VALUES ($1, $2, $3) RETURNING id`,
-      [hashedKey, maskedKey, webhookUrl],
+      `INSERT INTO webhook_keys (api_key, masked_key, webhook_url, user_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [hashedKey, maskedKey, 'pending', req.user.id],
+    );
+
+    const webhookId = insertResult.rows[0].id;
+    const webhookUrl = `${baseUrl}/api/catch/${webhookId}`;
+
+    // Update the URL now that we have the UUID
+    await query(`UPDATE webhook_keys SET webhook_url = $1 WHERE id = $2`, [webhookUrl, webhookId]);
+
+    // ── Update Lifetime Ledger ─────────────────────────────────────────────
+    await query(
+      "UPDATE users SET lifetime_webhooks_created = lifetime_webhooks_created + 1 WHERE id = $1",
+      [req.user.id]
     );
 
     console.log("\n" + "═".repeat(60));
     console.log(`🔑 NEW WEBHOOK KEY GENERATED: ${maskedKey}`);
     console.log("═".repeat(60) + "\n");
 
+    const trustedDeviceToken = jwt.sign(
+      { userId: req.user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: "72h" }
+    );
+
     return res.json({
       success: true,
       apiKey: rawKey,
       webhookUrl,
-      id: insertResult.rows[0].id
+      id: webhookId,
+      trustedDeviceToken
     });
   } catch (err) {
     next(err);
@@ -127,10 +195,10 @@ router.post("/generate-webhook", authenticate, async (_req, res, next) => {
 router.get("/stats", authenticate, async (req, res, next) => {
   try {
     const [leadsResult, keysResult, botsResult, userResult] = await Promise.all([
-      query("SELECT COUNT(*)::int AS count FROM ghl_leads"),
-      query("SELECT COUNT(*)::int AS count FROM webhook_keys"),
+      query("SELECT COUNT(*)::int AS count FROM ghl_leads WHERE user_id = $1 AND is_test = false", [req.user.id]),
+      query("SELECT COUNT(*)::int AS count FROM webhook_keys WHERE user_id = $1", [req.user.id]),
       query("SELECT value::int AS count FROM gateway_counters WHERE key = 'bots_blocked'"),
-      query("SELECT two_factor_enabled, has_completed_onboarding FROM users WHERE id = $1", [req.user.id]),
+      query("SELECT two_factor_enabled, has_completed_onboarding, plan_type FROM users WHERE id = $1", [req.user.id]),
     ]);
 
     const totalLeads = leadsResult.rows[0].count;
@@ -139,6 +207,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
     const zapierTaxAvoided = (totalLeads * 0.05).toFixed(2);
     const twoFactorEnabled = userResult.rows[0]?.two_factor_enabled ?? false;
     const hasCompletedOnboarding = userResult.rows[0]?.has_completed_onboarding ?? false;
+    const planType = userResult.rows[0]?.plan_type || 'free';
 
     return res.json({
       totalLeads,
@@ -147,6 +216,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
       zapierTaxAvoided,
       twoFactorEnabled,
       hasCompletedOnboarding,
+      planType,
     });
   } catch (err) {
     next(err);
@@ -203,19 +273,18 @@ router.put("/destination", authenticate, async (req, res, next) => {
       });
     }
 
-    // Validate URL format
-    try {
-      new URL(destinationUrl);
-    } catch {
+    // Validate URL format and SSRF protection
+    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    if (!isValid) {
       return res.status(400).json({
         success: false,
-        message: "Invalid URL format for destinationUrl",
+        message: error === "Invalid or prohibited target URL" ? "Invalid or prohibited target URL" : "Invalid URL format for destinationUrl",
       });
     }
 
     const result = await query(
-      `UPDATE webhook_keys SET destination_url = $1 WHERE id = $2 RETURNING id, masked_key`,
-      [destinationUrl, id],
+      `UPDATE webhook_keys SET target_url = $1 WHERE id = $2 AND user_id = $3 RETURNING id, masked_key`,
+      [destinationUrl, id, req.user.id],
     );
 
     if (result.rows.length === 0) {
@@ -246,21 +315,25 @@ router.put("/destination", authenticate, async (req, res, next) => {
  *
  * Returns active webhooks and analytics.
  */
-router.get("/webhooks", authenticate, async (_req, res, next) => {
+router.get("/webhooks", authenticate, async (req, res, next) => {
   try {
     const result = await query(`
       SELECT 
         wk.id,
         wk.masked_key,
-        wk.destination_url,
+        wk.target_url,
+        wk.http_method,
+        wk.webhook_url,
         wk.created_at,
-        COUNT(gl.id) FILTER (WHERE gl.status = '200' OR gl.status = 'forwarded') AS total_success,
-        COUNT(gl.id) FILTER (WHERE gl.status = '429' OR gl.status = 'failed') AS total_blocked
+        wk.custom_headers,
+        COUNT(wl.id) FILTER (WHERE wl.status_code >= 200 AND wl.status_code < 300 AND wl.is_test = false) AS clean_leads,
+        COUNT(wl.id) FILTER (WHERE wl.status_code >= 400 AND wl.is_test = false) AS blocked_leads
       FROM webhook_keys wk
-      LEFT JOIN ghl_leads gl ON wk.id = gl.webhook_key_id
+      LEFT JOIN webhook_logs wl ON wk.id = wl.webhook_id
+      WHERE wk.user_id = $1
       GROUP BY wk.id
       ORDER BY wk.created_at DESC
-    `);
+    `, [req.user.id]);
     
     return res.json({
       success: true,
@@ -272,11 +345,10 @@ router.get("/webhooks", authenticate, async (_req, res, next) => {
 });
 
 /**
- * GET /api/admin/leads
  *
  * Returns vaulted leads joined with webhook_keys for masked key tracking.
  */
-router.get("/leads", authenticate, async (_req, res, next) => {
+router.get("/leads", authenticate, async (req, res, next) => {
   try {
     const result = await query(`
       SELECT 
@@ -292,12 +364,14 @@ router.get("/leads", authenticate, async (_req, res, next) => {
         gl.delivery_status AS "deliveryStatus",
         gl.retry_count AS "retryCount",
         gl.last_delivery_error AS "lastDeliveryError",
+        gl.is_test AS "is_test",
         wk.masked_key AS source_webhook
       FROM ghl_leads gl
       LEFT JOIN webhook_keys wk ON gl.webhook_key_id = wk.id
+      WHERE gl.user_id = $1
       ORDER BY gl.created_at DESC
       LIMIT 100
-    `);
+    `, [req.user.id]);
     
     return res.json({
       success: true,
@@ -314,9 +388,9 @@ router.get("/leads", authenticate, async (_req, res, next) => {
  * Wipes all lead records in the Lead Ledger database.
  * Protected by JWT.
  */
-router.delete("/leads", authenticate, async (_req, res, next) => {
+router.delete("/leads", authenticate, async (req, res, next) => {
   try {
-    await query("DELETE FROM ghl_leads");
+    await query("DELETE FROM ghl_leads WHERE user_id = $1", [req.user.id]);
     return res.json({ success: true, message: "All lead records have been wiped." });
   } catch (err) {
     next(err);
@@ -329,9 +403,9 @@ router.delete("/leads", authenticate, async (_req, res, next) => {
  * Wipes all active webhooks.
  * Protected by JWT.
  */
-router.delete("/webhooks", authenticate, async (_req, res, next) => {
+router.delete("/webhooks", authenticate, async (req, res, next) => {
   try {
-    await query("DELETE FROM webhook_keys");
+    await query("DELETE FROM webhook_keys WHERE user_id = $1", [req.user.id]);
     return res.json({ success: true, message: "All active webhooks have been wiped." });
   } catch (err) {
     next(err);
@@ -345,8 +419,58 @@ router.delete("/webhooks", authenticate, async (_req, res, next) => {
  */
 router.delete("/webhooks/:id", authenticate, async (req, res, next) => {
   try {
-    await query(`DELETE FROM webhook_keys WHERE id = $1`, [req.params.id]);
-    return res.json({ success: true });
+    const totpToken = req.body.totpToken || req.headers.totptoken;
+    const email = req.user.email;
+
+    const trustedToken = req.headers['x-trusted-device-token'];
+    let deviceTrusted = false;
+    if (trustedToken) {
+      try {
+        const decoded = jwt.verify(trustedToken, process.env.JWT_SECRET);
+        if (decoded && decoded.userId === req.user.id) {
+          deviceTrusted = true;
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    if (!deviceTrusted) {
+      if (!totpToken) {
+        return res.status(401).json({ error: "Unauthorized: Missing 2FA code" });
+      }
+
+      // Enforce 2FA verification
+      const userResult = await query(
+        "SELECT two_factor_secret, two_factor_enabled FROM users WHERE id = $1",
+        [req.user.id]
+      );
+
+      const user = userResult.rows[0];
+      if (!user || !user.two_factor_enabled) {
+        return res.status(403).json({ error: "Two-factor authentication must be enabled to revoke webhooks" });
+      }
+
+      const verified = speakeasy.totp.verify({
+        secret: user.two_factor_secret,
+        encoding: "base32",
+        token: totpToken,
+      });
+
+      if (!verified) {
+        return res.status(401).json({ error: "Invalid authenticator code" });
+      }
+    }
+
+    await query(`DELETE FROM webhook_keys WHERE id = $1 AND user_id = $2`, [req.params.id, req.user.id]);
+
+    const trustedDeviceToken = jwt.sign(
+      { userId: req.user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: "72h" }
+    );
+
+    return res.json({ success: true, trustedDeviceToken });
   } catch (err) {
     next(err);
   }
@@ -358,10 +482,10 @@ router.delete("/webhooks/:id", authenticate, async (req, res, next) => {
  * Deletes all routing metadata/history for the user (leads, request logs, and spam counters).
  * Protected by JWT.
  */
-router.delete("/logs", authenticate, async (_req, res, next) => {
+router.delete("/logs", authenticate, async (req, res, next) => {
   try {
     await Promise.all([
-      query("DELETE FROM ghl_leads"),
+      query("DELETE FROM ghl_leads WHERE user_id = $1", [req.user.id]),
       query("DELETE FROM request_logs"),
       query("UPDATE gateway_counters SET value = 0 WHERE key = 'bots_blocked'"),
     ]);
@@ -445,7 +569,7 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
     const { id } = req.params;
     
     // Check if the lead exists
-    const leadResult = await query("SELECT * FROM ghl_leads WHERE id = $1", [id]);
+    const leadResult = await query("SELECT * FROM ghl_leads WHERE id = $1 AND user_id = $2", [id, req.user.id]);
     if (leadResult.rows.length === 0) {
       return res.status(404).json({
         success: false,
@@ -459,8 +583,8 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
       SET delivery_status = 'PENDING',
           retry_count = 0,
           last_delivery_error = NULL
-      WHERE id = $1
-    `, [id]);
+      WHERE id = $1 AND user_id = $2
+    `, [id, req.user.id]);
 
     // Import and trigger queue worker instantly in background
     const { processQueue } = await import("../utils/queueWorker.js");

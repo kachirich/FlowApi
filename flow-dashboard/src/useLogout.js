@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 
 /**
  * useLogout
@@ -11,10 +10,9 @@ import { useNavigate } from "react-router-dom";
  *   <button onClick={logout}>Sign out</button>
  */
 export default function useLogout() {
-  const navigate = useNavigate();
-
   return () => {
     localStorage.removeItem("flow_token");
-    navigate("/login", { replace: true });
+    localStorage.removeItem("token");
+    window.location.href = "/login";
   };
 }

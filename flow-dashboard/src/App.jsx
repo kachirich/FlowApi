@@ -2,10 +2,14 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./Login";
 import Dashboard from "./Dashboard";
 import ProtectedRoute from "./ProtectedRoute";
+import TermsOfService from "./pages/Legal/TermsOfService";
+import PrivacyPolicy from "./pages/Legal/PrivacyPolicy";
 
 function App() {
   return (
     <Routes>
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/login" element={<Login />} />
       <Route
         path="/"

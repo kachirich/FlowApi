@@ -1,297 +1,820 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  Zap,
-  Mail,
-  Lock,
-  ArrowRight,
-  AlertCircle,
-  Loader2,
-  Terminal,
-  UserPlus,
-  LogIn,
-  ShieldCheck
-} from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { Loader2, Mail, ArrowLeft, Zap } from "lucide-react";
+import toast, { Toaster } from "react-hot-toast";
+
+const API = import.meta.env.VITE_API_BASE_URL;
 
 export default function Login() {
   const navigate = useNavigate();
-  const [isRegister, setIsRegister] = useState(false);
+  const location = useLocation();
+
+  // ── Google OAuth token catch ──────────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const token = params.get("token");
+    if (token) {
+      localStorage.setItem("flow_token", token);
+      window.history.replaceState({}, document.title, "/login");
+      navigate("/", { replace: true });
+    }
+  }, [location, navigate]);
+
+  // ── State Machine ─────────────────────────────────────────────────────
+  const [step, setStep] = useState("LOGIN"); // LOGIN | REGISTER | OTP | FORGOT_EMAIL | FORGOT_OTP | FORGOT_NEWPASS
+
+  // ── Form State ────────────────────────────────────────────────────────
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const otpRefs = useRef([]);
+  const [resetOtp, setResetOtp] = useState(["", "", "", "", "", ""]);
+  const resetOtpRefs = useRef([]);
+  const [verifiedResetOtp, setVerifiedResetOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [confirmNewPasswordTouched, setConfirmNewPasswordTouched] = useState(false);
+
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 2FA state variables
-  const [requires2FA, setRequires2FA] = useState(false);
-  const [twoFactorCode, setTwoFactorCode] = useState("");
-  const [tempUserId, setTempUserId] = useState(null);
+  // ── Validation ────────────────────────────────────────────────────────
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isEmailValid = EMAIL_REGEX.test(email);
 
-  const handleSubmit = async (e) => {
+  const hasLength = password.length >= 8;
+  const hasNumber = /\d/.test(password);
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+  const isPasswordStrong = hasLength && hasNumber && hasSpecial;
+  const isPasswordsMatch = password === confirmPassword;
+
+  const newHasLength = newPassword.length >= 8;
+  const newHasNumber = /\d/.test(newPassword);
+  const newHasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
+  const isNewPasswordStrong = newHasLength && newHasNumber && newHasSpecial;
+  const isNewPasswordsMatch = newPassword === confirmNewPassword;
+
+  const [isTosAccepted, setIsTosAccepted] = useState(false);
+
+  const isLoginValid = isEmailValid && password.length >= 1;
+  const isRegisterValid =
+    isEmailValid &&
+    isPasswordStrong &&
+    isPasswordsMatch &&
+    firstName.trim() !== "" &&
+    lastName.trim() !== "" &&
+    isTosAccepted;
+  const isOtpValid = otp.every((d) => d !== "");
+  const isResetOtpValid = resetOtp.every((d) => d !== "");
+  const isResetValid = isResetOtpValid && isNewPasswordStrong && isNewPasswordsMatch;
+
+  // ── OTP Input Handling ────────────────────────────────────────────────
+  const handleOtpChange = (index, value) => {
+    if (!/^\d?$/.test(value)) return;
+    const next = [...otp];
+    next[index] = value;
+    setOtp(next);
+    if (value && index < 5) otpRefs.current[index + 1]?.focus();
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleOtpPaste = (e) => {
     e.preventDefault();
-    setError("");
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (pasted.length === 6) {
+      setOtp(pasted.split(""));
+      otpRefs.current[5]?.focus();
+    }
+  };
+
+  const handleResetOtpChange = (index, value) => {
+    if (!/^\d?$/.test(value)) return;
+    const next = [...resetOtp];
+    next[index] = value;
+    setResetOtp(next);
+    if (value && index < 5) resetOtpRefs.current[index + 1]?.focus();
+  };
+
+  const handleResetOtpKeyDown = (index, e) => {
+    if (e.key === "Backspace" && !resetOtp[index] && index > 0) {
+      resetOtpRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleResetOtpPaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (pasted.length === 6) {
+      setResetOtp(pasted.split(""));
+      resetOtpRefs.current[5]?.focus();
+    }
+  };
+
+  // ── Handlers ──────────────────────────────────────────────────────────
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!isLoginValid) return;
     setLoading(true);
 
-    if (requires2FA) {
-      try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/login/verify`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: tempUserId, token: twoFactorCode }),
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.message || "2FA verification failed");
-        }
-
-        localStorage.setItem("flow_token", data.token);
-        localStorage.removeItem("just_registered");
-        navigate("/", { replace: true });
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    const endpoint = isRegister
-      ? `${import.meta.env.VITE_API_URL}/api/auth/register`
-      : `${import.meta.env.VITE_API_URL}/api/auth/login`;
-
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${API}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.message || "Authentication failed");
-      }
+      if (!res.ok) throw new Error(data.message || data.error || "Login failed");
 
+      // If backend returns 2FA required
       if (data.requires2FA) {
-        setRequires2FA(true);
-        setTempUserId(data.userId);
+        toast.success("2FA required. Enter your authenticator code.");
         return;
       }
 
-      localStorage.setItem("flow_token", data.token);
-      if (isRegister) {
-        localStorage.setItem("just_registered", "true");
-      } else {
-        localStorage.removeItem("just_registered");
+      if (data.token) {
+        localStorage.setItem("flow_token", data.token);
+        toast.success("Welcome back!");
+        navigate("/", { replace: true });
       }
-      
-      navigate("/", { replace: true });
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-surface px-4 font-sans text-slate-100">
-      {/* Ambient background effects */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-40 -top-40 h-[600px] w-[600px] rounded-full bg-emerald-500/[0.03] blur-[140px]" />
-        <div className="absolute -bottom-40 -right-40 h-[500px] w-[500px] rounded-full bg-violet-500/[0.04] blur-[120px]" />
-        <div className="absolute left-1/2 top-1/3 h-[400px] w-[400px] -translate-x-1/2 rounded-full bg-cyan-500/[0.02] blur-[100px]" />
-      </div>
+  const handlePasswordlessLogin = async () => {
+    if (!isEmailValid || email.length === 0) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    setLoading(true);
 
-      {/* Grid pattern */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.025]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.1) 1px, transparent 1px)",
-          backgroundSize: "60px 60px",
+    try {
+      const res = await fetch(`${API}/api/auth/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || data.error || "Failed to send OTP");
+
+      toast.success("Passcode sent to your email!");
+      setStep("OTP");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!isRegisterValid) return;
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, firstName, lastName }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || data.error || "Registration failed");
+
+      if (data.token) {
+        localStorage.setItem("flow_token", data.token);
+      }
+
+      // Send OTP for email verification
+      const otpRes = await fetch(`${API}/api/auth/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!otpRes.ok) {
+        const otpData = await otpRes.json();
+        throw new Error(otpData.error || "Failed to send verification email");
+      }
+
+      toast.success("Account created! Check your email for verification code.");
+      setStep("OTP");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpVerify = async (e) => {
+    e.preventDefault();
+    if (!isOtpValid) return;
+    setLoading(true);
+
+    try {
+      const code = otp.join("");
+      const res = await fetch(`${API}/api/auth/otp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, code }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || data.error || "Verification failed");
+
+      if (data.token) {
+        localStorage.setItem("flow_token", data.token);
+      }
+
+      toast.success("Email verified successfully!");
+      navigate("/", { replace: true });
+    } catch (err) {
+      toast.error(err.message);
+      setOtp(["", "", "", "", "", ""]);
+      otpRefs.current[0]?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!isEmailValid) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      toast.success("If an account exists, a reset code has been sent.");
+      setStep("FORGOT_OTP");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyResetOtp = async (e) => {
+    e.preventDefault();
+    if (!isResetOtpValid) return;
+    setLoading(true);
+    try {
+      const otp = resetOtp.join("");
+      const res = await fetch(`${API}/api/auth/verify-reset-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Invalid code");
+      toast.success("Code verified! Set your new password.");
+      setVerifiedResetOtp(otp);
+      setStep("FORGOT_NEWPASS");
+    } catch (err) {
+      toast.error(err.message);
+      setResetOtp(["", "", "", "", "", ""]);
+      resetOtpRefs.current[0]?.focus();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault();
+    if (!isNewPasswordStrong || !isNewPasswordsMatch) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: verifiedResetOtp, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Reset failed");
+      toast.success("Password reset successfully! Sign in with your new password.");
+      setPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setResetOtp(["", "", "", "", "", ""]);
+      setVerifiedResetOtp("");
+      setStep("LOGIN");
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = `${API}/api/auth/google`;
+  };
+
+  // ── Shared Input Class ────────────────────────────────────────────────
+  const inputClass =
+    "w-full rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none transition focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20";
+  const inputErrorClass =
+    "w-full rounded-md border border-rose-500 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 outline-none transition focus:border-rose-500 focus:ring-1 focus:ring-rose-500/20";
+
+  // ── Render ────────────────────────────────────────────────────────────
+  return (
+    <div className="flex min-h-screen flex-col lg:flex-row items-center justify-center bg-zinc-950 px-4 lg:px-20 font-sans text-zinc-100 gap-12 lg:gap-24 pb-12 lg:pb-0 overflow-y-auto">
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: {
+            background: "#18181b",
+            color: "#fafafa",
+            border: "1px solid #27272a",
+            fontSize: "13px",
+          },
+          success: { iconTheme: { primary: "#10b981", secondary: "#18181b" } },
+          error: { iconTheme: { primary: "#ef4444", secondary: "#18181b" } },
         }}
       />
 
-      {/* Card */}
-      <div className="relative z-10 w-full max-w-md animate-fade-in">
-        {/* Brand header */}
-        <div className="mb-8 flex flex-col items-center gap-4">
-          <div className="relative animate-float">
-            <div className="absolute -inset-3 animate-pulse-slow rounded-2xl bg-emerald-500/10 blur-xl" />
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-raised ring-1 ring-emerald-500/20">
-              <Zap className="h-8 w-8 text-emerald-400" />
-            </div>
-          </div>
-          <div className="text-center">
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-100">
-              {requires2FA ? "Security Handshake" : isRegister ? "Create Your Account" : "Access FlowAPI Gateway"}
-            </h1>
-            <p className="mt-2 flex items-center justify-center gap-2 text-xs font-medium text-slate-500">
-              <Terminal className="h-3.5 w-3.5 text-emerald-500" />
-              {requires2FA ? "mfa_verification_handshake()" : isRegister ? "register_new_gateway_admin()" : "session.initialize()"}
-            </p>
-          </div>
+      {/* Top Left Logo */}
+      <div className="absolute left-6 top-6 flex items-center gap-2 text-xl font-bold tracking-tight text-white">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-black">
+          <Zap className="h-5 w-5 fill-current" />
         </div>
+        FlowAPI
+      </div>
 
-        {/* Form card */}
-        <div className="rounded-2xl border border-slate-800/60 bg-surface-raised/80 p-8 shadow-2xl shadow-black/40 backdrop-blur-sm">
-          {/* Terminal-style header bar */}
-          <div className="mb-6 flex items-center gap-2 rounded-lg border border-slate-700/40 bg-surface px-4 py-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-500/80" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-500/80" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-            <span className="ml-2 font-mono text-[10px] text-slate-500">
-              {requires2FA ? "mfa_challenge_console" : isRegister ? "admin_provisioning_console" : "authorization_handshake"}
-            </span>
-          </div>
+      {/* Hero Content (Video & Headline) */}
+      <div className="flex w-full max-w-2xl flex-col mt-28 lg:mt-0">
+        <h1 className="text-4xl lg:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
+          Enterprise Lead <br/>
+          <span className="text-emerald-500">Routing Infrastructure</span>
+        </h1>
+        <p className="text-lg text-zinc-400 mb-10 max-w-lg">
+          Zero data loss. Tax avoidance. Vaulted lead data. Watch how FlowGateway protects your CRM in real-time.
+        </p>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Error alert */}
-            {error && (
-              <div
-                id="login-error"
-                className="flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/[0.06] px-4 py-3 animate-shake"
-              >
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
-                <p className="text-sm text-rose-300 leading-normal">{error}</p>
-              </div>
-            )}
+        {/* Video Container */}
+        <div className="relative w-full overflow-hidden rounded-xl border border-zinc-800 bg-black shadow-2xl shadow-emerald-500/10" style={{ paddingBottom: '56.25%' }}>
+          <iframe 
+            src="/launch-video.html" 
+            className="absolute inset-0 w-full h-full border-0"
+            title="FlowGateway Launch Video"
+            allow="autoplay"
+          />
+        </div>
+      </div>
 
-            {requires2FA ? (
-              /* 2FA Token input */
-              <div className="space-y-3">
-                <div className="text-center py-2">
-                  <p className="text-xs font-semibold text-slate-400">
-                    Two-Factor Authentication Shield Active
+      <div className="w-full max-w-sm rounded-xl border border-zinc-800 bg-zinc-950 p-8 shadow-xl">
+        {/* ═══════════════════ STEP: LOGIN ═══════════════════ */}
+        {step === "LOGIN" && (
+          <div>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-bold text-white">Welcome back</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                Enter your email to sign in to your account
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">Email</label>
+                <input
+                  type="email"
+                  placeholder="m@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  className={
+                    emailTouched && !isEmailValid && email.length > 0
+                      ? inputErrorClass
+                      : inputClass
+                  }
+                />
+                {emailTouched && !isEmailValid && email.length > 0 && (
+                  <p className="text-[11px] text-rose-400">
+                    Please enter a valid email address
                   </p>
-                  <p className="mt-1.5 text-[11px] text-slate-500 leading-normal">
-                    Please submit the 6-digit validation code from your designated authenticator device.
-                  </p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    MFA Verification Code
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3.5 h-4 w-4 text-slate-650" />
-                    <input
-                      type="text"
-                      required
-                      maxLength={6}
-                      placeholder="000000"
-                      value={twoFactorCode}
-                      onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, ""))}
-                      className="w-full rounded-lg border border-slate-700/50 bg-surface px-10 py-3 text-center font-mono text-lg font-bold tracking-[0.5em] text-slate-200 placeholder:text-slate-650 outline-none transition focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
-            ) : (
-              /* Standard login inputs */
-              <>
-                {/* Email field */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3.5 h-4 w-4 text-slate-600" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="admin@flowapi.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full rounded-lg border border-slate-700/50 bg-surface px-10 py-3 text-sm text-slate-200 placeholder:text-slate-650 outline-none transition focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                    />
-                  </div>
-                </div>
 
-                {/* Password field */}
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-3.5 h-4 w-4 text-slate-600" />
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-lg border border-slate-700/50 bg-surface px-10 py-3 text-sm text-slate-200 placeholder:text-slate-650 outline-none transition focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/20"
-                    />
-                  </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-white">Password</label>
+                  {/* <button
+                    type="button"
+                    onClick={() => setStep("FORGOT_EMAIL")}
+                    className="text-[11px] text-zinc-500 hover:text-white transition-colors"
+                  >
+                    Forgot password?
+                  </button> */}
                 </div>
-              </>
-            )}
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
 
-            {/* Submit button */}
+              <div className="flex flex-col gap-3">
+                <button
+                  type="submit"
+                  disabled={loading || !isLoginValid}
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePasswordlessLogin}
+                  disabled={loading || !isEmailValid || email.length === 0}
+                  className="flex w-full items-center justify-center gap-2 rounded-md border border-zinc-700 bg-transparent py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Email me a Login Code
+                </button>
+              </div>
+            </form>
+
+            {/* Google Divider */}
+            <div className="relative my-6 flex items-center justify-center">
+              <div className="absolute inset-x-0 h-px bg-zinc-800" />
+              <span className="relative z-10 bg-zinc-950 px-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                OR CONTINUE WITH
+              </span>
+            </div>
+
             <button
-              id="auth-submit"
-              type="submit"
-              disabled={loading}
-              className="group relative mt-2 flex w-full items-center justify-center gap-2.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:from-emerald-500 hover:to-teal-500 hover:shadow-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              onClick={handleGoogleLogin}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-zinc-800 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
             >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {requires2FA ? "Verifying Code…" : isRegister ? "Creating Account…" : "Initializing Session…"}
-                </>
-              ) : (
-                <>
-                  {requires2FA ? (
-                    <ShieldCheck className="h-4 w-4" />
-                  ) : isRegister ? (
-                    <UserPlus className="h-4 w-4" />
-                  ) : (
-                    <LogIn className="h-4 w-4" />
-                  )}
-                  {requires2FA ? "Verify & Access Gateway" : isRegister ? "Create Admin Account" : "Access Admin Gateway"}
-                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
-                </>
-              )}
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              Google
             </button>
-          </form>
 
-          {/* Toggle view button */}
-          {!requires2FA && (
-            <div className="mt-6 border-t border-slate-800/60 pt-4 text-center">
+            <div className="mt-6 text-center">
               <button
+                type="button"
                 onClick={() => {
-                  setIsRegister(!isRegister);
-                  setError("");
+                  setStep("REGISTER");
+                  setEmailTouched(false);
                 }}
-                className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition"
+                className="text-xs text-zinc-400 hover:text-white transition-colors"
               >
-                {isRegister
-                  ? "Already have an account? Access admin gateway"
-                  : "Need an account? Provision new gateway admin"}
+                Don&apos;t have an account? Sign up
               </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {requires2FA && (
-            <div className="mt-6 border-t border-slate-800/60 pt-4 text-center">
+        {/* ═══════════════════ STEP: REGISTER ═══════════════════ */}
+        {step === "REGISTER" && (
+          <div>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-bold text-white">Create an account</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                Enter your details to sign up
+              </p>
+            </div>
+
+            <form onSubmit={handleRegister} className="space-y-4">
+              <div className="flex gap-4">
+                <div className="space-y-2 flex-1">
+                  <label className="block text-sm font-medium text-white">First Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <label className="block text-sm font-medium text-white">Last Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">Email</label>
+                <input
+                  type="email"
+                  placeholder="m@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setEmailTouched(true)}
+                  className={
+                    emailTouched && !isEmailValid && email.length > 0
+                      ? inputErrorClass
+                      : inputClass
+                  }
+                />
+                {emailTouched && !isEmailValid && email.length > 0 && (
+                  <p className="text-[11px] text-rose-400">
+                    Please enter a valid email address
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={inputClass}
+                />
+                <div className="pt-1 space-y-1.5 text-xs">
+                  <div className={`flex items-center gap-2 ${hasLength ? "text-emerald-500" : "text-zinc-500"} transition-colors`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${hasLength ? "bg-emerald-500" : "bg-zinc-700"}`} />
+                    8+ characters
+                  </div>
+                  <div className={`flex items-center gap-2 ${hasNumber ? "text-emerald-500" : "text-zinc-500"} transition-colors`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${hasNumber ? "bg-emerald-500" : "bg-zinc-700"}`} />
+                    1 number
+                  </div>
+                  <div className={`flex items-center gap-2 ${hasSpecial ? "text-emerald-500" : "text-zinc-500"} transition-colors`}>
+                    <div className={`w-1.5 h-1.5 rounded-full ${hasSpecial ? "bg-emerald-500" : "bg-zinc-700"}`} />
+                    1 special character
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">Confirm Password</label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onBlur={() => setConfirmPasswordTouched(true)}
+                  className={
+                    confirmPasswordTouched && !isPasswordsMatch && confirmPassword.length > 0
+                      ? inputErrorClass
+                      : inputClass
+                  }
+                />
+                {confirmPasswordTouched && !isPasswordsMatch && confirmPassword.length > 0 && (
+                  <p className="text-[11px] text-rose-400">Passwords do not match</p>
+                )}
+              </div>
+
+              <div className="flex items-start gap-2 mt-4 mb-2">
+                <input
+                  type="checkbox"
+                  id="tos"
+                  checked={isTosAccepted}
+                  onChange={(e) => setIsTosAccepted(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-white focus:ring-1 focus:ring-white focus:ring-offset-1 focus:ring-offset-zinc-950"
+                />
+                <label htmlFor="tos" className="text-xs text-zinc-400">
+                  I agree to the{" "}
+                  <Link to="/terms" target="_blank" className="text-white hover:underline transition-colors">
+                    Terms of Service
+                  </Link>
+                  {" "}and{" "}
+                  <Link to="/privacy" target="_blank" className="text-white hover:underline transition-colors">
+                    Privacy Policy
+                  </Link>
+                </label>
+              </div>
+
               <button
-                onClick={() => {
-                  setRequires2FA(false);
-                  setTwoFactorCode("");
-                  setError("");
-                }}
-                className="text-xs font-semibold text-slate-400 hover:text-emerald-400 transition"
+                type="submit"
+                disabled={loading || !isRegisterValid}
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                &larr; Back to login credentials
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Create Account
+              </button>
+            </form>
+
+            {/* Google Divider */}
+            <div className="relative my-6 flex items-center justify-center">
+              <div className="absolute inset-x-0 h-px bg-zinc-800" />
+              <span className="relative z-10 bg-zinc-950 px-2 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                OR CONTINUE WITH
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleGoogleLogin}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-zinc-800 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              Google
+            </button>
+
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("LOGIN");
+                  setEmailTouched(false);
+                  setConfirmPasswordTouched(false);
+                }}
+                className="text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                Already have an account? Sign in
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* ═══════════════════ STEP: OTP ═══════════════════ */}
+        {step === "OTP" && (
+          <div>
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
+                <Mail className="h-5 w-5 text-zinc-400" />
+              </div>
+              <h1 className="text-2xl font-bold text-white">Check your email</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                We sent a 6-digit verification code to{" "}
+                <span className="font-medium text-white">{email}</span>
+              </p>
+            </div>
+
+            <form onSubmit={handleOtpVerify} className="space-y-6">
+              <div className="flex justify-center gap-2">
+                {otp.map((digit, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => (otpRefs.current[i] = el)}
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={1}
+                    value={digit}
+                    onChange={(e) => handleOtpChange(i, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                    onPaste={i === 0 ? handleOtpPaste : undefined}
+                    className="h-12 w-10 rounded-md border border-zinc-800 bg-zinc-900 text-center text-lg font-bold text-white outline-none transition focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20"
+                  />
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || !isOtpValid}
+                className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Verify Email
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={() => setStep("LOGIN")}
+                className="flex items-center justify-center gap-1 mx-auto text-xs text-zinc-400 hover:text-white transition-colors"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Back to sign in
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════ STEP 1: FORGOT_EMAIL ═══════════════════ */}
+        {step === "FORGOT_EMAIL" && (
+          <div>
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
+                <Mail className="h-5 w-5 text-zinc-400" />
+              </div>
+              <h1 className="text-2xl font-bold text-white">Reset your password</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                Enter the email address associated with your account. We&apos;ll send you a 6-digit reset code.
+              </p>
+            </div>
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">Email</label>
+                <input type="email" placeholder="m@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} />
+              </div>
+              <button type="submit" disabled={loading || !isEmailValid} className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Send Reset Code
+              </button>
+            </form>
+            <div className="mt-6 text-center">
+              <button type="button" onClick={() => setStep("LOGIN")} className="flex items-center justify-center gap-1 mx-auto text-xs text-zinc-400 hover:text-white transition-colors">
+                <ArrowLeft className="h-3 w-3" /> Back to sign in
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════ STEP 2: FORGOT_OTP ═══════════════════ */}
+        {step === "FORGOT_OTP" && (
+          <div>
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
+                <Mail className="h-5 w-5 text-zinc-400" />
+              </div>
+              <h1 className="text-2xl font-bold text-white">Enter your reset code</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                We sent a 6-digit code to <span className="font-medium text-white">{email}</span>. Enter it below to verify your identity.
+              </p>
+            </div>
+            <form onSubmit={handleVerifyResetOtp} className="space-y-6">
+              <div className="flex justify-center gap-2">
+                {resetOtp.map((digit, i) => (
+                  <input key={i} ref={(el) => (resetOtpRefs.current[i] = el)} type="text" inputMode="numeric" maxLength={1} value={digit} onChange={(e) => handleResetOtpChange(i, e.target.value)} onKeyDown={(e) => handleResetOtpKeyDown(i, e)} onPaste={i === 0 ? handleResetOtpPaste : undefined} className="h-12 w-10 rounded-md border border-zinc-800 bg-zinc-900 text-center text-lg font-bold text-white outline-none transition focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500/20" />
+                ))}
+              </div>
+              <button type="submit" disabled={loading || !isResetOtpValid} className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Verify Code
+              </button>
+            </form>
+            <div className="mt-6 text-center">
+              <button type="button" onClick={() => setStep("FORGOT_EMAIL")} className="flex items-center justify-center gap-1 mx-auto text-xs text-zinc-400 hover:text-white transition-colors">
+                <ArrowLeft className="h-3 w-3" /> Use a different email
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════ STEP 3: FORGOT_NEWPASS ═══════════════════ */}
+        {step === "FORGOT_NEWPASS" && (
+          <div>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-bold text-white">Set your new password</h1>
+              <p className="mt-2 text-sm text-zinc-400">
+                Your identity has been verified. Choose a strong new password for your account.
+              </p>
+            </div>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">New Password</label>
+                <input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputClass} />
+                <div className="pt-1 space-y-1.5 text-xs">
+                  <div className={`flex items-center gap-2 ${newHasLength ? "text-emerald-500" : "text-zinc-500"} transition-colors`}><div className={`w-1.5 h-1.5 rounded-full ${newHasLength ? "bg-emerald-500" : "bg-zinc-700"}`} /> 8+ characters</div>
+                  <div className={`flex items-center gap-2 ${newHasNumber ? "text-emerald-500" : "text-zinc-500"} transition-colors`}><div className={`w-1.5 h-1.5 rounded-full ${newHasNumber ? "bg-emerald-500" : "bg-zinc-700"}`} /> 1 number</div>
+                  <div className={`flex items-center gap-2 ${newHasSpecial ? "text-emerald-500" : "text-zinc-500"} transition-colors`}><div className={`w-1.5 h-1.5 rounded-full ${newHasSpecial ? "bg-emerald-500" : "bg-zinc-700"}`} /> 1 special character</div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-white">Confirm New Password</label>
+                <input type="password" required value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} onBlur={() => setConfirmNewPasswordTouched(true)} className={confirmNewPasswordTouched && !isNewPasswordsMatch && confirmNewPassword.length > 0 ? inputErrorClass : inputClass} />
+                {confirmNewPasswordTouched && !isNewPasswordsMatch && confirmNewPassword.length > 0 && (
+                  <p className="text-[11px] text-rose-400">Passwords do not match</p>
+                )}
+              </div>
+              <button type="submit" disabled={loading || !isNewPasswordStrong || !isNewPasswordsMatch} className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50">
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Reset Password
+              </button>
+            </form>
+            <div className="mt-6 text-center">
+              <button type="button" onClick={() => setStep("LOGIN")} className="flex items-center justify-center gap-1 mx-auto text-xs text-zinc-400 hover:text-white transition-colors">
+                <ArrowLeft className="h-3 w-3" /> Back to sign in
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
-        <p className="mt-6 text-center text-[10px] text-slate-650">
-          Secured by FlowAPI
+        <p className="mt-8 text-center text-xs text-zinc-500">
+          <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
+          {" "}&{" "}
+          <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
         </p>
       </div>
     </div>
