@@ -8,6 +8,7 @@ import authenticate from "../middleware/auth.js";
 import webhookCreationLimiter from "../middleware/webhookCreationLimiter.js";
 import { generateApiKey } from "../utils/apiKeyGenerator.js";
 import { validateWebhookUrl } from "../utils/security.js";
+import { sendTierUpgradeEmail } from "../services/email.service.js";
 
 const router = Router();
 
@@ -613,5 +614,75 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
   }
 });
 
-export default router;
+/**
+ * POST /api/admin/upgrade-user
+ *
+ * Admin / testing route to manually upgrade a user's plan and fire the
+ * tier-specific welcome email.  Accepts { email, newPlan } in the body.
+ *
+ * - Validates newPlan against the allowed tier list.
+ * - Updates the user's plan_type in Postgres.
+ * - Fires sendTierUpgradeEmail() with the resolved user name.
+ *
+ * Protected by JWT.
+ */
+router.post("/upgrade-user", authenticate, async (req, res, next) => {
+  try {
+    const { email, newPlan } = req.body;
 
+    if (!email || !newPlan) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: email, newPlan",
+      });
+    }
+
+    const allowedPlans = ['basic', 'pro', 'plus'];
+    if (!allowedPlans.includes(newPlan)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid plan. Must be one of: ${allowedPlans.join(', ')}`,
+      });
+    }
+
+    // Update the user's plan in the database
+    const result = await query(
+      "UPDATE users SET plan_type = $1 WHERE email = $2 RETURNING id, email, first_name, last_name, plan_type",
+      [newPlan, email.trim().toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No user found with that email address",
+      });
+    }
+
+    const user = result.rows[0];
+    const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email.split('@')[0];
+
+    // Fire the tier-specific welcome email (non-blocking — don't let a
+    // Resend failure roll back the plan upgrade)
+    sendTierUpgradeEmail(user.email, userName, newPlan).catch((err) =>
+      console.error('[admin] Failed to send upgrade email:', err)
+    );
+
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`⬆️  PLAN UPGRADED: ${user.email} → ${newPlan}`);
+    console.log(`${'═'.repeat(60)}\n`);
+
+    return res.json({
+      success: true,
+      message: `User upgraded to ${newPlan}`,
+      user: {
+        id: user.id,
+        email: user.email,
+        plan_type: user.plan_type,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;
