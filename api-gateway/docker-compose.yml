@@ -48,10 +48,14 @@ services:
     env_file:
       - .env
     environment:
-      # Connect via the host bridge gateway to bypass Linux kernel bridge routing blocks
-      PGHOST: 172.18.0.1
-      PGPORT: 5433
-      REDIS_URL: redis://172.18.0.1:6379
+      # Override .env localhost values with Docker service names
+      PGHOST: pg-db
+      PGPORT: 5432
+      REDIS_URL: redis://redis:6379
+      FRONTEND_URL: https://flowgateway.dev
+      BASE_URL: https://flowgateway.dev
+      GOOGLE_CALLBACK_URL: https://flowgateway.dev/api/auth/google/callback
+      CORS_ORIGIN: https://flowgateway.dev
     depends_on:
       pg-db:
         condition: service_healthy

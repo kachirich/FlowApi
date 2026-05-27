@@ -4,7 +4,7 @@ import dns from "dns/promises";
 import axios from "axios";
 import { query } from "../db/connection.js";
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+const redisUrl = process.env.REDIS_URL || "redis://redis:6379";
 const parsed = new URL(redisUrl);
 const connection = {
   host: parsed.hostname,

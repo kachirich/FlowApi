@@ -31,8 +31,11 @@ app.use(helmet({
   },
 }));
 
+const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+
 app.use(cors({
-  origin: "*",
+  origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-trusted-device-token"]
 }));

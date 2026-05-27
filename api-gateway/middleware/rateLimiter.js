@@ -5,7 +5,7 @@ import { query } from "../db/connection.js";
 
 // Create a Redis client. Uses REDIS_URL from the environment.
 export const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://localhost:6379",
+  url: process.env.REDIS_URL || "redis://redis:6379",
 });
 
 // Connect to Redis. In production, you would handle connection errors robustly.
