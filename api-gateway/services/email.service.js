@@ -15,7 +15,7 @@ export const sendEmailVerification = async (to, code, reason = 'login') => {
   
   try {
     const { data, error } = await resend.emails.send({
-      from: 'onboarding@resend.dev',
+      from: 'FlowAPI Security <security@flowgateway.dev>',
       to,
       subject,
       text: textBody,
