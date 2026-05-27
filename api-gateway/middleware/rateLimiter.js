@@ -17,9 +17,22 @@ try {
   console.error("Redis connection error:", err);
 }
 
+// Helper to extract the true client IP from Nginx headers, bypassing Docker Gateway masking
+export const getClientIp = (req) => {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0].trim();
+  }
+  const realIp = req.headers['x-real-ip'];
+  if (realIp) {
+    return realIp.trim();
+  }
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+};
+
 // Developer Bypass condition
 const skipRateLimit = (req) => {
-  const ip = req.ip || req.socket?.remoteAddress || "";
+  const ip = getClientIp(req);
   return (
     process.env.NODE_ENV === 'development' ||
     ip === "127.0.0.1" ||
@@ -32,38 +45,24 @@ const skipRateLimit = (req) => {
 /**
  * Rate-limiting middleware — throttles clients that exceed the configured
  * request threshold within a sliding window.
- *
- * Defaults:
- *   • Window : 15 minutes  (override via RATE_LIMIT_WINDOW_MS)
- *   • Max    : 100 requests (override via RATE_LIMIT_MAX_REQUESTS)
- *
- * When a client exceeds the limit the server responds with 429 Too Many
- * Requests, increments the bots_blocked counter in PostgreSQL, and sends
- * a Retry-After header.
- *
- * Local development traffic (127.0.0.1, ::1) is whitelisted to allow
- * the Test Sandbox to fire payloads without triggering the spam shield.
  */
 const rateLimiter = rateLimit({
-  // Use RedisStore instead of the default memory store
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
   }),
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
-  standardHeaders: "draft-7",   // RateLimit-* headers (IETF draft-7)
-  legacyHeaders: false,         // Disable X-RateLimit-* headers
-  // Skip rate limiting for local development / Test Sandbox traffic
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
   skip: skipRateLimit,
-  // Trust proxy is set at the app level; suppress the library's own check
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  keyGenerator: (req) => getClientIp(req),
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   message: {
     status: 429,
     error: "Too Many Requests",
     message: "You have exceeded the allowed number of requests. Please try again later.",
   },
   handler: (_req, res, _next, options) => {
-    // Increment the bots_blocked counter (fire-and-forget)
     query(
       `UPDATE gateway_counters
           SET value = value + 1, updated_at = NOW()
@@ -71,9 +70,7 @@ const rateLimiter = rateLimit({
     ).catch((err) => {
       console.error("[rate-limiter] Failed to increment bots_blocked:", err.message);
     });
-
     console.log("[rate-limiter] ⛔ 429 BLOCKED — Spam Shield Triggered");
-
     res.status(options.statusCode).json(options.message);
   },
 });
@@ -83,9 +80,10 @@ export const authRateLimiter = rateLimit({
     sendCommand: (...args) => redisClient.sendCommand(args),
   }),
   windowMs: 60 * 60 * 1000,
-  max: 5,
+  max: 50, // Temporarily increased to 50 for frontend testing
   skip: skipRateLimit,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  keyGenerator: (req) => getClientIp(req),
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   message: { error: 'Too many login attempts. Your IP has been temporarily locked out for 1 hour for security purposes.' },
 });
 
@@ -94,16 +92,15 @@ export const stepUpLimiter = rateLimit({
     sendCommand: (...args) => redisClient.sendCommand(args),
   }),
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts
+  max: 50, // Temporarily increased to 50 for frontend testing
   skip: skipRateLimit,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   keyGenerator: (req) => {
-    // Rate limit by User ID if authenticated, else use the library's safe IP helper
-    return req.user?.id ? `step_up_${req.user.id}` : `step_up_${ipKeyGenerator(req)}`;
+    return req.user?.id ? `step_up_${req.user.id}` : `step_up_${getClientIp(req)}`;
   },
   message: { error: 'Too many failed verification attempts. Please try again in 15 minutes.' },
   handler: (req, res, next, options) => {
-    console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${req.user?.id || req.ip}`);
+    console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${req.user?.id || getClientIp(req)}`);
     res.status(options.statusCode).json(options.message);
   }
 });
@@ -114,17 +111,16 @@ export const webhookIngressLimiter = rateLimit({
   }),
   windowMs: 60 * 1000, // 1 minute
   max: 60, // 60 requests per minute
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
   skip: skipRateLimit,
-  validate: { trustProxy: false, xForwardedForHeader: false },
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   keyGenerator: (req) => {
-    // Rate limit per IP address for DDoS protection, using the library's safe IPv6 helper
-    return `webhook_ingress_ip_${ipKeyGenerator(req)}`;
+    return `webhook_ingress_ip_${getClientIp(req)}`;
   },
   message: { error: 'Too Many Requests' },
   handler: (req, res, next, options) => {
-    console.warn(`[rate-limiter] 🚨 THREAT: Queue flooding blocked from IP ${req.ip || req.socket?.remoteAddress}`);
+    console.warn(`[rate-limiter] 🚨 THREAT: Queue flooding blocked from IP ${getClientIp(req)}`);
     res.status(429).json(options.message);
   }
 });
