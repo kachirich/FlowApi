@@ -6,7 +6,7 @@ import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { query } from "../db/connection.js";
 import { authenticate } from "../middleware/index.js";
-import { authRateLimiter, stepUpLimiter, redisClient } from "../middleware/rateLimiter.js";
+import { authRateLimiter, stepUpLimiter, otpGenerationLimiter, otpVerificationLimiter, redisClient } from "../middleware/rateLimiter.js";
 import { sendOtp, verifyOtp, sendStepUpOtp, register, login, forgotPassword, resetPassword, verifyResetOtp } from "../controllers/auth.controller.js";
 import { googleLogin, googleCallback, logout } from "../controllers/googleAuth.controller.js";
 import { verifyToken } from "../middleware/auth.middleware.js";
@@ -24,7 +24,7 @@ const SALT_ROUNDS = 12;
  * Generates a two-factor secret and QR code for the authenticated user.
  * Protected by JWT.
  */
-router.post("/2fa/generate", authenticate, async (req, res, next) => {
+router.post("/2fa/generate", authenticate, otpGenerationLimiter, async (req, res, next) => {
   try {
     const userId = req.user.id;
 
@@ -63,7 +63,7 @@ router.post("/2fa/generate", authenticate, async (req, res, next) => {
  * Body: { token }
  * Protected by JWT.
  */
-router.post("/2fa/enable", authenticate, async (req, res, next) => {
+router.post("/2fa/enable", authenticate, otpVerificationLimiter, async (req, res, next) => {
   try {
     const { token } = req.body;
     const userId = req.user.id;
@@ -121,7 +121,7 @@ router.post("/2fa/enable", authenticate, async (req, res, next) => {
  * Body: { userId, token }
  * Public.
  */
-router.post("/login/verify", async (req, res, next) => {
+router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
   try {
     const { userId, token } = req.body;
 
@@ -352,14 +352,14 @@ router.get("/guest/status", authenticate, async (req, res, next) => {
  * Sends an OTP via Email (Nodemailer).
  * Rate-limited to max 5 requests per hour.
  */
-router.post("/otp/send", authRateLimiter, sendOtp);
+router.post("/otp/send", otpGenerationLimiter, sendOtp);
 
 /**
  * POST /api/auth/otp/verify
  *
  * Verifies the OTP and issues a JWT session token.
  */
-router.post("/otp/verify", authRateLimiter, verifyOtp);
+router.post("/otp/verify", otpVerificationLimiter, verifyOtp);
 
 /**
  * POST /api/auth/step-up-otp
@@ -367,7 +367,7 @@ router.post("/otp/verify", authRateLimiter, verifyOtp);
  * Sends a Step-Up 2FA OTP for sensitive actions (like webhook generation).
  * Protected by JWT.
  */
-router.post("/step-up-otp", authenticate, stepUpLimiter, sendStepUpOtp);
+router.post("/step-up-otp", authenticate, otpGenerationLimiter, sendStepUpOtp);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Google Auth & Logout
@@ -413,9 +413,9 @@ router.get("/me", authenticate, async (req, res, next) => {
    Password Reset
    ═══════════════════════════════════════════════════════════════════════════ */
 
-router.post("/forgot-password", authRateLimiter, forgotPassword);
-router.post("/verify-reset-otp", authRateLimiter, verifyResetOtp);
-router.post("/reset-password", authRateLimiter, resetPassword);
+router.post("/forgot-password", otpGenerationLimiter, forgotPassword);
+router.post("/verify-reset-otp", otpVerificationLimiter, verifyResetOtp);
+router.post("/reset-password", otpVerificationLimiter, resetPassword);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GDPR — Right to be Forgotten (Account Deletion)

@@ -30,50 +30,49 @@ export const getClientIp = (req) => {
   return req.ip || req.socket?.remoteAddress || 'unknown';
 };
 
+// Unified Key Generator: Prioritize User ID, fallback to Client IP
+export const globalKeyGenerator = (req) => {
+  if (req.user && req.user.id) return String(req.user.id);
+  if (req.userId) return String(req.userId);
+  return getClientIp(req);
+};
+
 // Developer Bypass condition
 const skipRateLimit = (req) => {
-  const ip = getClientIp(req);
+  const identifier = globalKeyGenerator(req);
   return (
     process.env.NODE_ENV === 'development' ||
-    ip === "127.0.0.1" ||
-    ip === "::1" ||
-    ip === "::ffff:127.0.0.1" ||
+    identifier === "127.0.0.1" ||
+    identifier === "::1" ||
+    identifier === "::ffff:127.0.0.1" ||
     req.hostname === "localhost"
   );
 };
 
-/**
- * Rate-limiting middleware — throttles clients that exceed the configured
- * request threshold within a sliding window.
- */
-const rateLimiter = rateLimit({
+export const otpVerificationLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
-    prefix: 'rl_global_',
+    prefix: 'rl_otp_verify_',
   }),
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
+  windowMs: 10 * 60 * 1000,
+  max: 5,
   skip: skipRateLimit,
-  keyGenerator: (req) => getClientIp(req),
+  keyGenerator: globalKeyGenerator,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
-  message: {
-    status: 429,
-    error: "Too Many Requests",
-    message: "You have exceeded the allowed number of requests. Please try again later.",
-  },
-  handler: (_req, res, _next, options) => {
-    query(
-      `UPDATE gateway_counters
-          SET value = value + 1, updated_at = NOW()
-        WHERE key = 'bots_blocked'`,
-    ).catch((err) => {
-      console.error("[rate-limiter] Failed to increment bots_blocked:", err.message);
-    });
-    console.log("[rate-limiter] ⛔ 429 BLOCKED — Spam Shield Triggered");
-    res.status(options.statusCode).json(options.message);
-  },
+  message: { error: 'Too many verification attempts. Please try again in 10 minutes.' },
+});
+
+export const otpGenerationLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_otp_gen_',
+  }),
+  windowMs: 10 * 60 * 1000,
+  max: 15,
+  skip: skipRateLimit,
+  keyGenerator: globalKeyGenerator,
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
+  message: { error: 'Too many OTP requests. Please wait before generating another.' },
 });
 
 export const authRateLimiter = rateLimit({
@@ -84,7 +83,7 @@ export const authRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 50, // Temporarily increased to 50 for frontend testing
   skip: skipRateLimit,
-  keyGenerator: (req) => getClientIp(req),
+  keyGenerator: globalKeyGenerator,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   message: { error: 'Too many login attempts. Your IP has been temporarily locked out for 1 hour for security purposes.' },
 });
@@ -98,12 +97,10 @@ export const stepUpLimiter = rateLimit({
   max: 50, // Temporarily increased to 50 for frontend testing
   skip: skipRateLimit,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
-  keyGenerator: (req) => {
-    return req.user?.id ? `step_up_${req.user.id}` : `step_up_${getClientIp(req)}`;
-  },
+  keyGenerator: globalKeyGenerator,
   message: { error: 'Too many failed verification attempts. Please try again in 15 minutes.' },
   handler: (req, res, next, options) => {
-    console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${req.user?.id || getClientIp(req)}`);
+    console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${globalKeyGenerator(req)}`);
     res.status(options.statusCode).json(options.message);
   }
 });
@@ -119,14 +116,21 @@ export const webhookIngressLimiter = rateLimit({
   legacyHeaders: false,
   skip: skipRateLimit,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
-  keyGenerator: (req) => {
-    return `webhook_ingress_ip_${getClientIp(req)}`;
-  },
+  keyGenerator: globalKeyGenerator,
   message: { error: 'Too Many Requests' },
   handler: (req, res, next, options) => {
-    console.warn(`[rate-limiter] 🚨 THREAT: Queue flooding blocked from IP ${getClientIp(req)}`);
+    // Spam Shield: Record bot breaches on webhook endpoints
+    query(
+      `UPDATE gateway_counters
+          SET value = value + 1, updated_at = NOW()
+        WHERE key = 'bots_blocked'`,
+    ).catch((err) => {
+      console.error("[rate-limiter] Failed to increment bots_blocked:", err.message);
+    });
+
+    const identifier = globalKeyGenerator(req);
+    console.log("[rate-limiter] ⛔ 429 BLOCKED — Spam Shield Triggered");
+    console.warn(`[rate-limiter] 🚨 THREAT: Queue flooding blocked from User/IP ${identifier}`);
     res.status(429).json(options.message);
   }
 });
-
-export default rateLimiter;

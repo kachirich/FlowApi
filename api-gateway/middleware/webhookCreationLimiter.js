@@ -6,7 +6,7 @@ if (!redisClient.isOpen) {
   await redisClient.connect().catch((err) => console.error("[redis] Error connecting:", err));
 }
 
-import { getClientIp } from "./rateLimiter.js";
+import { getClientIp, globalKeyGenerator } from "./rateLimiter.js";
 
 const webhookCreationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -22,16 +22,11 @@ const webhookCreationLimiter = rateLimit({
     prefix: "rl:webhook_create:",
   }),
 
-  // Group by req.user.id instead of IP address to prevent shared IP lockouts
-  keyGenerator: (req) => {
-    if (!req.user || !req.user.id) {
-      return getClientIp(req); // Safe fallback using custom Nginx header extraction
-    }
-    return req.user.id;
-  },
+  // Group by req.user.id or IP address globally to prevent shared IP lockouts
+  keyGenerator: globalKeyGenerator,
 
   handler: (req, res) => {
-    console.warn(`[rate-limit] Webhook creation limit exceeded for user ${req.user?.id || getClientIp(req)}`);
+    console.warn(`[rate-limit] Webhook creation limit exceeded for user/IP ${globalKeyGenerator(req)}`);
     res.status(429).json({
       success: false,
       message: "Too many webhooks generated recently. Please try again later.",

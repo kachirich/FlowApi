@@ -49,7 +49,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-trusted-device-token"]
 }));
-app.use(rateLimiter);              // DDoS / brute-force protection
+// Rate limiter removed from global scope to prevent blocking standard authenticated actions
 
 // ---------------------------------------------------------------------------
 // Stripe Webhook — MUST come before express.json() to retain raw body
