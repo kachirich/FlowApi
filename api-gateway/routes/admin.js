@@ -43,24 +43,37 @@ const GHL_DUMMY_PAYLOAD = {
  *
  * Protected by the `authenticate` middleware (applied in server.js).
  */
-router.get("/dashboard", authenticate, async (_req, res, next) => {
+router.get("/dashboard", authenticate, async (req, res, next) => {
   try {
-    // Run all three queries concurrently for speed
+    // All metrics are strictly scoped to the authenticated user's data.
+    // request_logs has no user_id column — we use webhook_logs and ghl_leads
+    // which are fully partitioned by user_id, preventing cross-tenant leakage.
     const [totalResult, blockedResult, trafficResult] = await Promise.all([
-      query("SELECT COUNT(*)::int AS count FROM request_logs"),
+      // Total webhook events processed for this user
+      query(
+        "SELECT COUNT(*)::int AS count FROM webhook_logs WHERE user_id = $1",
+        [req.user.id]
+      ),
+      // Blocked/failed events for this user (4xx and 5xx webhook responses)
       query(
         `SELECT COUNT(*)::int AS count
-           FROM request_logs
-          WHERE status_code IN (401, 403, 429)`,
+           FROM webhook_logs
+          WHERE user_id = $1
+            AND status_code IN (401, 403, 429, 499, 500)`,
+        [req.user.id]
       ),
+      // 10 most recent webhook events for this user
       query(
-        `SELECT ip_address  AS ip,
-                method || ' ' || path AS endpoint,
-                status_code AS status,
-                created_at  AS timestamp
-           FROM request_logs
-          ORDER BY created_at DESC
+        `SELECT wl.method    AS method,
+                wl.status_code AS status,
+                wl.created_at  AS timestamp,
+                wk.webhook_url AS endpoint
+           FROM webhook_logs wl
+           LEFT JOIN webhook_keys wk ON wl.webhook_id = wk.id
+          WHERE wl.user_id = $1
+          ORDER BY wl.created_at DESC
           LIMIT 10`,
+        [req.user.id]
       ),
     ]);
 
@@ -486,7 +499,8 @@ router.delete("/logs", authenticate, async (req, res, next) => {
   try {
     await Promise.all([
       query("DELETE FROM ghl_leads WHERE user_id = $1", [req.user.id]),
-      query("DELETE FROM request_logs"),
+      // Scope to the authenticated user — never wipe other tenants' logs
+      query("DELETE FROM webhook_logs WHERE user_id = $1", [req.user.id]),
       query("UPDATE gateway_counters SET value = 0 WHERE key = 'bots_blocked'"),
     ]);
 

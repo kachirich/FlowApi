@@ -258,19 +258,9 @@ router.delete("/queue/:id", authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    // Note: Since we no longer store job_id, we can't reliably cancel it from BullMQ.
-    // We only update the DB to prevent further manual retries.
-    // const job = await webhookQueue.getJob(job_id);
-
-    if (job) {
-      // 2. Remove the job if it is delayed or waiting
-      const state = await job.getState();
-      if (state === "delayed" || state === "waiting") {
-        await job.remove();
-      }
-    }
-
-    // 3. Update the corresponding lead in ghl_leads to CANCELED
+    // Note: BullMQ job cancellation is unavailable without a stored job_id.
+    // We update the DB record to CANCELED to prevent further manual retries,
+    // and enforce tenant isolation by scoping the UPDATE to the authenticated user.
     const leadResult = await query(
       `UPDATE ghl_leads 
        SET delivery_status = 'CANCELED', last_delivery_error = 'Auto-retry stopped by user' 

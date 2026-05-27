@@ -244,7 +244,6 @@ export const login = async (req, res) => {
        return res.status(401).json({ error: 'Please sign in with Google or Email OTP' });
     }
 
-    console.log("🚨 PROBE - Typed Pass:", password, "| DB Hash:", user.password_hash);
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
