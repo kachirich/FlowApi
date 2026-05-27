@@ -105,26 +105,34 @@ app.use(routes);
 // ---------------------------------------------------------------------------
 // Centralised error handler
 // ---------------------------------------------------------------------------
-app.use((err, _req, res, _next) => {
-  console.error("[error]", err.stack || err.message);
+app.use((err, req, res, next) => {
+  // Always log the full raw error to the server console for Docker logs
+  console.error(`[Global Error] ${req.method} ${req.originalUrl}`);
+  console.error(err.stack || err.message);
 
   const status = err.status || err.statusCode || 500;
   
   if (err.type === 'entity.too.large') {
     return res.status(413).json({
-      status: 413,
+      success: false,
       error: "Payload Too Large",
       message: "Payload exceeds 100kb limit"
     });
   }
 
+  // If it's a 500-level infrastructure error, sanitize the response to prevent data leaks
+  if (status >= 500) {
+    return res.status(500).json({
+      success: false,
+      error: 'An unexpected server error occurred. Our team has been notified.'
+    });
+  }
+
+  // If it's a known operational error (4xx), pass the message and status code through safely
   res.status(status).json({
-    status,
-    error: err.name || "Internal Server Error",
-    message:
-      process.env.NODE_ENV === "production"
-        ? "An unexpected error occurred"
-        : err.message,
+    success: false,
+    error: err.name || "Request Error",
+    message: err.message,
   });
 });
 

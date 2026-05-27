@@ -49,6 +49,7 @@ const skipRateLimit = (req) => {
 const rateLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_global_',
   }),
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 15 * 60 * 1000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS, 10) || 100,
@@ -78,6 +79,7 @@ const rateLimiter = rateLimit({
 export const authRateLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_auth_',
   }),
   windowMs: 60 * 60 * 1000,
   max: 50, // Temporarily increased to 50 for frontend testing
@@ -90,6 +92,7 @@ export const authRateLimiter = rateLimit({
 export const stepUpLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_stepup_',
   }),
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 50, // Temporarily increased to 50 for frontend testing
@@ -108,6 +111,7 @@ export const stepUpLimiter = rateLimit({
 export const webhookIngressLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_webhook_ingress_',
   }),
   windowMs: 60 * 1000, // 1 minute
   max: 60, // 60 requests per minute
