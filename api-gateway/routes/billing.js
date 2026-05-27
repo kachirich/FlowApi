@@ -2,6 +2,8 @@ import { Router } from "express";
 import express from "express";
 import { query } from "../db/connection.js";
 import lemonSqueezyAuth from "../middleware/lemonSqueezyAuth.js";
+import { redisClient } from "../middleware/rateLimiter.js";
+import { planCacheKey } from "../middleware/requirePlan.js";
 
 const router = Router();
 
@@ -34,6 +36,11 @@ router.post("/webhook", express.raw({ type: 'application/json' }), lemonSqueezyA
 
         // 5. Database Update
         await query("UPDATE users SET plan_type = $1 WHERE id = $2", [planType, userId]);
+
+        // 6. Invalidate cached plan so downstream middleware sees the new tier immediately
+        redisClient.del(planCacheKey(userId)).catch((err) =>
+          console.error('[billing-webhook] Redis cache invalidation error:', err.message)
+        );
       }
     }
 

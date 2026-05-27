@@ -3,22 +3,25 @@ import jwt from 'jsonwebtoken';
 import { redisClient } from '../middleware/rateLimiter.js';
 import { query } from '../db/connection.js';
 
-let client;
-const getClient = () => {
-  if (!client) {
-    client = new OAuth2Client(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/auth/google/callback'
-    );
-  }
-  return client;
-};
+/**
+ * Creates a NEW OAuth2Client instance per invocation.
+ *
+ * ⚠️  CRITICAL — This must NOT be cached in a module-level singleton because
+ *    `setCredentials()` mutates the instance.  A shared client causes
+ *    concurrent requests to overwrite each other's tokens (global state
+ *    pollution → User A receives User B's identity).
+ */
+const createOAuth2Client = () =>
+  new OAuth2Client(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/auth/google/callback'
+  );
 
 
 export const googleLogin = async (req, res) => {
   try {
-    const oAuth2Client = getClient();
+    const oAuth2Client = createOAuth2Client();
     const authorizeUrl = oAuth2Client.generateAuthUrl({
       access_type: 'offline',
       scope: ['email', 'profile'],
@@ -37,11 +40,12 @@ export const googleCallback = async (req, res) => {
       return res.status(400).send('Authorization code missing');
     }
 
-    const oAuth2Client = getClient();
+    // ── Per-request client — never shared across concurrent callbacks ────
+    const oAuth2Client = createOAuth2Client();
     const { tokens } = await oAuth2Client.getToken(code);
-    oAuth2Client.setCredentials(tokens);
 
-    // Verify the ID token to get user info
+    // Verify the ID token to get user info — no setCredentials() needed;
+    // verifyIdToken only requires the raw id_token string.
     const ticket = await oAuth2Client.verifyIdToken({
       idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID,

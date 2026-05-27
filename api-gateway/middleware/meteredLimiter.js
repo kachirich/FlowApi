@@ -1,4 +1,5 @@
 import { query } from '../db/connection.js';
+import { getPlanType } from './index.js';
 
 /**
  * Metered Rate Limiter Middleware
@@ -24,7 +25,7 @@ export default async function meteredLimiter(req, res, next) {
 
     // ── Step A: Billing Cycle Check ──────────────────────────────────────
     const userResult = await query(
-      'SELECT plan_type, monthly_request_count, billing_cycle_reset FROM users WHERE id = $1',
+      'SELECT monthly_request_count, billing_cycle_reset FROM users WHERE id = $1',
       [userId]
     );
 
@@ -36,7 +37,7 @@ export default async function meteredLimiter(req, res, next) {
     }
 
     const user = userResult.rows[0];
-    const planType = user.plan_type || 'free';
+    const planType = await getPlanType(userId) || 'free';
     let currentCount = user.monthly_request_count || 0;
     const cycleReset = new Date(user.billing_cycle_reset);
     const now = new Date();

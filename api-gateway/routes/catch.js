@@ -1,7 +1,8 @@
 import { Router } from "express";
 import meteredLimiter from "../middleware/meteredLimiter.js";
 import { webhookIngressLimiter } from "../middleware/rateLimiter.js";
-import { query } from "../db/connection.js";
+import { getPlanType } from "../middleware/index.js";
+import pool, { query } from "../db/connection.js";
 import { webhookQueue } from "../services/queue.js";
 
 const router = Router();
@@ -156,6 +157,62 @@ router.all("/:webhook_id", webhookIngressLimiter, async (req, res) => {
     console.log(`📡 Forwarding → ${webhook.target_url} [${(webhook.http_method || 'POST').toUpperCase()}]`);
     console.log("═".repeat(60) + "\n");
 
+    // ── Step 4.5: Daily Lead Cap Verification (Row-Level Locking) ─────────
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Ensure the counter row exists for the user
+      await client.query(
+        `INSERT INTO lead_counters (user_id, daily_lead_cap, daily_leads_received, last_reset_date) 
+         VALUES ($1, 100, 0, CURRENT_DATE) 
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      );
+
+      // Acquire exclusive lock on the row to queue concurrent requests
+      const counterResult = await client.query(
+        `SELECT daily_lead_cap, daily_leads_received, last_reset_date 
+         FROM lead_counters 
+         WHERE user_id = $1 FOR UPDATE`,
+        [userId]
+      );
+
+      let { daily_lead_cap, daily_leads_received, last_reset_date } = counterResult.rows[0];
+
+      // Reset odometer if a new day has started (uses JS dates to avoid DB timezone traps)
+      const today = new Date().toISOString().split("T")[0];
+      const lastReset = new Date(last_reset_date).toISOString().split("T")[0];
+
+      if (today !== lastReset) {
+        daily_leads_received = 0;
+      }
+
+      if (daily_leads_received >= daily_lead_cap) {
+        await client.query("ROLLBACK");
+        client.release();
+        return res.status(429).json({
+          success: false,
+          message: "Daily lead cap reached. Please upgrade your plan or wait until tomorrow.",
+        });
+      }
+
+      // Increment the counter and commit the transaction
+      await client.query(
+        `UPDATE lead_counters 
+         SET daily_leads_received = $1 + 1, last_reset_date = CURRENT_DATE 
+         WHERE user_id = $2`,
+        [daily_leads_received, userId]
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err; // Forward to outer catch block for 500 handling
+    } finally {
+      client.release(); // ALWAYS release the client back to the pool
+    }
+
     // ── Step 5: Vault the lead ──────────────────────────────────────────
     await query(
       `INSERT INTO ghl_leads (contact_id, raw_payload, status, webhook_key_id, lead_score, first_name, last_name, email, phone, delivery_status, retry_count, user_id, is_test)
@@ -176,8 +233,7 @@ router.all("/:webhook_id", webhookIngressLimiter, async (req, res) => {
     );
 
     // ── Step 6: Queue Webhook Dispatch Job ────────────────────────────────
-    const userResult = await query("SELECT plan_type FROM users WHERE id = $1", [userId]);
-    const planType = userResult.rows[0]?.plan_type || "free";
+    const planType = await getPlanType(userId) || "free";
 
     let attempts = 1;
     let backoff = undefined;

@@ -33,15 +33,9 @@ export async function initializeDatabase() {
     user: process.env.PGUSER,
     password: process.env.PGPASSWORD ? "********" : "undefined",
   });
-  let client;
+
   try {
-    client = await pool.connect();
-  } catch (err) {
-    console.error("[db] Failed to connect to the database. Retrying is highly recommended.", err.message);
-    return; // graceful exit without crashing the app
-  }
-  try {
-    await client.query(`
+    await pool.query(`
       -- 1. Infrastructure Rebuild
       CREATE TABLE IF NOT EXISTS request_logs (
         id          SERIAL PRIMARY KEY,
@@ -168,10 +162,18 @@ export async function initializeDatabase() {
 
       -- Add custom_headers column to webhook_keys
       ALTER TABLE webhook_keys ADD COLUMN IF NOT EXISTS custom_headers JSONB DEFAULT '{}'::jsonb;
+
+      -- Lead Caps
+      CREATE TABLE IF NOT EXISTS lead_counters (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        daily_lead_cap INTEGER NOT NULL DEFAULT 100,
+        daily_leads_received INTEGER NOT NULL DEFAULT 0,
+        last_reset_date DATE NOT NULL DEFAULT CURRENT_DATE
+      );
     `);
-    console.log("[db] Schema initialised — request_logs, users, guest_sessions, ghl_leads, webhook_keys & gateway_counters tables ready");
-  } finally {
-    client.release();
+    console.log("[db] Schema initialised — request_logs, users, guest_sessions, ghl_leads, webhook_keys, gateway_counters & lead_counters tables ready");
+  } catch (err) {
+    console.error("[db] Failed to initialise the database schema. Retrying is highly recommended.", err.message);
   }
 }
 

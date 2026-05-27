@@ -1,5 +1,7 @@
 import Stripe from 'stripe';
 import { query } from '../db/connection.js';
+import { redisClient } from '../middleware/rateLimiter.js';
+import { planCacheKey } from '../middleware/requirePlan.js';
 
 // Lazy load Stripe instance to avoid ES module hoisting traps
 let stripe;
@@ -112,6 +114,10 @@ export const handleStripeWebhook = async (req, res) => {
              WHERE id = $5`,
             [customerId, subscriptionId, 'pro', 'active', userId]
           );
+          // Invalidate cached plan so the next request reads fresh from Postgres
+          redisClient.del(planCacheKey(userId)).catch((e) =>
+            console.error(`[stripe-webhook] Redis cache invalidation error:`, e.message)
+          );
           console.log(`[stripe-webhook] ✅ Success: User ${userId} upgraded to Pro`);
         } catch (dbErr) {
           console.error(`[stripe-webhook] ❌ Database error updating user ${userId}:`, dbErr.message);
@@ -133,10 +139,16 @@ export const handleStripeWebhook = async (req, res) => {
       }
 
       try {
-        await query(
-          "UPDATE users SET subscription_status = $1, plan_type = $2 WHERE stripe_subscription_id = $3",
+        const subUpdateResult = await query(
+          "UPDATE users SET subscription_status = $1, plan_type = $2 WHERE stripe_subscription_id = $3 RETURNING id",
           [status, planType, subscriptionId]
         );
+        // Invalidate cached plan for the affected user
+        if (subUpdateResult.rows[0]?.id) {
+          redisClient.del(planCacheKey(subUpdateResult.rows[0].id)).catch((e) =>
+            console.error(`[stripe-webhook] Redis cache invalidation error:`, e.message)
+          );
+        }
         console.log(`[stripe-webhook] ✅ Success: Subscription ${subscriptionId} updated to ${status} (${planType})`);
       } catch (dbErr) {
         console.error(`[stripe-webhook] ❌ Database error updating subscription ${subscriptionId}:`, dbErr.message);

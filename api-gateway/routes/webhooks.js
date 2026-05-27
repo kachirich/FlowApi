@@ -1,6 +1,8 @@
 import { Router } from "express";
 import axios from "axios";
 import authenticate from "../middleware/auth.js";
+import requirePlan from "../middleware/requirePlan.js";
+import { getPlanType } from "../middleware/index.js";
 import meteredLimiter from "../middleware/meteredLimiter.js";
 import { query } from "../db/connection.js";
 import { webhookQueue } from "../services/queue.js";
@@ -68,16 +70,10 @@ function calculateLeadScore(payload) {
  * GET /api/webhooks/logs
  *
  * Returns recent webhook logs for the authenticated user.
+ * Gated to paid plans via requirePlan middleware (Redis-cached tier check).
  */
-router.get("/logs", authenticate, async (req, res) => {
+router.get("/logs", authenticate, requirePlan("basic", "pro", "plus"), async (req, res) => {
   try {
-    if (req.user.plan_type === "free") {
-      return res.status(403).json({
-        error: "Upgrade required",
-        message: "The Lead Ledger is only available on Basic, Pro, and Plus plans.",
-      });
-    }
-
     const result = await query(
       `SELECT * FROM webhook_logs 
        WHERE user_id = $1 
@@ -170,8 +166,7 @@ router.put("/:id", authenticate, async (req, res, next) => {
     }
     if (custom_headers !== undefined) {
       // Authoritative State: strictly rely on DB (or signed JWT) to prevent RBAC escalation
-      const planRes = await query("SELECT plan_type FROM users WHERE id = $1", [req.user.id]);
-      const planType = planRes.rows[0]?.plan_type || 'free';
+      const planType = await getPlanType(req.user.id) || 'free';
       
       if (planType === 'free' || planType === 'basic') {
         return res.status(403).json({

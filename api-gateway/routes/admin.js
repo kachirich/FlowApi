@@ -9,6 +9,8 @@ import webhookCreationLimiter from "../middleware/webhookCreationLimiter.js";
 import { generateApiKey } from "../utils/apiKeyGenerator.js";
 import { validateWebhookUrl } from "../utils/security.js";
 import { sendTierUpgradeEmail } from "../services/email.service.js";
+import { redisClient } from "../middleware/rateLimiter.js";
+import { planCacheKey } from "../middleware/requirePlan.js";
 
 const router = Router();
 
@@ -660,6 +662,11 @@ router.post("/upgrade-user", authenticate, async (req, res, next) => {
 
     const user = result.rows[0];
     const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email.split('@')[0];
+
+    // ── Invalidate Redis plan cache immediately ─────────────────────────
+    redisClient.del(planCacheKey(user.id)).catch((err) =>
+      console.error('[admin] Failed to invalidate plan cache:', err.message)
+    );
 
     // Fire the tier-specific welcome email (non-blocking — don't let a
     // Resend failure roll back the plan upgrade)
