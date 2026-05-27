@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import { rateLimiter, requestLogger, authenticate } from "./middleware/index.js";
+import { requestLogger, authenticate } from "./middleware/index.js";
 import { initializeDatabase, closePool } from "./db/connection.js";
 import { startQueueWorker } from "./utils/queueWorker.js";
 import { startJanitorService } from "./services/janitor.service.js";
@@ -111,7 +111,7 @@ app.use((err, req, res, next) => {
   console.error(err.stack || err.message);
 
   const status = err.status || err.statusCode || 500;
-  
+
   if (err.type === 'entity.too.large') {
     return res.status(413).json({
       success: false,
