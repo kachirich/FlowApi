@@ -14,7 +14,16 @@ export default function requestLogger(req, res, next) {
   // Hook into the response "finish" event so we can capture the status code
   // after the route handler has run.
   res.on("finish", () => {
-    const ip = req.ip || req.socket.remoteAddress;
+    let forwardedIps = req.headers['x-forwarded-for'];
+    let clientIp = '';
+    
+    if (forwardedIps) {
+      clientIp = typeof forwardedIps === 'string' 
+        ? forwardedIps.split(',')[0].trim() 
+        : Array.isArray(forwardedIps) ? forwardedIps[0] : '';
+    }
+
+    const ip = clientIp || req.ip || '127.0.0.1';
 
     query(
       `INSERT INTO request_logs (ip_address, method, path, status_code)

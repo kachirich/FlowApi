@@ -103,36 +103,53 @@ app.use("/api/auth", authRoutes);
 app.use(routes);
 
 // ---------------------------------------------------------------------------
-// Centralised error handler
+// Layer 1: 404 Catch-All
+// Catches any request that didn't match a defined route above.
+// Returns clean JSON — never the default Express HTML "Cannot POST /route".
 // ---------------------------------------------------------------------------
-app.use((err, req, res, next) => {
-  // Always log the full raw error to the server console for Docker logs
+app.use((_req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found.',
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layer 2: Global Error Handler
+// Strictly returns JSON — never HTML. Logs the real error server-side but
+// returns a sanitized response to the client.
+// ---------------------------------------------------------------------------
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  // Always log the full stack to the server console (Docker logs / PM2)
   console.error(`[Global Error] ${req.method} ${req.originalUrl}`);
   console.error(err.stack || err.message);
+
+  // Force JSON content-type — prevents Express from ever falling back to HTML
+  res.type('json');
 
   const status = err.status || err.statusCode || 500;
 
   if (err.type === 'entity.too.large') {
     return res.status(413).json({
       success: false,
-      error: "Payload Too Large",
-      message: "Payload exceeds 100kb limit"
+      error: 'Payload Too Large',
+      message: 'Payload exceeds the 100kb limit.',
     });
   }
 
-  // If it's a 500-level infrastructure error, sanitize the response to prevent data leaks
+  // 500-level: infrastructure / unexpected errors — sanitize, never leak internals
   if (status >= 500) {
     return res.status(500).json({
       success: false,
-      error: 'An unexpected server error occurred. Our team has been notified.'
+      error: 'An unexpected server error occurred.',
     });
   }
 
-  // If it's a known operational error (4xx), pass the message and status code through safely
-  res.status(status).json({
+  // 4xx: known operational errors — safe to pass the message through
+  return res.status(status).json({
     success: false,
-    error: err.name || "Request Error",
-    message: err.message,
+    error: err.message || 'Request Error',
   });
 });
 
