@@ -10,8 +10,12 @@ redisClient.on("error", (err) => console.error("[redis] Redis Client Error:", er
 redisClient.on("connect", () => console.log("[redis] Connected to Redis instance for rate limiting"));
 
 export const connectRedis = async () => {
-  if (!redisClient.isOpen) {
-    await redisClient.connect();
+  try {
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+  } catch (err) {
+    console.error("[redis] Failed to connect on startup:", err.message);
   }
 };
 

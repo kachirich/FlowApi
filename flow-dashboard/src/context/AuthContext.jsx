@@ -1,4 +1,5 @@
 import React, { createContext, useState, useContext } from 'react';
+import { API_BASE_URL } from '../utils/apiConfig';
 
 const AuthContext = createContext();
 
@@ -10,7 +11,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (googleCredential) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/google`, {
+      const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: googleCredential }),
@@ -35,7 +36,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       if (token) {
-        await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/logout`, {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,

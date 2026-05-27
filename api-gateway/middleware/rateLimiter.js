@@ -5,7 +5,12 @@ import { query } from "../db/connection.js";
 
 // Create a Redis client. Uses REDIS_URL from the environment.
 export const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://redis:6379",
+  url: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+});
+
+// Add error listener to prevent unhandled promise rejections / app crashes
+redisClient.on("error", (err) => {
+  console.error("[Redis] Client error:", err.message);
 });
 
 // Connect to Redis. In production, you would handle connection errors robustly.
@@ -14,7 +19,7 @@ try {
     await redisClient.connect();
   }
 } catch (err) {
-  console.error("Redis connection error:", err);
+  console.error("[Redis] Failed to connect on startup:", err.message);
 }
 
 // Helper to extract the true client IP from Nginx headers, bypassing Docker Gateway masking

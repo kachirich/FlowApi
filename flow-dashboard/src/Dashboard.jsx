@@ -56,9 +56,10 @@ import UpgradeModal from "./components/UpgradeModal";
 import WebhookConfig from "./components/WebhookConfig";
 import SetupTutorial from "./components/SetupTutorial";
 import { useAuth } from "./context/AuthContext";
+import { API_BASE_URL } from "./utils/apiConfig";
+import { webhookDestinationSchema, jsonKeyMappingSchema } from "./utils/validators";
 
-
-const GATEWAY_URL = import.meta.env.VITE_API_BASE_URL;
+const GATEWAY_URL = API_BASE_URL;
 const STATUS_URL = `${GATEWAY_URL}/api/auth/guest/status`;
 const API_BASE = `${GATEWAY_URL}/api/admin`;
 const POLL_INTERVAL = 3000;
@@ -1418,7 +1419,7 @@ function EgressTester({ leads }) {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok) {
         setLog(data);
       } else {
@@ -1696,10 +1697,10 @@ export default function Dashboard() {
       const token = localStorage.getItem("flow_token") || localStorage.getItem("token");
       if (!token) return;
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/auth/me`, {
+        const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
         if (res.ok && data.success) {
           setUser(data.user);
           if (data.user?.plan_type) {
@@ -1812,7 +1813,7 @@ export default function Dashboard() {
         return;
       }
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       setSession(data.session);
 
       // Stop polling once AI has responded
@@ -1841,7 +1842,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
         setStats((prev) => ({
           ...data,
           hasCompletedOnboarding: prev?.hasCompletedOnboarding === false ? false : data.hasCompletedOnboarding,
@@ -1860,7 +1861,7 @@ export default function Dashboard() {
       const res = await fetch(`${API_BASE}/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok) {
         setStats((prev) => ({
           ...data,
@@ -1889,7 +1890,7 @@ export default function Dashboard() {
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok) {
         setTwoFactorDetails({
           qrCodeUrl: data.qrCodeUrl,
@@ -1923,7 +1924,7 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ token: twoFactorToken }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok) {
         setStats((prev) => ({ ...prev, twoFactorEnabled: true }));
         setTwoFactorDetails(null);
@@ -1996,7 +1997,7 @@ export default function Dashboard() {
           Authorization: `Bearer ${token}`,
         },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok) {
         setStats((prev) => ({
           ...prev,
@@ -2073,7 +2074,7 @@ export default function Dashboard() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok) {
         showToast(data.message || "Lead successfully re-queued for delivery", "success");
         fetchLeads();
@@ -2092,14 +2093,14 @@ export default function Dashboard() {
     if (!token || !id) return;
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/webhooks/queue/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/webhooks/queue/${id}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok && data.success) {
         showToast("Webhook retry queue job canceled successfully.");
         // Instantly update the lead status in local state to CANCELED
@@ -2137,7 +2138,7 @@ export default function Dashboard() {
         body: JSON.stringify(GHL_STANDARD_SCHEMA),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok && data.success) {
         showToast("Simulated lead routed & vaulted successfully!", "success");
         fetchLeads();
@@ -2164,7 +2165,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
         setLeads(data.leads || []);
       } else {
         console.error("[fetchLeads] Error:", res.status, await res.text());
@@ -2182,7 +2183,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
         setWebhooks(data.webhooks);
       }
     } catch { /* retry silently */ }
@@ -2257,7 +2258,7 @@ export default function Dashboard() {
       headers,
       body: JSON.stringify(otp ? { totpToken: otp } : {}),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
 
     if (res.status === 401) {
       showToast(data.error || "Invalid or expired verification code", "error");
@@ -2306,7 +2307,7 @@ export default function Dashboard() {
       headers,
       body: JSON.stringify(otp ? { totpToken: otp } : {}),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
 
     if (res.status === 401) {
       showToast(data.error || "Invalid or expired verification code", "error");
@@ -2368,7 +2369,7 @@ export default function Dashboard() {
           destinationUrl,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (data.success) {
         showToast("Destination saved — leads will be forwarded");
         fetchLeads();
@@ -2405,7 +2406,7 @@ export default function Dashboard() {
         },
         body: JSON.stringify({ target_url: targetUrl, http_method: httpMethod }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       if (res.ok && data.success) {
         showToast("Webhook configuration saved");
         fetchWebhooks();
@@ -2420,7 +2421,7 @@ export default function Dashboard() {
   /** Send a test ping to the dynamic dispatcher route */
   const handleTestPing = async (id) => {
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/catch/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/catch/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flow_api_test: "Successful connection established", timestamp: new Date() }),

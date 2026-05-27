@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE_URL } from "../utils/apiConfig";
 
 export default function PricingCard() {
   const [isLoading, setIsLoading] = useState(false);
@@ -20,7 +21,7 @@ export default function PricingCard() {
     setError(null);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/billing/checkout`, {
+      const response = await fetch(`${API_BASE_URL}/api/billing/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

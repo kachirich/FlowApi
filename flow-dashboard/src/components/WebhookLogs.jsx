@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Activity, X, FileJson, Loader2, AlertCircle, Lock } from "lucide-react";
+import { API_BASE_URL } from "../utils/apiConfig";
 
 export default function WebhookLogs({ planType, setUpgradeModal }) {
   const [logs, setLogs] = useState([]);
@@ -19,7 +20,7 @@ export default function WebhookLogs({ planType, setUpgradeModal }) {
       }
       
       try {
-        const url = `${import.meta.env.VITE_API_BASE_URL}/api/webhooks/logs`;
+        const url = `${API_BASE_URL}/api/webhooks/logs`;
         const res = await fetch(url, {
           headers: { Authorization: `Bearer ${token}` }
         });
