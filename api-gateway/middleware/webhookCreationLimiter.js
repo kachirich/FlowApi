@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import RedisStore from "rate-limit-redis";
 import redisClient from "../utils/redisClient.js";
 
@@ -11,6 +11,8 @@ const webhookCreationLimiter = rateLimit({
   max: 50, // Limit each user to 50 webhook creations per windowMs
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  // Trust proxy is set at the app level; suppress the library's own check
+  validate: { trustProxy: false, xForwardedForHeader: false },
   
   // Use the Redis store
   store: new RedisStore({
@@ -21,7 +23,7 @@ const webhookCreationLimiter = rateLimit({
   // Group by req.user.id instead of IP address to prevent shared IP lockouts
   keyGenerator: (req) => {
     if (!req.user || !req.user.id) {
-      return req.ip; // Fallback to IP if somehow unauthenticated, though route should be protected
+      return ipKeyGenerator(req); // Safe fallback using the library's IPv6-aware helper
     }
     return req.user.id;
   },

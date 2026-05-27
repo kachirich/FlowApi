@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { createClient } from "redis";
 import { query } from "../db/connection.js";
@@ -55,6 +55,8 @@ const rateLimiter = rateLimit({
   legacyHeaders: false,         // Disable X-RateLimit-* headers
   // Skip rate limiting for local development / Test Sandbox traffic
   skip: skipRateLimit,
+  // Trust proxy is set at the app level; suppress the library's own check
+  validate: { trustProxy: false, xForwardedForHeader: false },
   message: {
     status: 429,
     error: "Too Many Requests",
@@ -83,6 +85,7 @@ export const authRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
   skip: skipRateLimit,
+  validate: { trustProxy: false, xForwardedForHeader: false },
   message: { error: 'Too many login attempts. Your IP has been temporarily locked out for 1 hour for security purposes.' },
 });
 
@@ -93,9 +96,10 @@ export const stepUpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 attempts
   skip: skipRateLimit,
+  validate: { trustProxy: false, xForwardedForHeader: false },
   keyGenerator: (req) => {
-    // Rate limit by User ID if authenticated, else IP address
-    return req.user?.id ? `step_up_${req.user.id}` : `step_up_${req.ip || req.socket?.remoteAddress}`;
+    // Rate limit by User ID if authenticated, else use the library's safe IP helper
+    return req.user?.id ? `step_up_${req.user.id}` : `step_up_${ipKeyGenerator(req)}`;
   },
   message: { error: 'Too many failed verification attempts. Please try again in 15 minutes.' },
   handler: (req, res, next, options) => {
@@ -113,9 +117,10 @@ export const webhookIngressLimiter = rateLimit({
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   skip: skipRateLimit,
+  validate: { trustProxy: false, xForwardedForHeader: false },
   keyGenerator: (req) => {
-    // Rate limit per IP address instead of webhook ID for DDoS protection
-    return `webhook_ingress_ip_${req.ip || req.socket?.remoteAddress}`;
+    // Rate limit per IP address for DDoS protection, using the library's safe IPv6 helper
+    return `webhook_ingress_ip_${ipKeyGenerator(req)}`;
   },
   message: { error: 'Too Many Requests' },
   handler: (req, res, next, options) => {
