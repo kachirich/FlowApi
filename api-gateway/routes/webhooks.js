@@ -6,7 +6,7 @@ import { getPlanType } from "../middleware/index.js";
 import meteredLimiter from "../middleware/meteredLimiter.js";
 import { query } from "../db/connection.js";
 import { webhookQueue } from "../services/queue.js";
-import { validateWebhookUrl } from "../utils/security.js";
+import { validateRequest, webhookConfigBodySchema } from "../middleware/validateRequest.js";
 
 const router = Router();
 
@@ -101,55 +101,10 @@ router.get("/logs", authenticate, requirePlan("basic", "pro", "plus"), async (re
  * Body: { target_url?: string, http_method?: string }
  * Protected by JWT.
  */
-router.put("/:id", authenticate, async (req, res, next) => {
+router.put("/:id", authenticate, validateRequest(webhookConfigBodySchema), async (req, res, next) => {
   try {
     const { id } = req.params;
     const { target_url, http_method, custom_headers } = req.body;
-
-    if (target_url === undefined && http_method === undefined && custom_headers === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "At least one of target_url, http_method or custom_headers is required",
-      });
-    }
-
-    // Validate URL if provided (SSRF Protection)
-    if (target_url) {
-      const { isValid, error } = validateWebhookUrl(target_url);
-      if (!isValid) {
-        return res.status(400).json({
-          success: false,
-          message: error === "Invalid or prohibited target URL" ? "Invalid or prohibited target URL" : "Invalid URL format for target_url",
-        });
-      }
-    }
-
-    // Validate http_method if provided
-    const validMethods = ['GET', 'POST', 'PUT', 'PATCH'];
-    if (http_method && !validMethods.includes(http_method.toUpperCase())) {
-      return res.status(400).json({
-        success: false,
-        message: `Invalid http_method. Must be one of: ${validMethods.join(', ')}`,
-      });
-    }
-
-    // Validate custom_headers if provided
-    if (custom_headers !== undefined) {
-      if (typeof custom_headers !== 'object' || custom_headers === null || Array.isArray(custom_headers)) {
-        return res.status(400).json({
-          success: false,
-          message: "custom_headers must be a valid JSON object",
-        });
-      }
-      for (const [key, value] of Object.entries(custom_headers)) {
-        if (typeof key !== 'string' || typeof value !== 'string') {
-          return res.status(400).json({
-            success: false,
-            message: "custom_headers must consist of string key-value pairs",
-          });
-        }
-      }
-    }
 
     // Build dynamic SET clause
     const updates = [];

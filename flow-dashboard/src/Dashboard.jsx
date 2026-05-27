@@ -1292,6 +1292,48 @@ function EgressTester({ leads }) {
   const [log, setLog] = useState(null);
   const [showRawTraceDrawer, setShowRawTraceDrawer] = useState(false);
 
+  // Validation States
+  const [urlError, setUrlError] = useState("");
+  const [mappingErrors, setMappingErrors] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
+
+  // Real-time URL Validation
+  useEffect(() => {
+    if (!destinationUrl) {
+      setUrlError("");
+      return;
+    }
+    const result = webhookDestinationSchema.safeParse(destinationUrl);
+    if (!result.success) {
+      setUrlError(result.error.issues[0].message);
+    } else {
+      setUrlError("");
+    }
+  }, [destinationUrl]);
+
+  // Real-time Mapping Validation
+  useEffect(() => {
+    const newErrors = { firstName: "", lastName: "", email: "", phone: "" };
+    Object.keys(mappings).forEach((key) => {
+      if (!mappings[key]) {
+         newErrors[key] = "Required field";
+         return;
+      }
+      const result = jsonKeyMappingSchema.safeParse(mappings[key]);
+      if (!result.success) {
+        newErrors[key] = result.error.issues[0].message;
+      }
+    });
+    setMappingErrors(newErrors);
+  }, [mappings]);
+
+  // Derived overall validity
+  const isFormValid = !urlError && destinationUrl.length > 0 && Object.values(mappingErrors).every((err) => err === "");
+
   // Auto-dismiss the raw trace pop-up drawer after 10 seconds
   useEffect(() => {
     let timer;
@@ -1427,8 +1469,11 @@ function EgressTester({ leads }) {
               value={destinationUrl}
               onChange={(e) => setDestinationUrl(e.target.value)}
               placeholder="https://services.leadconnectorhq.com/hooks/..."
-              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-xs text-slate-200 focus:border-amber-500 focus:outline-none transition"
+              className={`w-full rounded-xl border bg-slate-900 px-4 py-3 font-mono text-xs text-slate-200 focus:outline-none transition ${urlError ? "border-rose-500/50 focus:border-rose-500" : "border-slate-700 focus:border-amber-500"}`}
             />
+            {urlError && (
+              <p className="text-[10px] text-rose-500 font-medium animate-fade-in">{urlError}</p>
+            )}
           </div>
 
           {/* Key-Value Mapper */}
@@ -1438,42 +1483,57 @@ function EgressTester({ leads }) {
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Destination JSON Key</span>
             </div>
 
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-4">
-                <span className="flex-1 font-mono text-xs text-slate-300">firstName</span>
-                <input
-                  type="text"
-                  value={mappings.firstName}
-                  onChange={(e) => setMappings({ ...mappings, firstName: e.target.value })}
-                  className="w-44 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-mono text-xs text-amber-400 focus:border-amber-500 focus:outline-none"
-                />
+            <div className="space-y-3.5">
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-4">
+                  <span className="flex-1 font-mono text-xs text-slate-300">firstName</span>
+                  <input
+                    type="text"
+                    value={mappings.firstName}
+                    onChange={(e) => setMappings({ ...mappings, firstName: e.target.value })}
+                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.firstName ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
+                  />
+                </div>
+                {mappingErrors.firstName && <span className="text-right text-[10px] text-rose-500">{mappingErrors.firstName}</span>}
               </div>
-              <div className="flex items-center gap-4">
-                <span className="flex-1 font-mono text-xs text-slate-300">lastName</span>
-                <input
-                  type="text"
-                  value={mappings.lastName}
-                  onChange={(e) => setMappings({ ...mappings, lastName: e.target.value })}
-                  className="w-44 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-mono text-xs text-amber-400 focus:border-amber-500 focus:outline-none"
-                />
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-4">
+                  <span className="flex-1 font-mono text-xs text-slate-300">lastName</span>
+                  <input
+                    type="text"
+                    value={mappings.lastName}
+                    onChange={(e) => setMappings({ ...mappings, lastName: e.target.value })}
+                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.lastName ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
+                  />
+                </div>
+                {mappingErrors.lastName && <span className="text-right text-[10px] text-rose-500">{mappingErrors.lastName}</span>}
               </div>
-              <div className="flex items-center gap-4">
-                <span className="flex-1 font-mono text-xs text-slate-300">email</span>
-                <input
-                  type="text"
-                  value={mappings.email}
-                  onChange={(e) => setMappings({ ...mappings, email: e.target.value })}
-                  className="w-44 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-mono text-xs text-amber-400 focus:border-amber-500 focus:outline-none"
-                />
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-4">
+                  <span className="flex-1 font-mono text-xs text-slate-300">email</span>
+                  <input
+                    type="text"
+                    value={mappings.email}
+                    onChange={(e) => setMappings({ ...mappings, email: e.target.value })}
+                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.email ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
+                  />
+                </div>
+                {mappingErrors.email && <span className="text-right text-[10px] text-rose-500">{mappingErrors.email}</span>}
               </div>
-              <div className="flex items-center gap-4">
-                <span className="flex-1 font-mono text-xs text-slate-300">phone</span>
-                <input
-                  type="text"
-                  value={mappings.phone}
-                  onChange={(e) => setMappings({ ...mappings, phone: e.target.value })}
-                  className="w-44 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 font-mono text-xs text-amber-400 focus:border-amber-500 focus:outline-none"
-                />
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-4">
+                  <span className="flex-1 font-mono text-xs text-slate-300">phone</span>
+                  <input
+                    type="text"
+                    value={mappings.phone}
+                    onChange={(e) => setMappings({ ...mappings, phone: e.target.value })}
+                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.phone ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
+                  />
+                </div>
+                {mappingErrors.phone && <span className="text-right text-[10px] text-rose-500">{mappingErrors.phone}</span>}
               </div>
             </div>
           </div>
@@ -1481,7 +1541,7 @@ function EgressTester({ leads }) {
           {/* Action Trigger */}
           <button
             onClick={handleFireEgress}
-            disabled={sending}
+            disabled={sending || !isFormValid}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-950 hover:bg-amber-400 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/10"
           >
             {sending ? (

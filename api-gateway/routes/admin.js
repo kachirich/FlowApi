@@ -11,6 +11,7 @@ import { validateWebhookUrl } from "../utils/security.js";
 import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
+import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 
 const router = Router();
 
@@ -521,25 +522,9 @@ router.delete("/logs", authenticate, async (req, res, next) => {
  *
  * Executes a real outbound POST request to a destination URL with formatted lead data.
  */
-router.post("/egress-test", authenticate, async (req, res, next) => {
+router.post("/egress-test", authenticate, validateRequest(egressTestBodySchema), async (req, res, next) => {
   try {
     const { destinationUrl, payload } = req.body;
-
-    if (!destinationUrl) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing destinationUrl",
-      });
-    }
-
-    try {
-      new URL(destinationUrl);
-    } catch {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid destinationUrl format",
-      });
-    }
 
     const startTime = Date.now();
     let outboundResponse;
