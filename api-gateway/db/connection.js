@@ -82,7 +82,21 @@ export async function initializeDatabase() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_cycle_reset TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS routing_strategy VARCHAR(50) DEFAULT 'round_robin';
 
-      -- 3. The OTP Engine
+      -- 3. API Keys
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id       UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name          VARCHAR(100),
+        key_hash      VARCHAR(255)  NOT NULL UNIQUE,
+        prefix        VARCHAR(50)   NOT NULL,
+        last_four     VARCHAR(10)   NOT NULL,
+        last_used_at  TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys (user_id);
+      CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
+
+      -- 4. The OTP Engine
       CREATE TABLE IF NOT EXISTS otps (
         id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
         email       VARCHAR(255)  NOT NULL,
@@ -174,7 +188,7 @@ export async function initializeDatabase() {
         last_reset_date DATE NOT NULL DEFAULT CURRENT_DATE
       );
     `);
-    console.log("[db] Schema initialised — request_logs, users, guest_sessions, ghl_leads, webhook_keys, gateway_counters & lead_counters tables ready");
+    console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters & lead_counters tables ready");
   } catch (err) {
     console.error("[db] Failed to initialise the database schema. Retrying is highly recommended.", err.message);
   }
