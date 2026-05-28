@@ -1646,25 +1646,7 @@ export default function Dashboard() {
   const { user, setUser } = useAuth();
   const token = "session_cookie";
 
-  // Auto-Session Sync on Mount
-  useEffect(() => {
-    const syncUser = async () => {
-      if (localStorage.getItem("flow_logged_in") !== "true") return;
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/me`);
-        const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
-        if (res.ok && data.success) {
-          setUser(data.user);
-          if (data.user?.plan_type) {
-            setStats((prev) => ({ ...prev, planType: data.user.plan_type }));
-          }
-        }
-      } catch (err) {
-        // Silently fail if network error
-      }
-    };
-    syncUser();
-  }, [setUser]);
+
 
 
 

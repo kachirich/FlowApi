@@ -9,27 +9,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ── Google OAuth token catch and Session Validation ───────────────────
-  useEffect(() => {
-    const checkSession = async () => {
-      if (localStorage.getItem("flow_logged_in") === "true") {
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-      try {
-        const res = await fetch(`${API}/api/auth/me`, {
-          credentials: "include"
-        });
-        if (res.ok) {
-          localStorage.setItem("flow_logged_in", "true");
-          navigate("/dashboard", { replace: true });
-        }
-      } catch (err) {
-        // Stay on login page
-      }
-    };
-    checkSession();
-  }, [location, navigate]);
+
 
   // ── State Machine ─────────────────────────────────────────────────────
   const [step, setStep] = useState("LOGIN"); // LOGIN | REGISTER | OTP | FORGOT_EMAIL | FORGOT_OTP | FORGOT_NEWPASS

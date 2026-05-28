@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { API_BASE_URL } from '../utils/apiConfig';
 
 const AuthContext = createContext();
@@ -7,6 +7,45 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const setAuthenticatedUser = (u) => {
+    if (u) {
+      const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email?.split('@')[0] || '';
+      u.name = name;
+    }
+    setUser(u);
+  };
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include' // Must explicitly include cookies
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.user) {
+            setAuthenticatedUser(data.user);
+            localStorage.setItem('flow_logged_in', 'true'); // Ensure sync
+          }
+        } else {
+          // Clean up if the session is absent or expired
+          localStorage.removeItem('flow_logged_in');
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('[AuthContext] Network error during initialization:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    initAuth();
+  }, []);
   const login = async (googleCredential) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
@@ -50,17 +89,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const setAuthenticatedUser = (u) => {
-    if (u) {
-      const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email?.split('@')[0] || '';
-      u.name = name;
-    }
-    setUser(u);
-  };
+
 
   return (
-    <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, login, logout }}>
-      {children}
+    <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, login, logout, loading }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

@@ -20,6 +20,7 @@ apiClient.interceptors.response.use(
 
       // 401 Unauthorized: automatically trigger logout and redirect to /login
       if (status === 401) {
+        console.error(`[Axios Interceptor] 401 Unauthorized on route: ${error.config?.url}`);
         localStorage.removeItem('flow_logged_in');
         localStorage.removeItem('trusted_device_token');
         window.location.href = '/login';
