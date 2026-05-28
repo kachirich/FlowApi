@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { sendTokenResponse } from '../utils/authUtils.js';
 import { redisClient } from '../middleware/rateLimiter.js';
 import { sendEmailVerification } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
@@ -139,25 +140,7 @@ export const verifyOtp = async (req, res) => {
       user = insertResult.rows[0];
     }
 
-    if (!process.env.JWT_SECRET) {
-      console.error("JWT_SECRET is missing from process.env!");
-      return res.status(500).json({ error: "Server misconfiguration: missing JWT secret" });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" }
-    );
-
-    res.cookie('jwt', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
-
-    return res.status(200).json({ success: true, message: 'OTP verified successfully', user });
+    return sendTokenResponse(user, 200, res, 'OTP verified successfully');
   } catch (error) {
     console.error('Error verifying OTP:', error);
     return res.status(400).json({ error: error.message });
@@ -209,25 +192,7 @@ export const register = async (req, res) => {
     
     const user = insertResult.rows[0];
 
-    if (!process.env.JWT_SECRET) {
-      console.error("JWT_SECRET is missing from process.env!");
-      return res.status(500).json({ error: "Server misconfiguration: missing JWT secret" });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" }
-    );
-
-    res.cookie('jwt', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
-
-    return res.status(201).json({ success: true, message: 'Account created successfully', user });
+    return sendTokenResponse(user, 201, res, 'Account created successfully');
   } catch (error) {
     console.error('Registration error:', error);
     return res.status(500).json({ error: 'Failed to create account' });
@@ -263,28 +228,7 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (!process.env.JWT_SECRET) {
-      console.error("JWT_SECRET is missing from process.env!");
-      return res.status(500).json({ error: "Server misconfiguration: missing JWT secret" });
-    }
-
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" }
-    );
-
-    res.cookie('jwt', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
-
-    // Filter sensitive info
-    delete user.password_hash;
-
-    return res.status(200).json({ success: true, message: 'Logged in successfully', user });
+    return sendTokenResponse(user, 200, res, 'Logged in successfully');
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: 'Failed to authenticate' });

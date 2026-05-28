@@ -2,6 +2,7 @@ import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import { redisClient } from '../middleware/rateLimiter.js';
 import { query } from '../db/connection.js';
+import { generateAuthCookie } from '../utils/authUtils.js';
 
 /**
  * Creates a NEW OAuth2Client instance per invocation.
@@ -73,24 +74,7 @@ export const googleCallback = async (req, res) => {
       user = insertResult.rows[0];
     }
 
-    if (!process.env.JWT_SECRET) {
-      console.error("JWT_SECRET is missing from process.env!");
-      return res.status(500).send('Server misconfiguration: missing JWT secret');
-    }
-
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    const isProd = process.env.NODE_ENV === 'production';
-    res.cookie('jwt', token, {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'none' : 'lax',
-      maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
+    generateAuthCookie(user, res);
 
     // Redirect back to frontend
     const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';

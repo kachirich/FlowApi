@@ -252,7 +252,7 @@ export default function Login() {
       }
 
       toast.success("Email verified successfully!");
-      navigate("/dashboard", { replace: true });
+      window.location.href = "/dashboard";
     } catch (err) {
       toast.error(err.message);
       setOtp(["", "", "", "", "", ""]);
