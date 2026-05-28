@@ -166,90 +166,104 @@ export default function LandingPage() {
               <div className="p-8 rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col">
                 <h3 className="text-xl font-semibold mb-2">Sandbox</h3>
                 <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-4xl font-bold">Free</span>
+                  <span className="text-4xl font-bold">$0</span>
+                  <span className="text-zinc-500">/mo</span>
                 </div>
-                <p className="text-zinc-400 text-sm mb-8">Perfect for testing integrations and small campaigns.</p>
+                <p className="text-zinc-400 text-sm mb-8">Perfect for testing the pipe.</p>
                 
                 <ul className="space-y-4 mb-8 flex-1">
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    100 leads / month
+                    Up to 500 requests/day
                   </li>
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Basic routing engine
+                    1 Active Destination Route
                   </li>
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Standard support
+                    Standard Rate Limiting
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-zinc-300">
+                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
+                    No Retry Queue (Instant Fail)
                   </li>
                 </ul>
                 <button
                   onClick={handleCtaClick}
                   className="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-colors border border-zinc-700"
                 >
-                  Start Building
+                  Start Free
                 </button>
               </div>
 
-              {/* Pro */}
+              {/* Growth */}
               <div className="p-8 rounded-2xl bg-zinc-950 border-2 border-indigo-500 relative transform md:-translate-y-4 shadow-2xl flex flex-col">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
                   Most Popular
                 </div>
-                <h3 className="text-xl font-semibold mb-2 text-indigo-400">Pro Broker</h3>
+                <h3 className="text-xl font-semibold mb-2 text-indigo-400">Growth</h3>
                 <div className="flex items-baseline gap-1 mb-6">
                   <span className="text-4xl font-bold">$99</span>
                   <span className="text-zinc-500">/mo</span>
                 </div>
-                <p className="text-zinc-400 text-sm mb-8">For established brokers moving serious volume.</p>
+                <p className="text-zinc-400 text-sm mb-8">For growing lead brokers.</p>
                 
                 <ul className="space-y-4 mb-8 flex-1">
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    10,000 leads / month
+                    Up to 10,000 requests/day
                   </li>
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Priority webhook queues
+                    Up to 5 Destination Routes
                   </li>
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Custom JSON mapping
+                    Redis Edge Authentication
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-zinc-300">
+                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
+                    Standard Retry Queue (3x)
                   </li>
                 </ul>
                 <button
                   onClick={handleCtaClick}
                   className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors shadow-[0_0_15px_rgba(79,70,229,0.4)]"
                 >
-                  Get Started
+                  Request Early Access
                 </button>
               </div>
 
               {/* Enterprise */}
               <div className="p-8 rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col">
-                <h3 className="text-xl font-semibold mb-2">Enterprise Network</h3>
+                <h3 className="text-xl font-semibold mb-2">Enterprise</h3>
                 <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-4xl font-bold">Custom</span>
+                  <span className="text-4xl font-bold">$249</span>
+                  <span className="text-zinc-500">/mo</span>
                 </div>
-                <p className="text-zinc-400 text-sm mb-8">For high-throughput affiliate networks.</p>
+                <p className="text-zinc-400 text-sm mb-8">For high-volume agencies.</p>
                 
                 <ul className="space-y-4 mb-8 flex-1">
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Unlimited routing
+                    Up to 100,000 requests/day
                   </li>
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Dedicated connection pools
+                    Unlimited Destinations
                   </li>
                   <li className="flex items-center gap-3 text-sm text-zinc-300">
                     <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    White-glove setup & SLA
+                    Unbreakable Exponential Backoff
+                  </li>
+                  <li className="flex items-center gap-3 text-sm text-zinc-300">
+                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
+                    Dedicated High-Throughput Lanes
                   </li>
                 </ul>
                 <button className="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-colors border border-zinc-700">
-                  Contact Sales
+                  Book Setup Call
                 </button>
               </div>
             </div>

@@ -69,13 +69,29 @@ export const revokeKey = async (req, res) => {
       return res.status(400).json({ error: 'Key ID is required' });
     }
 
-    const result = await query(
-      `DELETE FROM api_keys WHERE id = $1 AND user_id = $2 RETURNING id`,
+    // Retrieve hash before deletion to invalidate cache
+    const keyResult = await query(
+      `SELECT key_hash FROM api_keys WHERE id = $1 AND user_id = $2`,
       [keyId, userId]
     );
 
-    if (result.rowCount === 0) {
+    if (keyResult.rowCount === 0) {
       return res.status(404).json({ error: 'API Key not found or already revoked' });
+    }
+
+    const keyHash = keyResult.rows[0].key_hash;
+
+    await query(
+      `DELETE FROM api_keys WHERE id = $1`,
+      [keyId]
+    );
+
+    // Invalidate cache
+    try {
+      const { default: redisClient } = await import('../utils/redisClient.js');
+      await redisClient.del(`apikey:${keyHash}`);
+    } catch (redisErr) {
+      console.error('Failed to clear API key cache on revoke:', redisErr);
     }
 
     return res.status(200).json({ success: true, message: 'API Key revoked successfully' });

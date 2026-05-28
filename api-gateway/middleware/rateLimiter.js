@@ -115,14 +115,19 @@ export const webhookIngressLimiter = rateLimit({
     sendCommand: (...args) => redisClient.sendCommand(args),
     prefix: 'rl_webhook_ingress_',
   }),
-  windowMs: 60 * 1000, // 1 minute
-  max: 60, // 60 requests per minute
+  windowMs: 24 * 60 * 60 * 1000, // 24 hours
+  max: async (req, res) => {
+    const tier = req.user?.tier || 'sandbox';
+    if (tier === 'enterprise') return 100000;
+    if (tier === 'growth') return 10000;
+    return 500; // sandbox
+  },
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipRateLimit,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   keyGenerator: globalKeyGenerator,
-  message: { error: 'Too Many Requests' },
+  message: { error: 'Daily lead cap reached. Please upgrade your tier or wait until tomorrow.' },
   handler: (req, res, next, options) => {
     // Spam Shield: Record bot breaches on webhook endpoints
     query(
@@ -134,8 +139,8 @@ export const webhookIngressLimiter = rateLimit({
     });
 
     const identifier = globalKeyGenerator(req);
-    console.log("[rate-limiter] ⛔ 429 BLOCKED — Spam Shield Triggered");
-    console.warn(`[rate-limiter] 🚨 THREAT: Queue flooding blocked from User/IP ${identifier}`);
+    console.log("[rate-limiter] ⛔ 429 BLOCKED — Daily Cap Reached");
+    console.warn(`[rate-limiter] 🚨 CAP REACHED: ${identifier}`);
     res.status(429).json(options.message);
   }
 });

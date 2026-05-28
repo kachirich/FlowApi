@@ -7,6 +7,7 @@ import express from 'express';
 async function run() {
   console.log('Starting API Key tests...');
   
+  let server;
   try {
     // 1. Create a dummy user
     const email = 'test_api_keys@example.com';
@@ -67,11 +68,20 @@ async function run() {
     }
     console.log('4. Webhook Auth middleware verified successfully');
     
+    // Start dummy receiver
+    const receiverApp = express();
+    receiverApp.use(express.json());
+    receiverApp.post('/dest', (req, res) => {
+      res.status(200).json({ received: true });
+    });
+    server = receiverApp.listen(4503);
+
     // Seed a mock webhook destination so inbound dispatching doesn't fail on NO_DESTINATIONS
+    await query("DELETE FROM destinations WHERE user_id = $1", [user.id]);
     await query(
-      `INSERT INTO webhook_keys (user_id, api_key, masked_key, webhook_url, target_url)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [user.id, 'test_dest_key', 'test_dest_masked', 'http://dummy-dest', 'https://httpbin.org/post']
+      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active)
+       VALUES ($1, $2, $3, $4, TRUE)`,
+      [user.id, 'Mock Dest', 'http://localhost:4503/dest', 10]
     );
 
     // 5. Test Inbound Routing via API Key
@@ -115,6 +125,7 @@ async function run() {
   } catch (err) {
     console.error('❌ Tests failed:', err);
   } finally {
+    if (server) server.close();
     process.exit(0);
   }
 }

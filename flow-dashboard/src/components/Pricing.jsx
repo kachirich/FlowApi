@@ -1,50 +1,59 @@
-import { Check, Zap, CalendarCheck, Mail } from "lucide-react";
+import { Check, Zap, CalendarCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-
-const SUPPORT_EMAIL = "support.flowapi@gmail.com";
-
-const planRank = { free: 0, basic: 1, pro: 2, plus: 3 };
 
 export default function Pricing({ setActiveTab }) {
   const { user } = useAuth() || {};
-  const planType = user?.plan_type || "free";
-  const userEmail = user?.email || "";
+  const planType = user?.tier || user?.plan_type || "sandbox";
 
-  const tiers = [
+  const pricingTiers = [
     {
-      id: "basic",
-      name: "Basic",
-      price: "$29",
-      description: "Perfect for individuals and small projects.",
-      features: ["Up to 1,000 requests/mo", "Community Support", "Basic Analytics", "7-day log retention"],
-      buttonText: "Request Early Access",
-      action: () => setActiveTab("consulting"),
-      icon: CalendarCheck,
+      name: "Sandbox (Free)",
+      price: "$0",
+      period: "/month",
+      description: "Perfect for testing the pipe.",
+      features: [
+        "Up to 500 requests/day",
+        "1 Active Destination Route",
+        "Standard Rate Limiting",
+        "No Retry Queue (Instant Fail)"
+      ],
+      buttonText: "Current Plan",
+      isPopular: false,
+      targetRoute: null
     },
     {
-      id: "pro",
-      name: "Pro",
+      name: "Growth",
       price: "$99",
-      description: "For professional developers and growing teams.",
-      features: ["Up to 50,000 requests/mo", "Priority Email Support", "Advanced Analytics", "30-day log retention", "Custom Webhooks"],
+      period: "/month",
+      description: "For growing lead brokers.",
+      features: [
+        "Up to 10,000 requests/day",
+        "Up to 5 Destination Routes",
+        "Redis Edge Authentication",
+        "Standard Retry Queue (3x)"
+      ],
       buttonText: "Request Early Access",
-      action: () => setActiveTab("consulting"),
-      icon: CalendarCheck,
-      popular: true,
+      isPopular: true,
+      targetRoute: "consulting"
     },
     {
-      id: "plus",
-      name: "Enterprise Plus",
+      name: "Enterprise",
       price: "$249",
-      description: "Custom architecture and dedicated infrastructure.",
-      features: ["Unlimited requests", "24/7 Phone Support", "Custom Integrations", "Unlimited log retention", "Dedicated Account Manager"],
+      period: "/month",
+      description: "For high-volume agencies.",
+      features: [
+        "Up to 100,000 requests/day",
+        "Unlimited Destinations",
+        "Unbreakable Exponential Backoff",
+        "Dedicated High-Throughput Lanes"
+      ],
       buttonText: "Book Setup Call",
-      action: () => setActiveTab("consulting"),
-      icon: CalendarCheck,
-    },
+      isPopular: false,
+      targetRoute: "consulting"
+    }
   ];
 
-  if (planType === "plus") {
+  if (planType === "enterprise") {
     return (
       <div className="w-full max-w-4xl mx-auto px-4 py-16 flex flex-col items-center justify-center text-center">
         <div className="relative mb-8">
@@ -57,7 +66,7 @@ export default function Pricing({ setActiveTab }) {
           ✨ Max Tier Unlocked
         </h2>
         <p className="text-slate-300 text-lg max-w-xl mb-8 leading-relaxed">
-          You are currently on our highest tier, <span className="text-yellow-400 font-bold">Enterprise Plus</span>. 
+          You are currently on our highest tier, <span className="text-yellow-400 font-bold">Enterprise</span>. 
           Your workspace is running on dedicated high-performance infrastructure with unlimited scalability.
         </p>
         <div className="p-6 rounded-2xl border border-slate-800/80 bg-surface-raised/50 max-w-lg mb-8 backdrop-blur-md">
@@ -76,8 +85,6 @@ export default function Pricing({ setActiveTab }) {
     );
   }
 
-  const filteredTiers = tiers.filter(tier => planRank[tier.id] > planRank[planType]);
-
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-8">
       <div className="text-center mb-12">
@@ -91,15 +98,15 @@ export default function Pricing({ setActiveTab }) {
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row justify-center items-stretch gap-8">
-        {filteredTiers.map((tier) => (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 justify-center items-stretch max-w-5xl mx-auto">
+        {pricingTiers.map((tier) => (
           <div
-            key={tier.id}
-            className={`w-full md:w-[350px] relative flex flex-col p-8 rounded-2xl border ${
-              tier.popular ? "border-emerald-500/50 bg-surface-raised" : "border-slate-800/60 bg-surface"
+            key={tier.name}
+            className={`relative flex flex-col p-8 rounded-2xl border ${
+              tier.isPopular ? "border-emerald-500/50 bg-surface-raised" : "border-slate-800/60 bg-surface"
             }`}
           >
-            {tier.popular && (
+            {tier.isPopular && (
               <div className="absolute -top-4 left-0 right-0 flex justify-center">
                 <span className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
                   <Zap className="h-3 w-3" /> Most Popular
@@ -111,7 +118,7 @@ export default function Pricing({ setActiveTab }) {
               <h3 className="text-xl font-bold text-slate-100 mb-2">{tier.name}</h3>
               <div className="flex items-baseline gap-1 mb-2">
                 <span className="text-4xl font-extrabold text-white">{tier.price}</span>
-                <span className="text-slate-400 font-medium">/month</span>
+                <span className="text-slate-400 font-medium">{tier.period}</span>
               </div>
               <p className="text-sm text-slate-400">{tier.description}</p>
             </div>
@@ -127,14 +134,18 @@ export default function Pricing({ setActiveTab }) {
 
             <div className="mt-auto">
               <button
-                onClick={tier.action}
+                onClick={() => {
+                  if (tier.targetRoute) {
+                    setActiveTab(tier.targetRoute);
+                  }
+                }}
                 className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all ${
-                  tier.popular
+                  tier.isPopular
                     ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20"
                     : "bg-white hover:bg-slate-200 text-black"
                 }`}
               >
-                <tier.icon className="h-4 w-4" />
+                <CalendarCheck className="h-4 w-4" />
                 {tier.buttonText}
               </button>
             </div>

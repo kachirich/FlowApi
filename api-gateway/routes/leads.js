@@ -60,61 +60,15 @@ router.post("/inbound", apiKeyAuth, webhookIngressLimiter, async (req, res, next
     const payload = req.body;
     const isTest = !!(payload && payload.flow_api_test);
 
-    // 1. Check daily lead cap
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(
-        `INSERT INTO lead_counters (user_id, daily_lead_cap, daily_leads_received, last_reset_date) 
-         VALUES ($1, 100, 0, CURRENT_DATE) 
-         ON CONFLICT (user_id) DO NOTHING`,
-        [userId]
-      );
-
-      const counterResult = await client.query(
-        `SELECT daily_lead_cap, daily_leads_received, last_reset_date 
-         FROM lead_counters 
-         WHERE user_id = $1 FOR UPDATE`,
-        [userId]
-      );
-      let { daily_lead_cap, daily_leads_received, last_reset_date } = counterResult.rows[0];
-      const today = new Date().toISOString().split("T")[0];
-      const lastReset = new Date(last_reset_date).toISOString().split("T")[0];
-
-      if (today !== lastReset) daily_leads_received = 0;
-
-      if (daily_leads_received >= daily_lead_cap) {
-        await client.query("ROLLBACK");
-        client.release();
-        return res.status(429).json({
-          success: false,
-          message: "Daily lead cap reached. Please upgrade your plan or wait until tomorrow.",
-        });
-      }
-
-      await client.query(
-        `UPDATE lead_counters 
-         SET daily_leads_received = $1 + 1, last_reset_date = CURRENT_DATE 
-         WHERE user_id = $2`,
-        [daily_leads_received, userId]
-      );
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-
     // 2. Look up user's active destinations
-    const webhooksResult = await query(
-      `SELECT id, target_url, http_method, masked_key, custom_headers 
-       FROM webhook_keys 
-       WHERE user_id = $1`,
+    const destinationsResult = await query(
+      `SELECT id, target_url, daily_cap, is_active 
+       FROM destinations 
+       WHERE user_id = $1 AND is_active = TRUE`,
       [userId]
     );
 
-    const activeDestinations = webhooksResult.rows.filter(w => w.target_url);
+    const activeDestinations = destinationsResult.rows;
 
     // 3. Extract Lead Info
     const firstName = findValue(payload, ['first_name', 'firstName', 'first']) || '';
@@ -130,10 +84,10 @@ router.post("/inbound", apiKeyAuth, webhookIngressLimiter, async (req, res, next
     const leadScore = calculateLeadScore(payload);
 
     // 4. Vault the lead
-    const primaryWebhookId = activeDestinations.length > 0 ? activeDestinations[0].id : null;
+    const primaryDestinationId = activeDestinations.length > 0 ? activeDestinations[0].id : null;
     await query(
-      `INSERT INTO ghl_leads (contact_id, raw_payload, status, webhook_key_id, lead_score, first_name, last_name, email, phone, delivery_status, retry_count, user_id, is_test)
-       VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO ghl_leads (contact_id, raw_payload, status, webhook_key_id, destination_id, lead_score, first_name, last_name, email, phone, delivery_status, retry_count, user_id, is_test)
+       VALUES ($1, $2::jsonb, $3, NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (contact_id) DO UPDATE SET
          status = EXCLUDED.status,
          raw_payload = EXCLUDED.raw_payload,
@@ -144,8 +98,9 @@ router.post("/inbound", apiKeyAuth, webhookIngressLimiter, async (req, res, next
          phone = EXCLUDED.phone,
          delivery_status = EXCLUDED.delivery_status,
          retry_count = EXCLUDED.retry_count,
+         destination_id = EXCLUDED.destination_id,
          is_test = EXCLUDED.is_test`,
-      [contactId, JSON.stringify(payload), 'PENDING', primaryWebhookId, leadScore, firstName, lastName, email, phone, 'PENDING', 0, userId, isTest]
+      [contactId, JSON.stringify(payload), 'PENDING', primaryDestinationId, leadScore, firstName, lastName, email, phone, 'PENDING', 0, userId, isTest]
     );
 
     // 5. Trigger Multi-Mode Smart Dispatcher

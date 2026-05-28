@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "react-hot-toast";
 import LandingPage from "./pages/LandingPage";
 import Login from "./Login";
 import Dashboard from "./Dashboard";
@@ -10,6 +11,16 @@ import ErrorBoundary from "./components/ErrorBoundary";
 function App() {
   return (
     <ErrorBoundary>
+      <Toaster 
+        position="top-right" 
+        toastOptions={{
+          style: {
+            background: '#0f172a',
+            color: '#f8fafc',
+            border: '1px solid rgba(51, 65, 85, 0.5)',
+          }
+        }} 
+      />
       <Routes>
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />

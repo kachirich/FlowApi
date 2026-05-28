@@ -20,6 +20,7 @@ import stripeRoutes from "./routes/stripe.js";
 import billingRoutes from "./routes/billing.js";
 import apiKeyRoutes from "./routes/apiKeys.js";
 import userRoutes from "./routes/users.js";
+import destinationRoutes from "./routes/destinations.js";
 import routes from "./routes/index.js";
 
 const app = express();
@@ -92,6 +93,9 @@ app.use("/api/keys", apiKeyRoutes);
 
 // Users routes
 app.use("/api/users", userRoutes);
+
+// Destinations routes
+app.use("/api/destinations", destinationRoutes);
 
 // Public fallback routes
 app.use(routes);

@@ -47,6 +47,7 @@ import {
   Activity,
   Settings,
   Lock,
+  Shuffle,
 } from "lucide-react";
 
 import BookingWidget from "./components/BookingWidget";
@@ -55,6 +56,7 @@ import WebhookLogs from "./components/WebhookLogs";
 import UpgradeModal from "./components/UpgradeModal";
 import WebhookConfig from "./components/WebhookConfig";
 import SetupTutorial from "./components/SetupTutorial";
+import DestinationManager from "./components/DestinationManager";
 import { useAuth } from "./context/AuthContext";
 import { API_BASE_URL } from "./utils/apiConfig";
 import { webhookDestinationSchema, jsonKeyMappingSchema } from "./utils/validators";
@@ -2498,6 +2500,9 @@ export default function Dashboard() {
           <button id="tour-destination-sandbox" onClick={() => setActiveTab("sandbox")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Destination Sandbox" : ""}>
             <FlaskConical className="h-4 w-4" /> {!sidebarCollapsed && "Destination Sandbox"}
           </button>
+          <button onClick={() => setActiveTab("destinations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "destinations" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Destinations" : ""}>
+            <Shuffle className="h-4 w-4" /> {!sidebarCollapsed && "Destinations"}
+          </button>
           <button 
             onClick={() => {
               if (stats.planType === 'free') {
@@ -2564,6 +2569,7 @@ export default function Dashboard() {
         <nav className="md:hidden flex overflow-x-auto border-b border-slate-800/60 bg-surface px-4 py-2 gap-2 hide-scrollbar">
           <button onClick={() => setActiveTab("dashboard")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "dashboard" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Dashboard</button>
           <button onClick={() => setActiveTab("sandbox")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-500"}`}>Sandbox</button>
+          <button onClick={() => setActiveTab("destinations")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "destinations" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Destinations</button>
           <button 
             onClick={() => {
               if (stats.planType === 'free') {
@@ -2667,6 +2673,8 @@ export default function Dashboard() {
             </>
           ) : activeTab === "sandbox" ? (
             <EgressTester leads={leads} />
+          ) : activeTab === "destinations" ? (
+            <DestinationManager />
           ) : activeTab === "logs" ? (
             <WebhookLogs planType={stats.planType} setUpgradeModal={setUpgradeModal} />
           ) : activeTab === "consulting" ? (

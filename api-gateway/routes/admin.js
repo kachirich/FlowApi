@@ -71,9 +71,10 @@ router.get("/dashboard", authenticate, async (req, res, next) => {
         `SELECT wl.method    AS method,
                 wl.status_code AS status,
                 wl.created_at  AS timestamp,
-                wk.webhook_url AS endpoint
+                COALESCE(wk.webhook_url, d.target_url) AS endpoint
            FROM webhook_logs wl
            LEFT JOIN webhook_keys wk ON wl.webhook_id = wk.id
+           LEFT JOIN destinations d ON wl.destination_id = d.id
           WHERE wl.user_id = $1
           ORDER BY wl.created_at DESC
           LIMIT 10`,
@@ -382,9 +383,10 @@ router.get("/leads", authenticate, async (req, res, next) => {
         gl.retry_count AS "retryCount",
         gl.last_delivery_error AS "lastDeliveryError",
         gl.is_test AS "is_test",
-        wk.masked_key AS source_webhook
+        COALESCE(wk.masked_key, d.name) AS source_webhook
       FROM ghl_leads gl
       LEFT JOIN webhook_keys wk ON gl.webhook_key_id = wk.id
+      LEFT JOIN destinations d ON gl.destination_id = d.id
       WHERE gl.user_id = $1
       ORDER BY gl.created_at DESC
       LIMIT 100

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../db/connection.js';
+import redisClient from '../utils/redisClient.js';
 
 /**
  * Middleware for authenticating requests using API Keys.
@@ -20,10 +21,31 @@ export const apiKeyAuth = async (req, res, next) => {
 
     // Hash the provided token
     const keyHash = crypto.createHash('sha256').update(token).digest('hex');
+    const cacheKey = `apikey:${keyHash}`;
 
-    // Query the database for the hash
+    // 1. Try fetching from Redis (Edge Authentication)
+    try {
+      const cachedData = await redisClient.get(cacheKey);
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        req.user = parsed;
+
+        // Background update of last_used_at to Postgres (fire and forget)
+        query(
+          `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`,
+          [parsed.key_id]
+        ).catch(err => console.error('Failed to update last_used_at (cache hit):', err));
+
+        return next();
+      }
+    } catch (redisErr) {
+      console.error('Redis cache error during API key auth:', redisErr);
+      // Fallback to Postgres if Redis fails
+    }
+
+    // 2. Cache miss -> Query the database for the hash
     const result = await query(
-      `SELECT api_keys.id AS key_id, users.id AS user_id, users.email, users.plan_type 
+      `SELECT api_keys.id AS key_id, users.id AS user_id, users.email, users.tier 
        FROM api_keys
        JOIN users ON api_keys.user_id = users.id
        WHERE api_keys.key_hash = $1`,
@@ -37,7 +59,21 @@ export const apiKeyAuth = async (req, res, next) => {
       return next(error);
     }
 
-    const { key_id, user_id, email, plan_type } = result.rows[0];
+    const { key_id, user_id, email, tier } = result.rows[0];
+
+    const userPayload = {
+      key_id,
+      id: user_id,
+      email,
+      tier
+    };
+
+    // 3. Save to Redis for subsequent requests (1 hour expiration)
+    try {
+      await redisClient.setEx(cacheKey, 3600, JSON.stringify(userPayload));
+    } catch (redisErr) {
+      console.error('Failed to cache API key payload to Redis:', redisErr);
+    }
 
     // Update last_used_at in the background (no need to await)
     query(
@@ -46,11 +82,7 @@ export const apiKeyAuth = async (req, res, next) => {
     ).catch(err => console.error('Failed to update last_used_at:', err));
 
     // Attach user information to req.user for downstream middleware/controllers
-    req.user = {
-      id: user_id,
-      email: email,
-      plan_type: plan_type
-    };
+    req.user = userPayload;
 
     next();
   } catch (error) {

@@ -22,6 +22,24 @@ services:
       start_period: 15s
 
   # ────────────────────────────────────────────────────────────────────────────
+  # PgBouncer Connection Pooler
+  # ────────────────────────────────────────────────────────────────────────────
+  pgbouncer:
+    image: bitnami/pgbouncer:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6432:6432"
+    environment:
+      POSTGRESQL_USERNAME: ${PGUSER:-postgres}
+      POSTGRESQL_PASSWORD: ${PGPASSWORD:-flow_secure_admin@123}
+      POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
+      POSTGRESQL_HOST: pg-db
+      PGBOUNCER_POOL_MODE: transaction
+    depends_on:
+      pg-db:
+        condition: service_healthy
+
+  # ────────────────────────────────────────────────────────────────────────────
   # Redis Cache / Rate Limiter
   # ────────────────────────────────────────────────────────────────────────────
   redis:
@@ -49,16 +67,16 @@ services:
       - .env
     environment:
       # Override .env localhost values with Docker service names
-      PGHOST: pg-db
-      PGPORT: 5432
+      PGHOST: pgbouncer
+      PGPORT: 6432
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: https://flowgateway.dev
       BASE_URL: https://flowgateway.dev
       GOOGLE_CALLBACK_URL: https://flowgateway.dev/api/auth/google/callback
       CORS_ORIGIN: https://flowgateway.dev
     depends_on:
-      pg-db:
-        condition: service_healthy
+      pgbouncer:
+        condition: service_started
       redis:
         condition: service_healthy
 

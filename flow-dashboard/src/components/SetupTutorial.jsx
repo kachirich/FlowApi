@@ -3,39 +3,27 @@ import { BookOpen, Info, Sparkles, Code, ArrowUpCircle } from "lucide-react";
 const TUTORIAL_STEPS = [
   {
     step: 1,
-    title: "The Sandbox (Free)",
+    title: "1. Forge Your API Key",
     accent: "cyan",
-    description: "Generate a webhook, paste it into your third-party app (e.g., GoHighLevel), and use the 'Test Ping' lightning bolt button to verify the connection. FlowAPI operates as a zero-retention conduit on the Free tier.",
-    tip: "You can run FlowAPI alongside Zapier during a transition period. Use the Sandbox to test payloads without affecting production.",
+    description: "Generate a cryptographically secure flow_live_ API key. This is your authentication token. You will provide this key to your lead source (or enter it into your inbound sending system) to authorize traffic into the gateway.",
+    tip: "Keep your keys vaulted. All inbound POST requests to /api/v1/leads/inbound must include this token in the Authorization: Bearer header.",
     hasUpgrade: false,
   },
   {
     step: 2,
-    title: "Lead Ledger (Basic)",
+    title: "2. Map Your Destinations",
     accent: "amber",
-    description: "Upgrading to Basic unlocks the Lead Ledger. This gives you full visibility into the raw JSON payloads and tracks your 'Tax Avoided' ROI by visualizing exactly what FlowAPI catches and forwards.",
-    tip: "With the Lead Ledger, you no longer have to guess what data is passing through. Inspect headers, payloads, and delivery status in real time.",
-    hasUpgrade: true,
-    upgradeTier: "Basic",
+    description: "Tell the Smart Dispatcher where to route your data. Navigate to the Destinations tab to lock in the target webhook URLs (e.g., your buyer's CRM).",
+    tip: "You can apply Daily Caps to throttle ingestion, and our system automatically filters out invalid URLs to prevent SSRF attacks.",
+    hasUpgrade: false,
   },
   {
     step: 3,
-    title: "Advanced Headers (Pro)",
+    title: "3. Fire Webhooks & Monitor the Ledger",
     accent: "violet",
-    description: "Pro architects gain access to the 'Advanced Headers' vault. Inject static tokens (e.g., Authorization: Bearer <token>) to connect directly to secure CRMs—the industry standard for agency routing.",
-    tip: "By injecting tokens server-side, you keep your credentials out of client-side payloads, preventing credential leakage.",
-    codeSnippet: '{\n  "Authorization": "Bearer YOUR_SECURE_TOKEN",\n  "X-Custom-Routing-Key": "agency_123"\n}',
-    hasUpgrade: true,
-    upgradeTier: "Pro",
-  },
-  {
-    step: 4,
-    title: "BullMQ Auto-Retry Engine (Plus)",
-    accent: "emerald",
-    description: "Plus users never lose leads. The system utilizes the Meta Handshake and a BullMQ Auto-Retry Engine with exponential backoff to fight through CRM outages and guarantee delivery.",
-    tip: "If a downstream webhook returns a 500 error, FlowAPI queues the job and retries automatically. Your data is resilient against external downtime.",
-    hasUpgrade: true,
-    upgradeTier: "Plus",
+    description: "Once your source and destination are connected, start sending traffic. The gateway will automatically authenticate, rate-limit, and dispatch the payloads.",
+    tip: "Use the Live Dashboard and Analytics tabs to inspect raw JSON payloads, monitor delivery statuses, and track your active Redis queues in real-time.",
+    hasUpgrade: false,
   },
 ];
 
@@ -64,14 +52,6 @@ const tutorialAccents = {
     tipBorder: "border-violet-500/20",
     tipBg: "bg-violet-500/[0.03]",
   },
-  emerald: {
-    border: "border-emerald-500/30",
-    bg: "bg-emerald-500/[0.06]",
-    text: "text-emerald-400",
-    num: "bg-emerald-500/15 text-emerald-400",
-    tipBorder: "border-emerald-500/20",
-    tipBg: "bg-emerald-500/[0.03]",
-  },
 };
 
 export default function SetupTutorial({ onOpenFeatures, setActiveTab }) {
@@ -95,7 +75,7 @@ export default function SetupTutorial({ onOpenFeatures, setActiveTab }) {
           </button>
         </div>
         <p className="text-sm text-slate-400 leading-relaxed max-w-2xl">
-          Route your GoHighLevel leads through FlowAPI’s zero-retention scoring engine. Follow these progressive tiers to unlock enterprise routing capabilities.
+          Route your inbound leads through FlowAPI's secure, low-latency API gateway. Follow these three steps to establish authorization and dispatch rules.
         </p>
       </div>
 
@@ -175,14 +155,14 @@ export default function SetupTutorial({ onOpenFeatures, setActiveTab }) {
           Ready to deploy?
         </p>
         <p className="text-xs text-slate-400 mb-4">
-          Switch to your Billing console to unlock advanced routing, or head to the Dashboard to create a sandbox webhook.
+          Head to the API Keys tab to generate your authorization tokens, or map your first destination to start routing leads.
         </p>
         <div className="flex items-center justify-center gap-3">
-          <button onClick={() => setActiveTab && setActiveTab("pricing")} className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition-colors">
-            View Tiers
+          <button onClick={() => setActiveTab && setActiveTab("sandbox")} className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold hover:bg-emerald-500/20 transition-colors">
+            Manage API Keys
           </button>
-          <button onClick={() => setActiveTab && setActiveTab("dashboard")} className="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors">
-            Go to Dashboard
+          <button onClick={() => setActiveTab && setActiveTab("destinations")} className="px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold hover:bg-slate-700 transition-colors">
+            Manage Destinations
           </button>
         </div>
       </div>

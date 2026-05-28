@@ -3,6 +3,7 @@ import dns from "dns/promises";
 import { URL } from "url";
 import { query } from "../db/connection.js";
 import redisClient from "../utils/redisClient.js";
+import { webhookQueue } from "../services/queue.js";
 
 // Atomic Lua script to check daily lead cap and increment in Redis
 const CHECK_CAP_LUA = `
@@ -31,21 +32,22 @@ const CHECK_CAP_LUA = `
  */
 export async function dispatchLead(userId, payload, contactId, isTest = false) {
   // 1. Fetch broker's strategy
-  const userRes = await query("SELECT routing_strategy, plan_type FROM users WHERE id = $1", [userId]);
+  const userRes = await query("SELECT routing_strategy, plan_type, tier FROM users WHERE id = $1", [userId]);
   if (userRes.rowCount === 0) {
     return { success: false, error: "USER_NOT_FOUND", message: "Broker user not found." };
   }
   const routingStrategy = userRes.rows[0].routing_strategy || "round_robin";
   const planType = userRes.rows[0].plan_type || "free";
+  const tier = userRes.rows[0].tier || "sandbox";
 
   // 2. Fetch active destinations
-  const webhooksRes = await query(
-    `SELECT id, target_url, http_method, daily_lead_cap, custom_headers 
-     FROM webhook_keys 
-     WHERE user_id = $1`,
+  const destinationsRes = await query(
+    `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers 
+     FROM destinations 
+     WHERE user_id = $1 AND is_active = TRUE`,
     [userId]
   );
-  const destinations = webhooksRes.rows.filter((w) => w.target_url);
+  const destinations = destinationsRes.rows;
 
   if (destinations.length === 0) {
     return { success: false, error: "NO_DESTINATIONS", message: "No active destinations configured." };
@@ -54,33 +56,31 @@ export async function dispatchLead(userId, payload, contactId, isTest = false) {
   const todayStr = new Date().toISOString().split("T")[0];
 
   if (routingStrategy === "round_robin") {
-    // Round Robin: Deliver strictly to the first available destination under cap
     for (const wh of destinations) {
-      const cap = wh.daily_lead_cap ?? 10;
+      const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
 
-      // Check daily cap atomically in Redis
-      const isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
-        keys: [redisKey],
-        arguments: [String(cap)],
-      });
+      let isUnderCap = 1;
+      if (cap > 0) {
+        isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
+          keys: [redisKey],
+          arguments: [String(cap)],
+        });
+      }
 
       if (isUnderCap === 1) {
-        // Safe to attempt delivery
         try {
           const success = await attemptHttpRequest(wh, payload, planType, isTest);
           if (success) {
-            // Write success log to DB
             await query(
-              `INSERT INTO webhook_logs (user_id, webhook_id, method, status_code, request_payload, is_test)
+              `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
                VALUES ($1, $2, $3, 200, $4, $5)`,
               [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), isTest]
             ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
 
-            // Update lead status
             await query(
               `UPDATE ghl_leads 
-               SET delivery_status = 'DELIVERED', status = '200', webhook_key_id = $1, last_delivery_error = NULL
+               SET delivery_status = 'DELIVERED', status = '200', destination_id = $1, last_delivery_error = NULL
                WHERE contact_id = $2`,
               [wh.id, contactId]
             ).catch(() => {});
@@ -95,23 +95,36 @@ export async function dispatchLead(userId, payload, contactId, isTest = false) {
             throw new Error("HTTP request failed with non-2xx status code");
           }
         } catch (err) {
-          // Decrement cap in Redis since delivery failed
-          await redisClient.decr(redisKey).catch(() => {});
+          if (cap > 0) {
+            await redisClient.decr(redisKey).catch(() => {});
+          }
 
-          // Write failure log to DB
-          await query(
-            `INSERT INTO webhook_logs (user_id, webhook_id, method, status_code, request_payload, response_error, is_test)
-             VALUES ($1, $2, $3, 500, $4, $5, $6)`,
-            [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), err.message, isTest]
-          ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
+          if (tier === 'sandbox') {
+            await query(
+              `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+               VALUES ($1, $2, $3, 500, $4, $5, $6)`,
+              [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
+            ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
+            
+            await query(
+              `UPDATE ghl_leads SET delivery_status = 'FAILED', status = '500', last_delivery_error = 'Failed - No Retries for Sandbox' WHERE contact_id = $1`,
+              [contactId]
+            ).catch(() => {});
 
-          // Continue loop to try next destination
-          console.warn(`[Dispatcher] Failed sending to ${wh.target_url}, trying next. Error: ${err.message}`);
+            console.warn(`[Dispatcher] Failed sending to ${wh.target_url}, trying next. Error: ${err.message}`);
+          } else if (tier === 'growth') {
+            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
+            await query(`UPDATE ghl_leads SET delivery_status = 'RETRYING', status = '500', last_delivery_error = $1 WHERE contact_id = $2`, [err.message, contactId]).catch(() => {});
+            return { success: true, strategy: "round_robin", destination: wh.target_url, destinationId: wh.id, queued: true };
+          } else if (tier === 'enterprise') {
+            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 100, backoff: { type: 'exponential', delay: 5000 } });
+            await query(`UPDATE ghl_leads SET delivery_status = 'RETRYING', status = '500', last_delivery_error = $1 WHERE contact_id = $2`, [err.message, contactId]).catch(() => {});
+            return { success: true, strategy: "round_robin", destination: wh.target_url, destinationId: wh.id, queued: true };
+          }
         }
       }
     }
 
-    // If loop finished and no delivery succeeded
     return {
       success: false,
       error: "NO_AVAILABLE_DESTINATIONS",
@@ -121,13 +134,16 @@ export async function dispatchLead(userId, payload, contactId, isTest = false) {
     // Broadcast: Deliver to ALL destinations under cap
     let deliveredCount = 0;
     for (const wh of destinations) {
-      const cap = wh.daily_lead_cap ?? 10;
+      const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
 
-      const isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
-        keys: [redisKey],
-        arguments: [String(cap)],
-      });
+      let isUnderCap = 1;
+      if (cap > 0) {
+        isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
+          keys: [redisKey],
+          arguments: [String(cap)],
+        });
+      }
 
       if (isUnderCap === 1) {
         try {
@@ -135,7 +151,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false) {
           if (success) {
             deliveredCount++;
             await query(
-              `INSERT INTO webhook_logs (user_id, webhook_id, method, status_code, request_payload, is_test)
+              `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
                VALUES ($1, $2, $3, 200, $4, $5)`,
               [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), isTest]
             ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
@@ -143,12 +159,23 @@ export async function dispatchLead(userId, payload, contactId, isTest = false) {
             throw new Error("HTTP request failed with non-2xx status code");
           }
         } catch (err) {
-          await redisClient.decr(redisKey).catch(() => {});
-          await query(
-            `INSERT INTO webhook_logs (user_id, webhook_id, method, status_code, request_payload, response_error, is_test)
-             VALUES ($1, $2, $3, 500, $4, $5, $6)`,
-            [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), err.message, isTest]
-          ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
+          if (cap > 0) {
+            await redisClient.decr(redisKey).catch(() => {});
+          }
+
+          if (tier === 'sandbox') {
+            await query(
+              `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+               VALUES ($1, $2, $3, 500, $4, $5, $6)`,
+              [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
+            ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
+          } else if (tier === 'growth') {
+            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
+            deliveredCount++;
+          } else if (tier === 'enterprise') {
+            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 100, backoff: { type: 'exponential', delay: 5000 } });
+            deliveredCount++;
+          }
         }
       }
     }

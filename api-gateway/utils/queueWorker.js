@@ -29,9 +29,12 @@ export async function processQueue() {
   try {
     // Select leads that are PENDING or RETRYING
     const res = await query(`
-      SELECT gl.*, wk.target_url, wk.http_method
+      SELECT gl.*, 
+             COALESCE(wk.target_url, d.target_url) AS target_url,
+             COALESCE(wk.http_method, 'POST') AS http_method
       FROM ghl_leads gl
       LEFT JOIN webhook_keys wk ON gl.webhook_key_id = wk.id
+      LEFT JOIN destinations d ON gl.destination_id = d.id
       WHERE gl.delivery_status IN ('PENDING', 'RETRYING')
       ORDER BY gl.created_at ASC
     `);

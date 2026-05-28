@@ -51,18 +51,18 @@ async function run() {
     // 2. Setup 2 Webhook Destinations
     // Destination 1: http://localhost:4501/dest1, Cap: 1
     // Destination 2: http://localhost:4502/dest2, Cap: 2
-    await query("DELETE FROM webhook_keys WHERE user_id = $1", [userId]);
+    await query("DELETE FROM destinations WHERE user_id = $1", [userId]);
     const wkResult1 = await query(
-      `INSERT INTO webhook_keys (user_id, api_key, masked_key, webhook_url, target_url, daily_lead_cap)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [userId, 'key_dummy1', 'masked_1', 'http://dummy1', 'http://localhost:4501/dest1', 1]
+      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active)
+       VALUES ($1, $2, $3, $4, TRUE) RETURNING id`,
+      [userId, 'Dest 1', 'http://localhost:4501/dest1', 1]
     );
     const dest1Id = wkResult1.rows[0].id;
 
     const wkResult2 = await query(
-      `INSERT INTO webhook_keys (user_id, api_key, masked_key, webhook_url, target_url, daily_lead_cap)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [userId, 'key_dummy2', 'masked_2', 'http://dummy2', 'http://localhost:4502/dest2', 2]
+      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active)
+       VALUES ($1, $2, $3, $4, TRUE) RETURNING id`,
+      [userId, 'Dest 2', 'http://localhost:4502/dest2', 2]
     );
     const dest2Id = wkResult2.rows[0].id;
 

@@ -73,6 +73,7 @@ export async function initializeDatabase() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_subscription_id VARCHAR(255);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'free';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'inactive';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS tier VARCHAR(50) DEFAULT 'sandbox';
       
       -- Lifetime Ledger
       ALTER TABLE users ADD COLUMN IF NOT EXISTS lifetime_webhooks_created INTEGER DEFAULT 0;
@@ -187,8 +188,23 @@ export async function initializeDatabase() {
         daily_leads_received INTEGER NOT NULL DEFAULT 0,
         last_reset_date DATE NOT NULL DEFAULT CURRENT_DATE
       );
+
+      -- Destinations Table
+      CREATE TABLE IF NOT EXISTS destinations (
+        id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id      UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name         VARCHAR(255) NOT NULL,
+        target_url   TEXT         NOT NULL,
+        daily_cap    INTEGER      NOT NULL DEFAULT 0,
+        is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
+        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_destinations_user_id ON destinations(user_id);
+
+      ALTER TABLE webhook_logs ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE;
+      ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL;
     `);
-    console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters & lead_counters tables ready");
+    console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters, lead_counters & destinations tables ready");
   } catch (err) {
     console.error("[db] Failed to initialise the database schema. Retrying is highly recommended.", err.message);
   }

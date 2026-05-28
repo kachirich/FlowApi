@@ -24,8 +24,7 @@ export const AuthProvider = ({ children }) => {
         
         if (response.data?.success && response.data?.user) {
           setAuthenticatedUser(response.data.user);
-            localStorage.setItem('flow_logged_in', 'true'); // Ensure sync
-          }
+          localStorage.setItem('flow_logged_in', 'true'); // Ensure sync
         } else {
           // Clean up if the session is absent or expired
           localStorage.removeItem('flow_logged_in');
