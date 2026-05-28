@@ -23,7 +23,11 @@ apiClient.interceptors.response.use(
         console.error(`[Axios Interceptor] 401 Unauthorized on route: ${error.config?.url}`);
         localStorage.removeItem('flow_logged_in');
         localStorage.removeItem('trusted_device_token');
-        window.location.href = '/login';
+        
+        // Prevent infinite redirect loops on the initial session check
+        if (!error.config?.url?.includes('/api/auth/me') && window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
       } else {
         // Extract standardized error message from backend
         const errorMessage = data?.message || data?.error || error.message || 'An error occurred';

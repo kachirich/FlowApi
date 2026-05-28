@@ -67,6 +67,7 @@ app.use("/api/billing", billingRoutes);
 
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
+app.use(requestLogger);           // Log every request to PostgreSQL
 
 // Admin dashboard API
 app.use("/api/admin", adminRoutes);

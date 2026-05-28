@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { API_BASE_URL } from '../utils/apiConfig';
+import api from '../utils/api';
 
 const AuthContext = createContext();
 
@@ -20,16 +20,10 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include' // Must explicitly include cookies
-        });
+        const response = await api.get('/api/auth/me');
         
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.user) {
-            setAuthenticatedUser(data.user);
+        if (response.data?.success && response.data?.user) {
+          setAuthenticatedUser(response.data.user);
             localStorage.setItem('flow_logged_in', 'true'); // Ensure sync
           }
         } else {
