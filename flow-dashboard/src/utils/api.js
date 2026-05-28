@@ -1,10 +1,9 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { API_BASE_URL } from './apiConfig';
 
 const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true,
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
+  withCredentials: true, // CRITICAL: Forces browser to send cookies in dev and prod
   headers: {
     'Content-Type': 'application/json',
   },

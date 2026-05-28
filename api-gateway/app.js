@@ -34,10 +34,24 @@ app.use(helmet({
   },
 }));
 
-const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+const defaultOrigins = [
+  'http://localhost:5173',
+  'https://flowgateway.dev'
+];
+const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
 
 app.use(cors({
-  origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, or our API keys traffic)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-trusted-device-token"]
