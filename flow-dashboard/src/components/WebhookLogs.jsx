@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Activity, X, FileJson, Loader2, AlertCircle, Lock } from "lucide-react";
-import { API_BASE_URL } from "../utils/apiConfig";
+import apiClient from "../utils/api";
 
 export default function WebhookLogs({ planType, setUpgradeModal }) {
   const [logs, setLogs] = useState([]);
@@ -12,27 +12,16 @@ export default function WebhookLogs({ planType, setUpgradeModal }) {
     const fetchLogs = async () => {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem("flow_token");
-      if (!token) {
-        setError("Unauthorized");
-        setLoading(false);
-        return;
-      }
       
       try {
-        const url = `${API_BASE_URL}/api/webhooks/logs`;
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        
-        if (res.ok && data.success) {
-          setLogs(data.data || []);
+        const res = await apiClient.get("/api/webhooks/logs");
+        if (res.data && res.data.success) {
+          setLogs(res.data.data || []);
         } else {
-          setError(data.message || "Failed to fetch logs");
+          setError(res.data?.message || "Failed to fetch logs");
         }
       } catch (err) {
-        setError("Network error fetching logs");
+        setError(err.response?.data?.message || err.response?.data?.error || "Network error fetching logs");
       } finally {
         setLoading(false);
       }

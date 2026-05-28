@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@calcom/embed-react": "^1.5.3",
+    "axios": "^1.16.1",
     "lucide-react": "^1.14.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

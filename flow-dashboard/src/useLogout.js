@@ -1,18 +1,18 @@
+import { API_BASE_URL } from "./utils/apiConfig";
 
-/**
- * useLogout
- *
- * Returns a `logout` function that clears the stored JWT
- * and redirects the user to the login page.
- *
- * Usage:
- *   const logout = useLogout();
- *   <button onClick={logout}>Sign out</button>
- */
 export default function useLogout() {
-  return () => {
-    localStorage.removeItem("flow_token");
-    localStorage.removeItem("token");
-    window.location.href = "/login";
+  return async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" }
+      });
+    } catch (err) {
+      console.error("Logout API error:", err);
+    } finally {
+      localStorage.removeItem("flow_logged_in");
+      window.location.href = "/login";
+    }
   };
 }

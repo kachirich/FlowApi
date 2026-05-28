@@ -256,7 +256,7 @@ describe("BullMQ Worker Failsafe", () => {
    TEST 4: GDPR Right to be Forgotten (Account Deletion Cascade)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-describe("GDPR Right to be Forgotten — DELETE /api/auth/me", () => {
+describe("GDPR Right to be Forgotten — DELETE /api/users/me", () => {
   let gdprUser;
   let gdprToken;
   let gdprWebhookId;
@@ -291,11 +291,12 @@ describe("GDPR Right to be Forgotten — DELETE /api/auth/me", () => {
   it("should delete the user and cascade-remove all webhooks and logs", async () => {
     // 1. Delete the user
     const deleteRes = await request(app)
-      .delete("/api/auth/me")
+      .delete("/api/users/me")
       .set("Authorization", `Bearer ${gdprToken}`);
 
     expect(deleteRes.status).toBe(200);
     expect(deleteRes.body.success).toBe(true);
+    expect(deleteRes.body.message).toBe("Account permanently deleted");
 
     // 2. Assert webhook_keys are gone
     const webhooksAfter = await query(

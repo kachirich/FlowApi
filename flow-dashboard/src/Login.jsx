@@ -9,15 +9,26 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ── Google OAuth token catch ──────────────────────────────────────────
+  // ── Google OAuth token catch and Session Validation ───────────────────
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const token = params.get("token");
-    if (token) {
-      localStorage.setItem("flow_token", token);
-      window.history.replaceState({}, document.title, "/login");
-      navigate("/", { replace: true });
-    }
+    const checkSession = async () => {
+      if (localStorage.getItem("flow_logged_in") === "true") {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+      try {
+        const res = await fetch(`${API}/api/auth/me`, {
+          credentials: "include"
+        });
+        if (res.ok) {
+          localStorage.setItem("flow_logged_in", "true");
+          navigate("/dashboard", { replace: true });
+        }
+      } catch (err) {
+        // Stay on login page
+      }
+    };
+    checkSession();
   }, [location, navigate]);
 
   // ── State Machine ─────────────────────────────────────────────────────
@@ -129,6 +140,7 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
@@ -141,10 +153,10 @@ export default function Login() {
         return;
       }
 
-      if (data.token) {
-        localStorage.setItem("flow_token", data.token);
+      if (data.success) {
+        localStorage.setItem("flow_logged_in", "true");
         toast.success("Welcome back!");
-        navigate("/", { replace: true });
+        navigate("/dashboard", { replace: true });
       }
     } catch (err) {
       toast.error(err.message);
@@ -164,6 +176,7 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/otp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
@@ -188,20 +201,18 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password, firstName, lastName }),
       });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.message || data.error || "Registration failed");
 
-      if (data.token) {
-        localStorage.setItem("flow_token", data.token);
-      }
-
       // Send OTP for email verification
       const otpRes = await fetch(`${API}/api/auth/otp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email }),
       });
 
@@ -229,18 +240,19 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, code }),
       });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.message || data.error || "Verification failed");
 
-      if (data.token) {
-        localStorage.setItem("flow_token", data.token);
+      if (data.success) {
+        localStorage.setItem("flow_logged_in", "true");
       }
 
       toast.success("Email verified successfully!");
-      navigate("/", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       toast.error(err.message);
       setOtp(["", "", "", "", "", ""]);
@@ -258,6 +270,7 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
@@ -280,6 +293,7 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/verify-reset-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, otp }),
       });
       const data = await res.json();
@@ -304,6 +318,7 @@ export default function Login() {
       const res = await fetch(`${API}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, otp: verifiedResetOtp, newPassword }),
       });
       const data = await res.json();

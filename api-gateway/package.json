@@ -18,6 +18,7 @@
     "axios": "^1.16.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.77.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "disposable-email-blocklist": "^0.0.1",
     "dotenv": "^16.4.7",

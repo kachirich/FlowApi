@@ -80,6 +80,7 @@ export async function initializeDatabase() {
       -- Metered Billing
       ALTER TABLE users ADD COLUMN IF NOT EXISTS monthly_request_count INTEGER DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS billing_cycle_reset TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS routing_strategy VARCHAR(50) DEFAULT 'round_robin';
 
       -- 3. The OTP Engine
       CREATE TABLE IF NOT EXISTS otps (
@@ -100,6 +101,7 @@ export async function initializeDatabase() {
         webhook_url     TEXT         NOT NULL,
         target_url      TEXT,
         http_method     VARCHAR(10)  DEFAULT 'POST',
+        daily_lead_cap  INTEGER      DEFAULT 10,
         created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_webhook_keys_api_key ON webhook_keys (api_key);
@@ -111,6 +113,7 @@ export async function initializeDatabase() {
         END IF;
       END $$;
       ALTER TABLE webhook_keys ADD COLUMN IF NOT EXISTS http_method VARCHAR(10) DEFAULT 'POST';
+      ALTER TABLE webhook_keys ADD COLUMN IF NOT EXISTS daily_lead_cap INTEGER DEFAULT 10;
 
       CREATE TABLE IF NOT EXISTS ghl_leads (
         id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),

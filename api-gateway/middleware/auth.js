@@ -12,17 +12,22 @@ const JWT_SECRET = process.env.JWT_SECRET;
  * with an appropriate `status` code — never responds directly.
  */
 export default function authenticate(req, _res, next) {
-  const authHeader = req.headers.authorization;
+  let token = req.cookies?.jwt;
+
+  if (!token && process.env.NODE_ENV === "test") {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+  }
 
   // ── Missing token ──────────────────────────────────────────────────────
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!token) {
     const error = new Error("Authentication required — no token provided");
     error.name = "Unauthorized";
     error.status = 401;
     return next(error);
   }
-
-  const token = authHeader.split(" ")[1];
 
   // ── Guard: secret not configured ───────────────────────────────────────
   if (!JWT_SECRET) {
@@ -43,8 +48,8 @@ export default function authenticate(req, _res, next) {
         ? "Token has expired"
         : "Token is invalid",
     );
-    error.name = "Forbidden";
-    error.status = 403;
+    error.name = "Unauthorized";
+    error.status = 401;
     next(error);
   }
 }

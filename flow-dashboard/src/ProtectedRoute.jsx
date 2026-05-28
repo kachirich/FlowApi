@@ -7,9 +7,9 @@ import { Navigate } from "react-router-dom";
  * Checks for a valid JWT in localStorage — if absent, redirects to /login.
  */
 export default function ProtectedRoute({ children }) {
-  const token = localStorage.getItem("flow_token");
+  const isLoggedIn = localStorage.getItem("flow_logged_in") === "true";
 
-  if (!token) {
+  if (!isLoggedIn) {
     return <Navigate to="/login" replace />;
   }
 

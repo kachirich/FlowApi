@@ -665,7 +665,7 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
   const handleCopyWebhook = async () => {
     if (!generatedWebhook) return;
     try {
-      await navigator.clipboard.writeText(generatedWebhook.webhookUrl);
+      await navigator.clipboard.writeText(generatedWebhook.apiKey);
       setWebhookCopied(true);
       setTimeout(() => setWebhookCopied(false), 2000);
     } catch { /* noop */ }
@@ -689,7 +689,7 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
           >
             <div className="flex items-center gap-3">
               <Link2 className={`h-4 w-4 ${webhookOpen ? "text-cyan-400" : "text-slate-400"}`} />
-              <span className="text-sm font-semibold">Webhook Generator</span>
+              <span className="text-sm font-semibold">Generate API Key</span>
             </div>
             <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${webhookOpen ? "rotate-180" : ""}`} />
           </button>
@@ -702,7 +702,7 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
                 disabled={generating}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 py-2.5 text-xs font-semibold text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
               >
-                {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin"/> Generating...</> : <><Plus className="h-3.5 w-3.5" /> Generate Secure Webhook</>}
+                {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin"/> Generating...</> : <><Plus className="h-3.5 w-3.5" /> Generate Secure API Key</>}
               </button>
 
               {generatedWebhook && (
@@ -713,21 +713,12 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
                   </div>
                   <div>
                     <div className="flex justify-between items-center mb-1 text-[10px] uppercase text-slate-500 font-semibold tracking-widest">
-                      <span>Webhook URL</span>
+                      <span>Raw API Key</span>
                       <button onClick={handleCopyWebhook} className="hover:text-cyan-400 flex items-center gap-1">{webhookCopied ? <ClipboardCheck className="h-3 w-3 text-emerald-400"/> : <Copy className="h-3 w-3"/>}</button>
                     </div>
-                    <code className="block w-full rounded border border-slate-700/50 bg-slate-900 p-2 font-mono text-[10px] text-slate-300 truncate">
-                      {generatedWebhook.webhookUrl}
+                    <code className="block w-full rounded border border-slate-700/50 bg-slate-900 p-2 font-mono text-[10px] text-slate-300 break-all">
+                      {generatedWebhook.apiKey}
                     </code>
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase text-slate-500 font-semibold tracking-widest mb-1 block">Forward Data To</label>
-                    <div className="flex gap-2">
-                      <input type="url" value={destinationUrl} onChange={(e) => onDestinationChange(e.target.value)} placeholder="https://..." className="flex-1 rounded border border-slate-700/50 bg-slate-900 px-2 py-1.5 font-mono text-[10px] text-slate-300 outline-none focus:border-cyan-500/40" />
-                      <button onClick={onSaveDestination} disabled={savingDestination || !destinationUrl} className="rounded bg-cyan-500/20 px-3 border border-cyan-500/30 text-[10px] font-semibold text-cyan-400 hover:bg-cyan-500/30 disabled:opacity-50">
-                        {savingDestination ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
-                      </button>
-                    </div>
                   </div>
                 </div>
               )}
@@ -946,20 +937,6 @@ function OneTimeSecretModal({ webhook, onClose }) {
               {webhook.apiKey}
             </code>
           </div>
-
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                Webhook URL
-              </label>
-              <button onClick={copyUrl} className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-cyan-400">
-                {copiedUrl ? <><ClipboardCheck className="h-3 w-3 text-emerald-400" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
-              </button>
-            </div>
-            <code className="block w-full rounded-lg border border-slate-700/50 bg-surface p-3 font-mono text-[11px] text-slate-300 break-all">
-              {webhook.webhookUrl}
-            </code>
-          </div>
         </div>
 
         <div className="mt-6">
@@ -1015,9 +992,9 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
           >
             <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${isCollapsed ? "-rotate-90" : ""}`} />
           </button>
-          <h3 className="text-sm font-semibold text-slate-100">
-            Active Webhooks & Analytics
-          </h3>
+          <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+            Active API Keys (Inbound)
+          </h2>
         </div>
         <div className="flex items-center gap-3">
           {webhooks.length > 0 && (
@@ -1043,43 +1020,20 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
         <table className="w-full text-left text-xs whitespace-nowrap">
           <thead>
             <tr className="border-b border-slate-800 text-slate-400">
-              <th className="pb-3 font-semibold px-2">Webhook ID (Masked)</th>
-              <th className="pb-3 font-semibold px-2">Target URL</th>
-              <th className="pb-3 font-semibold px-2">Method</th>
-              <th className="pb-3 font-semibold text-emerald-400 px-2">Clean Leads</th>
-              <th className="pb-3 font-semibold text-rose-400 px-2">Blocked</th>
+              <th className="pb-3 font-semibold px-2">API Key (Masked)</th>
+              <th className="pb-3 font-semibold px-2">Created At</th>
+              <th className="pb-3 font-semibold px-2">Last Used</th>
               <th className="pb-3 font-semibold text-right px-2">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
             {displayWebhooks.map((wh) => (
               <tr key={wh.id} className="transition-colors hover:bg-slate-800/20">
-                <td className="py-3 px-2 font-mono text-[11px] text-amber-400/70">{wh.masked_key}</td>
-                <td className="py-3 px-2 font-mono text-[11px] max-w-[200px] truncate" title={wh.target_url}>{wh.target_url || <span className="text-slate-500 italic">Not configured</span>}</td>
-                <td className="py-3 px-2">
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] font-bold text-cyan-400 border border-slate-700/50">
-                    {wh.http_method || "POST"}
-                  </span>
-                </td>
-                <td className="py-3 px-2 text-emerald-400/90 font-medium">{wh.clean_leads}</td>
-                <td className="py-3 px-2 text-rose-400/90 font-medium">{wh.blocked_leads}</td>
+                <td className="py-3 px-2 font-mono text-[11px] text-amber-400/70">{wh.prefix}...{wh.last_four}</td>
+                <td className="py-3 px-2 text-slate-300">{new Date(wh.created_at).toLocaleDateString()}</td>
+                <td className="py-3 px-2 text-slate-400 italic">{wh.last_used_at ? new Date(wh.last_used_at).toLocaleDateString() : 'Never'}</td>
                 <td className="py-3 px-2 text-right">
                   <div className="flex items-center justify-end gap-1.5">
-                    <button
-                      onClick={() => onTestPing(wh.id)}
-                      className="rounded bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-400 transition-colors hover:bg-amber-500/20 border border-amber-500/20"
-                      title="Send Test Payload"
-                    >
-                      <Zap className="h-3 w-3 inline-block mr-0.5 -mt-px" />
-                      Test
-                    </button>
-                    <button
-                      onClick={() => openConfigModal(wh)}
-                      className="rounded bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold text-cyan-400 transition-colors hover:bg-cyan-500/20 border border-cyan-500/20"
-                    >
-                      <Settings className="h-3 w-3 inline-block mr-0.5 -mt-px" />
-                      Configure
-                    </button>
                     <button
                       onClick={() => onRevoke(wh.id)}
                       className="rounded bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-400 transition-colors hover:bg-rose-500/20"
@@ -1092,8 +1046,8 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
             ))}
             {webhooks.length === 0 && (
               <tr>
-                <td colSpan="6" className="py-8 text-center text-slate-500 italic">
-                  No active webhooks. Generate one above.
+                <td colSpan="4" className="py-8 text-center text-slate-500 italic">
+                  No active API keys. Generate one above.
                 </td>
               </tr>
             )}
@@ -1405,7 +1359,7 @@ function EgressTester({ leads }) {
     setSending(true);
     setLog(null);
 
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     try {
       const res = await fetch(`${API_BASE}/egress-test`, {
         method: "POST",
@@ -1690,16 +1644,14 @@ const getBrandConfig = (plan) => {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, setUser } = useAuth();
+  const token = "session_cookie";
 
   // Auto-Session Sync on Mount
   useEffect(() => {
     const syncUser = async () => {
-      const token = localStorage.getItem("flow_token") || localStorage.getItem("token");
-      if (!token) return;
+      if (localStorage.getItem("flow_logged_in") !== "true") return;
       try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const res = await fetch(`${API_BASE_URL}/api/auth/me`);
         const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
         if (res.ok && data.success) {
           setUser(data.user);
@@ -1753,6 +1705,11 @@ export default function Dashboard() {
   const [refreshingStats, setRefreshingStats] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
 
+  // Account Deletion States
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
   // Step-Up Authentication States
   const [showStepUpModal, setShowStepUpModal] = useState(false);
   const [stepUpOtp, setStepUpOtp] = useState("");
@@ -1767,7 +1724,7 @@ export default function Dashboard() {
 
   const handleCompleteOnboarding = async () => {
     setStats((prev) => ({ ...prev, hasCompletedOnboarding: true }));
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       await fetch(`${API_BASE}/onboarding/complete`, {
@@ -1797,7 +1754,7 @@ export default function Dashboard() {
 
   /** Poll for guest session status. */
   const fetchStatus = useCallback(async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
 
     try {
@@ -1807,7 +1764,7 @@ export default function Dashboard() {
 
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
-          localStorage.removeItem("flow_token");
+          localStorage.removeItem("flow_logged_in");
           navigate("/login", { replace: true });
         }
         return;
@@ -1835,7 +1792,7 @@ export default function Dashboard() {
 
   /** Fetch admin stats (lead count for tax counter). */
   const fetchStats = useCallback(async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/stats`, {
@@ -1855,7 +1812,7 @@ export default function Dashboard() {
   const handleRefreshStats = useCallback(async () => {
     setRefreshingStats(true);
     try {
-      const token = localStorage.getItem("flow_token");
+      // const token = localStorage.getItem("flow_token");
       if (!token) return;
 
       const res = await fetch(`${API_BASE}/stats`, {
@@ -1882,7 +1839,7 @@ export default function Dashboard() {
   const handleGenerate2FA = async () => {
     setTwoFactorLoading(true);
     try {
-      const token = localStorage.getItem("flow_token");
+      // const token = localStorage.getItem("flow_token");
       const res = await fetch(`${GATEWAY_URL}/api/auth/2fa/generate`, {
         method: "POST",
         headers: {
@@ -1915,7 +1872,7 @@ export default function Dashboard() {
     }
     setTwoFactorLoading(true);
     try {
-      const token = localStorage.getItem("flow_token");
+      // const token = localStorage.getItem("flow_token");
       const res = await fetch(`${GATEWAY_URL}/api/auth/2fa/enable`, {
         method: "POST",
         headers: {
@@ -1956,7 +1913,7 @@ export default function Dashboard() {
 
   // Get logged in user's email from JWT token
   const userEmail = useMemo(() => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return "";
     try {
       const base64Url = token.split(".")[1];
@@ -1990,7 +1947,7 @@ export default function Dashboard() {
   const handleClearLogs = async () => {
     setClearingLogs(true);
     try {
-      const token = localStorage.getItem("flow_token");
+      // const token = localStorage.getItem("flow_token");
       const res = await fetch(`${API_BASE}/logs`, {
         method: "DELETE",
         headers: {
@@ -2018,9 +1975,36 @@ export default function Dashboard() {
     }
   };
 
+  /** Permanently delete account and all user data */
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== "DELETE") return;
+    setDeletingAccount(true);
+    try {
+      const res = await fetch(`${GATEWAY_URL}/api/users/me`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server" }));
+      if (res.ok && data.success) {
+        showToast("Account permanently deleted.", "success");
+        localStorage.removeItem("flow_logged_in");
+        setShowDeleteAccountModal(false);
+        setDeleteConfirmText("");
+        handleCloseSecurityModal();
+        navigate("/", { replace: true });
+      } else {
+        showToast(data.message || "Failed to delete account.", "error");
+      }
+    } catch (err) {
+      showToast("Network error during account deletion.", "error");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   /** Wipe all webhooks */
   const handleWipeAllWebhooks = async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/webhooks`, {
@@ -2044,7 +2028,7 @@ export default function Dashboard() {
 
   /** Wipe all leads */
   const handleWipeAllLeads = async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/leads`, {
@@ -2067,7 +2051,7 @@ export default function Dashboard() {
 
   /** Manually re-fire a failed lead */
   const handleRefireLead = async (leadId) => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/leads/${leadId}/refire`, {
@@ -2089,7 +2073,7 @@ export default function Dashboard() {
 
   /** Cancel a delayed or waiting auto-retry job from BullMQ queue */
   const handleCancelJob = async (id) => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token || !id) return;
 
     try {
@@ -2158,7 +2142,7 @@ export default function Dashboard() {
   }, [fetchStats]);
 
   const fetchLeads = useCallback(async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       const res = await fetch(`${API_BASE}/leads`, {
@@ -2176,15 +2160,15 @@ export default function Dashboard() {
   }, []);
 
   const fetchWebhooks = useCallback(async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/webhooks`, {
+      const res = await fetch(`${GATEWAY_URL}/api/keys`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
-        setWebhooks(data.webhooks);
+        setWebhooks(data.keys || []);
       }
     } catch { /* retry silently */ }
   }, []);
@@ -2203,7 +2187,7 @@ export default function Dashboard() {
 
   /** Trigger Step-Up 2FA Flow for Webhook Generation */
   const handleGenerateWebhook = async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
 
     // Pre-Check Limit Capacity
@@ -2253,7 +2237,7 @@ export default function Dashboard() {
       headers["x-trusted-device-token"] = trustedToken;
     }
 
-    const res = await fetch(`${API_BASE}/generate-webhook`, {
+    const res = await fetch(`${GATEWAY_URL}/api/keys`, {
       method: "POST",
       headers,
       body: JSON.stringify(otp ? { totpToken: otp } : {}),
@@ -2276,12 +2260,19 @@ export default function Dashboard() {
       if (data.trustedDeviceToken) {
         localStorage.setItem("trusted_device_token", data.trustedDeviceToken);
       }
-      setGeneratedWebhook(data);
+      
+      // Map the new API format (data.key.raw_key) to the state format
+      const newWebhookState = {
+        ...data,
+        apiKey: data.key?.raw_key || data.raw_key || data.apiKey
+      };
+      
+      setGeneratedWebhook(newWebhookState);
       setShowStepUpModal(false);
       setShowSecretModal(true);
       setDestinationUrl("");
       setStepUpOtp("");
-      showToast("Webhook generated successfully");
+      showToast("API Key generated successfully");
       fetchStats();
       fetchLeads();
       fetchWebhooks();
@@ -2302,7 +2293,7 @@ export default function Dashboard() {
       headers["x-trusted-device-token"] = trustedToken;
     }
 
-    const res = await fetch(`${API_BASE}/webhooks/${webhookId}`, {
+    const res = await fetch(`${GATEWAY_URL}/api/keys/${webhookId}`, {
       method: "DELETE",
       headers,
       body: JSON.stringify(otp ? { totpToken: otp } : {}),
@@ -2332,7 +2323,7 @@ export default function Dashboard() {
 
   /** Verify OTP and Execute Action (Generate or Delete) */
   const handleVerifyStepUp = async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     if (!stepUpOtp || stepUpOtp.length < 6) {
       showToast("Please enter a valid 6-digit code", "error");
@@ -2354,7 +2345,7 @@ export default function Dashboard() {
 
   /** Save the destination URL for the generated webhook key. */
   const handleSaveDestination = async () => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token || !generatedWebhook?.id || !destinationUrl) return;
     setSavingDestination(true);
     try {
@@ -2386,7 +2377,7 @@ export default function Dashboard() {
 
   const handleRevokeWebhook = async (id) => {
     if (!confirm("Are you sure you want to revoke this webhook?")) return;
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     setStepUpAction({ type: "delete", id });
     setShowStepUpModal(true);
@@ -2395,7 +2386,7 @@ export default function Dashboard() {
 
   /** Configure a webhook's target_url and http_method. */
   const handleConfigureWebhook = async (id, targetUrl, httpMethod) => {
-    const token = localStorage.getItem("flow_token");
+    // const token = localStorage.getItem("flow_token");
     if (!token) return;
     try {
       const res = await fetch(`${GATEWAY_URL}/api/webhooks/${id}`, {
@@ -2439,7 +2430,7 @@ export default function Dashboard() {
 
   // Lock body scroll when modals are open
   useEffect(() => {
-    if (activeModal || showSecurityModal) {
+    if (activeModal || showSecurityModal || showDeleteAccountModal) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
@@ -2447,11 +2438,21 @@ export default function Dashboard() {
     return () => {
       document.body.style.overflow = "";
     };
-  }, [activeModal, showSecurityModal]);
+  }, [activeModal, showSecurityModal, showDeleteAccountModal]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("flow_token");
-    navigate("/login", { replace: true });
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" }
+      });
+    } catch (err) {
+      console.error("Logout API error:", err);
+    } finally {
+      localStorage.removeItem("flow_logged_in");
+      navigate("/login", { replace: true });
+    }
   };
 
   const handleCardClick = (card) => {
@@ -2998,6 +2999,25 @@ export default function Dashboard() {
                   Clear Analytics Logs & Reset Stats
                 </button>
               </div>
+
+              {/* Card 3: Permanent Account Deletion */}
+              <div className="rounded-xl border border-rose-500/20 bg-rose-500/[0.04] p-5">
+                <div className="mb-2.5 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-rose-500 animate-pulse-slow" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-rose-400">
+                    Delete Account
+                  </h4>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-normal mb-4">
+                  Permanently delete your FlowAPI account, including all API keys, webhooks, and routing history. This action is irreversible.
+                </p>
+                <button
+                  onClick={() => setShowDeleteAccountModal(true)}
+                  className="rounded-lg bg-rose-600/10 border border-rose-550/30 px-4 py-2.5 text-xs font-bold text-rose-400 hover:bg-rose-600 hover:text-white transition w-full"
+                >
+                  Delete Account & All Data
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3069,6 +3089,61 @@ export default function Dashboard() {
                 className="rounded-lg bg-slate-800 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-700 transition"
               >
                 Cancel, Keep Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Permanent Account Deletion Modal ────────────────────────────── */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-md rounded-2xl border border-rose-900/40 bg-surface-raised p-6 shadow-2xl shadow-rose-950/20">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/10 text-rose-400 mx-auto border border-rose-500/20 animate-shake">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+
+            <h3 className="text-center text-base font-bold text-slate-100">
+              Permanently Delete Account?
+            </h3>
+            <p className="mt-2.5 text-center text-xs text-rose-400 font-semibold bg-rose-500/10 p-3 rounded-lg border border-rose-500/20 leading-normal">
+              WARNING: This action is permanent and cannot be undone. All API Keys, Webhook Destinations, and routing history will be instantly destroyed.
+            </p>
+            
+            <div className="mt-6 space-y-2">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block text-center">
+                Type <span className="text-rose-400 font-mono font-bold">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                className="w-full rounded-lg border border-slate-700 bg-surface px-4 py-2.5 text-center font-mono text-sm tracking-[0.2em] font-bold text-slate-200 outline-none transition focus:border-rose-500/40"
+              />
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2">
+              <button
+                disabled={deleteConfirmText !== "DELETE" || deletingAccount}
+                onClick={handleDeleteAccount}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-rose-600 py-2.5 text-xs font-bold text-white hover:bg-rose-550 disabled:opacity-50 transition shadow-lg shadow-rose-500/20"
+              >
+                {deletingAccount ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Permanently Delete My Account"
+                )}
+              </button>
+              <button
+                disabled={deletingAccount}
+                onClick={() => {
+                  setShowDeleteAccountModal(false);
+                  setDeleteConfirmText("");
+                }}
+                className="rounded-lg bg-slate-800 py-2.5 text-xs font-bold text-slate-400 hover:bg-slate-750 transition"
+              >
+                Cancel
               </button>
             </div>
           </div>

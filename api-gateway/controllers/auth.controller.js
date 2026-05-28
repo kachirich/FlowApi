@@ -147,10 +147,17 @@ export const verifyOtp = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: "24h" }
     );
 
-    return res.status(200).json({ success: true, message: 'OTP verified successfully', token, user });
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
+    return res.status(200).json({ success: true, message: 'OTP verified successfully', user });
   } catch (error) {
     console.error('Error verifying OTP:', error);
     return res.status(400).json({ error: error.message });
@@ -210,10 +217,17 @@ export const register = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: "24h" }
     );
 
-    return res.status(201).json({ success: true, message: 'Account created successfully', token, user });
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
+    return res.status(201).json({ success: true, message: 'Account created successfully', user });
   } catch (error) {
     console.error('Registration error:', error);
     return res.status(500).json({ error: 'Failed to create account' });
@@ -257,13 +271,20 @@ export const login = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
+      { expiresIn: "24h" }
     );
+
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
 
     // Filter sensitive info
     delete user.password_hash;
 
-    return res.status(200).json({ success: true, message: 'Logged in successfully', token, user });
+    return res.status(200).json({ success: true, message: 'Logged in successfully', user });
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: 'Failed to authenticate' });

@@ -81,12 +81,19 @@ export const googleCallback = async (req, res) => {
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: '24h' }
     );
+
+    res.cookie('jwt', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
 
     // Redirect back to frontend
     const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-    return res.redirect(`${FRONTEND_URL}/login?token=${token}`);
+    return res.redirect(`${FRONTEND_URL}/login`);
   } catch (error) {
     console.error('Google callback error:', error);
     res.status(500).send('Authentication failed');

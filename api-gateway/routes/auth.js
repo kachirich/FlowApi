@@ -180,10 +180,16 @@ router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
       { expiresIn: "24h" }
     );
 
+    res.cookie('jwt', jwtToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000 // 1 day
+    });
+
     return res.json({
       status: 200,
       message: "Login successful",
-      token: jwtToken,
       user: {
         id: user.id,
         email: user.email,
@@ -375,7 +381,18 @@ router.post("/step-up-otp", authenticate, otpGenerationLimiter, sendStepUpOtp);
 
 router.get("/google", googleLogin);
 router.get("/google/callback", googleCallback);
-router.post("/logout", verifyToken, logout);
+router.post("/logout", (req, res) => {
+  const token = req.cookies?.jwt;
+  if (token) {
+    redisClient.setEx(`blacklist:${token}`, 86400, 'revoked').catch(() => {});
+  }
+  res.clearCookie('jwt', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict'
+  });
+  return res.status(200).json({ success: true, message: 'Logged out successfully' });
+});
 
 router.post("/register", authRateLimiter, register);
 router.post("/login", authRateLimiter, login);

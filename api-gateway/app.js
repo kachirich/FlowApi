@@ -6,9 +6,10 @@
  */
 import "dotenv/config";
 import express from "express";
+import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import cors from "cors";
-import { rateLimiter, requestLogger, authenticate } from "./middleware/index.js";
+import { requestLogger, authenticate } from "./middleware/index.js";
 import adminRoutes from "./routes/admin.js";
 import webhookRoutes from "./routes/webhooks.js";
 import catchRoutes from "./routes/catch.js";
@@ -17,6 +18,8 @@ import leadsRoutes from "./routes/leads.js";
 import workflowRoutes from "./routes/workflow.js";
 import stripeRoutes from "./routes/stripe.js";
 import billingRoutes from "./routes/billing.js";
+import apiKeyRoutes from "./routes/apiKeys.js";
+import userRoutes from "./routes/users.js";
 import routes from "./routes/index.js";
 
 const app = express();
@@ -39,6 +42,8 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-trusted-device-token"]
 }));
+
+app.use(cookieParser());
 
 // Stripe Webhook — MUST come before express.json() to retain raw body
 app.use("/api/stripe", stripeRoutes);
@@ -66,6 +71,12 @@ app.use("/api/workflow", workflowRoutes);
 
 // Auth routes
 app.use("/api/auth", authRoutes);
+
+// API Keys routes
+app.use("/api/keys", apiKeyRoutes);
+
+// Users routes
+app.use("/api/users", userRoutes);
 
 // Public fallback routes
 app.use(routes);

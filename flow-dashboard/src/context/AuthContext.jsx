@@ -7,22 +7,20 @@ export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
-
   const login = async (googleCredential) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ credential: googleCredential }),
       });
       
       const data = await response.json();
       
-      if (data.success && data.token) {
-        setToken(data.token);
+      if (data.success) {
         setUser(data.user);
-        localStorage.setItem('token', data.token);
+        localStorage.setItem('flow_logged_in', 'true');
         return data;
       } else {
         throw new Error(data.error || 'Failed to login');
@@ -35,23 +33,19 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      if (token) {
-        await fetch(`${API_BASE_URL}/api/auth/logout`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-        });
-      }
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+      });
     } catch (error) {
       console.error('Logout API error (Kill Switch failed):', error);
     } finally {
       // Regardless of API success, clear local state
-      setToken(null);
       setUser(null);
-      localStorage.removeItem('token');
-      localStorage.removeItem('flow_token');
+      localStorage.removeItem('flow_logged_in');
       window.location.href = '/login';
     }
   };
@@ -65,7 +59,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, token, login, logout }}>
+    <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
