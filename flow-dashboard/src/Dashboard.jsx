@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Terminal,
@@ -1736,9 +1736,15 @@ export default function Dashboard() {
     }, 2500);
   }, []);
 
-  /** Poll for guest session status. */
+  /** Poll for guest session status — SKIPPED when user is authenticated. */
+  const guestErrorCount = useRef(0);
   const fetchStatus = useCallback(async () => {
-    // const token = localStorage.getItem("flow_token");
+    // Authenticated users don't have guest sessions — skip entirely
+    if (user) {
+      setPolling(false);
+      return;
+    }
+
     if (!token) return;
 
     try {
@@ -1751,8 +1757,17 @@ export default function Dashboard() {
           localStorage.removeItem("flow_logged_in");
           navigate("/login", { replace: true });
         }
+        // Bail out after 3 consecutive non-auth errors (e.g. 400) to prevent infinite loop
+        guestErrorCount.current += 1;
+        if (guestErrorCount.current >= 3) {
+          console.warn("[Dashboard] Guest status polling stopped after 3 consecutive errors.");
+          setPolling(false);
+        }
         return;
       }
+
+      // Reset error counter on success
+      guestErrorCount.current = 0;
 
       const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
       setSession(data.session);
@@ -1762,17 +1777,28 @@ export default function Dashboard() {
         setPolling(false);
       }
     } catch {
-      // Silently retry on network errors
+      // Bail out on repeated network errors too
+      guestErrorCount.current += 1;
+      if (guestErrorCount.current >= 3) {
+        console.warn("[Dashboard] Guest status polling stopped after 3 consecutive network errors.");
+        setPolling(false);
+      }
     }
-  }, [navigate]);
+  }, [navigate, user]);
 
   useEffect(() => {
+    // Don't start polling at all if user is authenticated
+    if (user) {
+      setPolling(false);
+      return;
+    }
+
     fetchStatus(); // initial fetch
     if (!polling) return;
 
     const interval = setInterval(fetchStatus, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [fetchStatus, polling]);
+  }, [fetchStatus, polling, user]);
 
   /** Fetch admin stats (lead count for tax counter). */
   const fetchStats = useCallback(async () => {
