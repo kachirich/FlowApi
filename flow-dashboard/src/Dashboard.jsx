@@ -1258,24 +1258,31 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
 
 function EgressTester({ leads }) {
   const [destinationUrl, setDestinationUrl] = useState("https://services.leadconnectorhq.com/hooks/flow_egress_test");
-  const [mappings, setMappings] = useState({
-    firstName: "first_name",
-    lastName: "last_name",
-    email: "email",
-    phone: "phone",
+  
+  // Initialize mappings dynamically from GHL_STANDARD_SCHEMA on mount
+  const [mappings, setMappings] = useState(() => {
+    const initialMappings = {};
+    Object.keys(GHL_STANDARD_SCHEMA).forEach(key => {
+      initialMappings[key] = key;
+    });
+    return initialMappings;
   });
+  
+  const [passThrough, setPassThrough] = useState(true);
   const [sending, setSending] = useState(false);
   const [log, setLog] = useState(null);
   const [showRawTraceDrawer, setShowRawTraceDrawer] = useState(false);
 
-  // Validation States
-  const [urlError, setUrlError] = useState("");
-  const [mappingErrors, setMappingErrors] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
+  // Validation States - dynamically initialized from schema keys
+  const [mappingErrors, setMappingErrors] = useState(() => {
+    const errors = {};
+    Object.keys(GHL_STANDARD_SCHEMA).forEach(key => {
+      errors[key] = "";
+    });
+    return errors;
   });
+  
+  const [urlError, setUrlError] = useState("");
 
   // Real-time URL Validation
   useEffect(() => {
@@ -1291,21 +1298,28 @@ function EgressTester({ leads }) {
     }
   }, [destinationUrl]);
 
-  // Real-time Mapping Validation
+  // Real-time Mapping Validation - optional when pass-through is enabled
   useEffect(() => {
-    const newErrors = { firstName: "", lastName: "", email: "", phone: "" };
+    const newErrors = {};
+    Object.keys(GHL_STANDARD_SCHEMA).forEach(key => {
+      newErrors[key] = "";
+    });
+    
     Object.keys(mappings).forEach((key) => {
-      if (!mappings[key]) {
-         newErrors[key] = "Required field";
-         return;
+      const value = mappings[key]?.trim();
+      if (!passThrough && !value) {
+        newErrors[key] = "Required when pass-through is off";
+        return;
       }
-      const result = jsonKeyMappingSchema.safeParse(mappings[key]);
-      if (!result.success) {
-        newErrors[key] = result.error.issues[0].message;
+      if (value) {
+        const result = jsonKeyMappingSchema.safeParse(value);
+        if (!result.success) {
+          newErrors[key] = result.error.issues[0].message;
+        }
       }
     });
     setMappingErrors(newErrors);
-  }, [mappings]);
+  }, [mappings, passThrough]);
 
   // Derived overall validity
   const isFormValid = !urlError && destinationUrl.length > 0 && Object.values(mappingErrors).every((err) => err === "");
@@ -1356,16 +1370,25 @@ function EgressTester({ leads }) {
     return "Dispatch failed. Review the raw response log below for details.";
   };
 
-  // Dynamically compute the mapped egress payload preview based on GHL_STANDARD_SCHEMA
-  const egressPayload = {};
-  if (mappings.firstName?.trim()) egressPayload[mappings.firstName.trim()] = GHL_STANDARD_SCHEMA.first_name;
-  if (mappings.lastName?.trim()) egressPayload[mappings.lastName.trim()] = GHL_STANDARD_SCHEMA.last_name;
-  if (mappings.email?.trim()) egressPayload[mappings.email.trim()] = GHL_STANDARD_SCHEMA.email;
-  if (mappings.phone?.trim()) egressPayload[mappings.phone.trim()] = GHL_STANDARD_SCHEMA.phone;
+  // Dynamically compile the egress payload based on mappings and pass-through mode
+  const buildEgressPayload = () => {
+    const payload = {};
+    Object.keys(mappings).forEach(sourceKey => {
+      const destKey = mappings[sourceKey]?.trim();
+      if (destKey) {
+        payload[destKey] = GHL_STANDARD_SCHEMA[sourceKey];
+      } else if (passThrough) {
+        payload[sourceKey] = GHL_STANDARD_SCHEMA[sourceKey];
+      }
+    });
+    return payload;
+  };
+  
+  const egressPayload = buildEgressPayload();
 
-  // New disabled guard logic
+  // Can fire if URL is valid and has mappings (or pass-through is enabled)
   const hasMappings = Object.values(mappings).some(v => v && v.trim() !== "");
-  const canFire = !urlError && destinationUrl && destinationUrl.trim() !== "" && hasMappings;
+  const canFire = !urlError && destinationUrl && destinationUrl.trim() !== "" && (hasMappings || passThrough);
 
   const handleFireEgress = async () => {
     if (!canFire) return;
@@ -1458,6 +1481,24 @@ function EgressTester({ leads }) {
             )}
           </div>
 
+          {/* Pass-Through Toggle */}
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                Pass-Through Unmapped Keys
+              </label>
+              <p className="text-[9px] text-slate-500">
+                {passThrough ? "ON: Unmapped keys included as-is" : "OFF: Only mapped keys included"}
+              </p>
+            </div>
+            <button
+              onClick={() => setPassThrough(!passThrough)}
+              className={`relative h-6 w-11 rounded-full border-2 transition-all ${passThrough ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700/40 bg-slate-900/50"}`}
+            >
+              <div className={`absolute top-0.5 h-5 w-5 rounded-full transition-transform ${passThrough ? "translate-x-5 bg-emerald-500/80" : "translate-x-0.5 bg-slate-600/60"}`} />
+            </button>
+          </div>
+
           {/* Key-Value Mapper */}
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -1465,58 +1506,22 @@ function EgressTester({ leads }) {
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Destination JSON Key</span>
             </div>
 
-            <div className="space-y-3.5">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-4">
-                  <span className="flex-1 font-mono text-xs text-slate-300">firstName</span>
-                  <input
-                    type="text"
-                    value={mappings.firstName}
-                    onChange={(e) => setMappings({ ...mappings, firstName: e.target.value })}
-                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.firstName ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
-                  />
+            <div className="space-y-3.5 max-h-[320px] overflow-y-auto pr-2">
+              {Object.keys(GHL_STANDARD_SCHEMA).map((sourceKey) => (
+                <div key={sourceKey} className="flex flex-col gap-1">
+                  <div className="flex items-center gap-4">
+                    <span className="flex-1 font-mono text-xs text-slate-300 truncate">{sourceKey}</span>
+                    <input
+                      type="text"
+                      value={mappings[sourceKey] || ""}
+                      onChange={(e) => setMappings({ ...mappings, [sourceKey]: e.target.value })}
+                      placeholder={passThrough ? "(optional)" : "(required)"}
+                      className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors[sourceKey] ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
+                    />
+                  </div>
+                  {mappingErrors[sourceKey] && <span className="text-right text-[10px] text-rose-500">{mappingErrors[sourceKey]}</span>}
                 </div>
-                {mappingErrors.firstName && <span className="text-right text-[10px] text-rose-500">{mappingErrors.firstName}</span>}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-4">
-                  <span className="flex-1 font-mono text-xs text-slate-300">lastName</span>
-                  <input
-                    type="text"
-                    value={mappings.lastName}
-                    onChange={(e) => setMappings({ ...mappings, lastName: e.target.value })}
-                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.lastName ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
-                  />
-                </div>
-                {mappingErrors.lastName && <span className="text-right text-[10px] text-rose-500">{mappingErrors.lastName}</span>}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-4">
-                  <span className="flex-1 font-mono text-xs text-slate-300">email</span>
-                  <input
-                    type="text"
-                    value={mappings.email}
-                    onChange={(e) => setMappings({ ...mappings, email: e.target.value })}
-                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.email ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
-                  />
-                </div>
-                {mappingErrors.email && <span className="text-right text-[10px] text-rose-500">{mappingErrors.email}</span>}
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-4">
-                  <span className="flex-1 font-mono text-xs text-slate-300">phone</span>
-                  <input
-                    type="text"
-                    value={mappings.phone}
-                    onChange={(e) => setMappings({ ...mappings, phone: e.target.value })}
-                    className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors.phone ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
-                  />
-                </div>
-                {mappingErrors.phone && <span className="text-right text-[10px] text-rose-500">{mappingErrors.phone}</span>}
-              </div>
+              ))}
             </div>
           </div>
 
@@ -1546,8 +1551,8 @@ function EgressTester({ leads }) {
             <div className="flex items-center gap-2 border-b border-slate-800/60 bg-surface px-5 py-3">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
               <span className="ml-2 font-mono text-[11px] text-slate-500">outgoing_payload.json</span>
-              <span className="ml-auto rounded bg-cyan-500/10 px-2 py-0.5 font-mono text-[10px] text-cyan-400 uppercase">
-                MAPPED PREVIEW
+              <span className={`ml-auto rounded px-2 py-0.5 font-mono text-[10px] uppercase ${passThrough ? "bg-emerald-500/10 text-emerald-400" : "bg-cyan-500/10 text-cyan-400"}`}>
+                {passThrough ? "MAPPED + PASS-THROUGH" : "MAPPED PREVIEW"}
               </span>
             </div>
             <pre className="p-5 font-mono text-[11px] leading-relaxed text-emerald-300 overflow-auto max-h-[160px]">

@@ -9,7 +9,7 @@ import webhookCreationLimiter from "../middleware/webhookCreationLimiter.js";
 import { generateApiKey } from "../utils/apiKeyGenerator.js";
 import { validateWebhookUrl } from "../utils/security.js";
 import { sendTierUpgradeEmail } from "../services/email.service.js";
-import { redisClient } from "../middleware/rateLimiter.js";
+import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 
@@ -523,31 +523,78 @@ router.delete("/logs", authenticate, async (req, res, next) => {
  * POST /api/admin/egress-test
  *
  * Executes a real outbound POST request to a destination URL with formatted lead data.
+ * 
+ * Security Guards:
+ * 1. SSRF Blacklist Protection — Validates destinationUrl against internal/private IP ranges
+ * 2. Strict Request Timeout — 3000ms hard timeout on outbound requests
+ * 3. Aggressive Rate Limiting — 10 requests per minute per user/IP (Redis-backed)
  */
-router.post("/egress-test", authenticate, validateRequest(egressTestBodySchema), async (req, res, next) => {
+router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(egressTestBodySchema), async (req, res, next) => {
   try {
     const { destinationUrl, payload } = req.body;
+
+    // ════════════════════════════════════════════════════════════════════════
+    // GUARD 1: SSRF Blacklist Protection
+    // ════════════════════════════════════════════════════════════════════════
+    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        error: "Destination URL points to internal or restricted resource. " + (error || ""),
+      });
+    }
 
     const startTime = Date.now();
     let outboundResponse;
     let responseText = "";
     let statusCode = 500;
 
+    // ════════════════════════════════════════════════════════════════════════
+    // GUARD 2 & 3: Request Timeout (3000ms) + Error Handling
+    // ════════════════════════════════════════════════════════════════════════
     try {
-      outboundResponse = await fetch(destinationUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      statusCode = outboundResponse.status;
-      responseText = await outboundResponse.text();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+      try {
+        outboundResponse = await fetch(destinationUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        statusCode = outboundResponse.status;
+        responseText = await outboundResponse.text();
+      } catch (timeoutErr) {
+        clearTimeout(timeoutId);
+        if (timeoutErr.name === "AbortError") {
+          return res.status(504).json({
+            success: false,
+            error: "Request timeout: destination took longer than 3 seconds to respond",
+            durationMs: Date.now() - startTime,
+          });
+        }
+        throw timeoutErr;
+      }
     } catch (err) {
-      return res.json({
+      const durationMs = Date.now() - startTime;
+      
+      // Distinguish between timeout and other network errors
+      if (err.name === "AbortError") {
+        return res.status(504).json({
+          success: false,
+          error: "Request timeout: destination took longer than 3 seconds to respond",
+          durationMs,
+        });
+      }
+
+      return res.status(502).json({
         success: false,
         error: `Outbound connection failed: ${err.message}`,
-        durationMs: Date.now() - startTime,
+        durationMs,
       });
     }
 

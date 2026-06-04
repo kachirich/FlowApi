@@ -80,6 +80,31 @@ export const otpGenerationLimiter = rateLimit({
   message: { error: 'Too many OTP requests. Please wait before generating another.' },
 });
 
+/**
+ * Aggressive Sandbox Rate Limiter
+ * Strict max of 10 test execution requests per minute per user/IP
+ * Prevents abuse: DDoS proxies, webhook flooding, SSRF scanning
+ */
+export const sandboxEgressLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_sandbox_egress_',
+  }),
+  windowMs: 60 * 1000, // 1 minute window
+  max: 10, // 10 requests per minute
+  skip: skipRateLimit,
+  keyGenerator: globalKeyGenerator,
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
+  standardHeaders: false, // Disable default headers
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'Sandbox test execution rate limit exceeded. Maximum 10 requests per minute.',
+      retryAfter: Math.ceil(req.rateLimit.resetTime / 1000),
+    });
+  },
+});
+
 export const authRateLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
