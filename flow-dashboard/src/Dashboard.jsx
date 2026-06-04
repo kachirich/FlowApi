@@ -1361,13 +1361,12 @@ function EgressTester({ leads }) {
     setSending(true);
     setLog(null);
 
-    // const token = localStorage.getItem("flow_token");
     try {
       const res = await fetch(`${API_BASE}/egress-test`, {
         method: "POST",
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           destinationUrl,
