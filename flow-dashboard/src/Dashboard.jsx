@@ -650,44 +650,61 @@ function StackCards({ onCardClick }) {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function RecentInboundActivity({ leads = [] }) {
+  const [isActivityOpen, setIsActivityOpen] = useState(true);
   const recent = leads.slice(0, 4);
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-surface-raised p-5 shadow-xl flex flex-col h-full min-h-[140px]">
-      <div className="flex items-center gap-2 mb-4 border-b border-slate-800/60 pb-3">
-        <Activity className="h-4 w-4 text-emerald-400" />
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">Recent Inbound Activity</h3>
-      </div>
+    <div className="rounded-xl border border-zinc-800 bg-surface-raised p-5 shadow-xl flex flex-col h-full">
+      {/* Collapsible Header */}
+      <button
+        onClick={() => setIsActivityOpen(!isActivityOpen)}
+        className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800/60 hover:opacity-80 transition-opacity w-full"
+      >
+        <div className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-zinc-400" />
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">Recent Inbound Activity</h3>
+        </div>
+        <ChevronDown 
+          className={`h-4 w-4 text-zinc-500 transition-transform duration-300 ${
+            isActivityOpen ? "rotate-0" : "-rotate-90"
+          }`}
+        />
+      </button>
       
-      {recent.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center text-[11px] text-slate-500 italic border border-dashed border-slate-700/50 rounded-lg bg-slate-900/50">
-          No recent inbound activity
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {recent.map((lead, idx) => {
-            const timeAgo = Math.round((Date.now() - new Date(lead.created_at).getTime()) / 60000);
-            const timeStr = timeAgo < 1 ? "Just now" : `${timeAgo}m ago`;
-            const method = "POST";
-            const path = "/api/leads/inbound";
-            const status = lead.status === "200" || lead.deliveryStatus === "DELIVERED" || lead.is_test ? "200 OK" : "500 ERR";
-            const statusColor = status === "200 OK" ? "text-emerald-400" : "text-rose-400";
-            
-            return (
-              <div key={lead.id || idx} className="flex items-center justify-between text-[11px] font-mono border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-cyan-400 font-bold">{method}</span>
-                  <span className="text-slate-400 truncate max-w-[120px] sm:max-w-[180px]">{path}</span>
+      {/* Collapsible Content */}
+      <div className={`overflow-hidden transition-all duration-300 flex-1 flex flex-col ${
+        isActivityOpen ? "max-h-[300px] opacity-100" : "max-h-0 opacity-0"
+      }`}>
+        {recent.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-[11px] text-zinc-500 italic border border-dashed border-zinc-700/50 rounded-lg bg-zinc-900/50">
+            No recent inbound activity
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {recent.map((lead, idx) => {
+              const timeAgo = Math.round((Date.now() - new Date(lead.created_at).getTime()) / 60000);
+              const timeStr = timeAgo < 1 ? "Just now" : `${timeAgo}m ago`;
+              const method = "POST";
+              const path = "/api/leads/inbound";
+              const status = lead.status === "200" || lead.deliveryStatus === "DELIVERED" || lead.is_test ? "200 OK" : "500 ERR";
+              const statusColor = status === "200 OK" ? "text-emerald-400" : "text-rose-400";
+              
+              return (
+                <div key={lead.id || idx} className="flex items-center justify-between text-[11px] font-mono border-b border-zinc-800/50 pb-2 last:border-0 last:pb-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold">{method}</span>
+                    <span className="text-zinc-400 truncate max-w-[120px] sm:max-w-[180px]">{path}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`font-semibold ${statusColor}`}>{status}</span>
+                    <span className="text-zinc-500 text-right min-w-[45px]">{timeStr}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`font-semibold ${statusColor}`}>{status}</span>
-                  <span className="text-slate-500 text-right min-w-[45px]">{timeStr}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -713,8 +730,8 @@ function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook
 
       {/* Interactive Action Elements */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Webhook Action */}
-        <div id="tour-webhook-generator" className="relative">
+        {/* Generate API Key Card */}
+        <div id="tour-webhook-generator" className="relative flex flex-col h-full">
           <button
             onClick={() => { setWebhookOpen(!webhookOpen); }}
             className={`w-full flex items-center justify-between rounded-xl border px-5 py-3.5 transition-all duration-200 ${
@@ -729,8 +746,8 @@ function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook
           </button>
           
           {/* Dropdown Content */}
-          <div className={`overflow-hidden transition-all duration-300 ${webhookOpen ? "max-h-[500px] mt-2 opacity-100" : "max-h-0 opacity-0"}`}>
-            <div className="rounded-xl border border-cyan-500/20 bg-surface-raised p-5 shadow-xl">
+          <div className={`overflow-hidden transition-all duration-300 flex-1 flex flex-col ${webhookOpen ? "max-h-[600px] mt-2 opacity-100" : "max-h-0 opacity-0"}`}>
+            <div className="rounded-xl border border-zinc-800 bg-surface-raised p-5 shadow-xl flex flex-col flex-1">
               <button
                 onClick={onGenerateWebhook}
                 disabled={generating}
@@ -738,6 +755,22 @@ function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook
               >
                 {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin"/> Generating...</> : <><Plus className="h-3.5 w-3.5" /> Generate Secure API Key</>}
               </button>
+
+              {/* Security Warnings Section */}
+              <div className="mt-4 space-y-2 text-xs text-zinc-500">
+                <div className="flex gap-2">
+                  <span className="shrink-0">⚠️</span>
+                  <span>API keys are displayed only once upon generation.</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="shrink-0">⚠️</span>
+                  <span>Do not expose production keys in client-side code.</span>
+                </div>
+                <div className="flex gap-2">
+                  <span className="shrink-0">⚠️</span>
+                  <span>Keys are bound to your active billing limits.</span>
+                </div>
+              </div>
 
               {generatedWebhook && (
                 <div className="mt-4 space-y-3 animate-fade-in">
