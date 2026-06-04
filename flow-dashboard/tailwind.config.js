@@ -11,16 +11,57 @@ export default {
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       colors: {
+        black: '#000000',
+        white: '#FFFFFF',
         surface: {
-          DEFAULT: '#0f1117',
-          raised: '#161822',
-          overlay: '#1c1f2e',
+          DEFAULT: '#000000',
+          raised: '#09090B',
+          overlay: '#121212',
         },
+        slate: {
+          50: '#F4F4F5',
+          100: '#E4E4E7',
+          200: '#D4D4D8',
+          300: '#A1A1AA',
+          400: '#71717A',
+          500: '#52525B',
+          600: '#3F3F46',
+          700: '#27272A',
+          750: '#27272A',
+          800: '#27272A',
+          900: '#18181B',
+          950: '#09090B',
+        },
+        emerald: {
+          500: '#FFFFFF',
+          400: '#D4D4D8',
+          100: '#18181B',
+        },
+        cyan: {
+          500: '#FFFFFF',
+          400: '#D4D4D8',
+          100: '#18181B',
+        },
+        amber: {
+          500: '#FFFFFF',
+          400: '#D4D4D8',
+          100: '#18181B',
+        },
+        violet: {
+          500: '#FFFFFF',
+          400: '#D4D4D8',
+          100: '#18181B',
+        },
+        rose: {
+          500: '#3F3F46',
+          400: '#27272A',
+          100: '#18181B',
+        }
       },
       boxShadow: {
-        glow: '0 0 15px -3px rgba(16, 185, 129, 0.3)',
-        'glow-rose': '0 0 15px -3px rgba(244, 63, 94, 0.3)',
-        'glow-amber': '0 0 15px -3px rgba(245, 158, 11, 0.3)',
+        glow: '0 0 10px rgba(255, 255, 255, 0.1)',
+        'glow-rose': 'none',
+        'glow-amber': 'none',
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
