@@ -1,12 +1,25 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
+axios.defaults.withCredentials = true;
+
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
   withCredentials: true, // CRITICAL: Forces browser to send cookies in dev and prod
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+// Request Interceptor to append token if we are using Bearer tokens
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('flow_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 // Response Interceptor for global error handling

@@ -12,7 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
  * with an appropriate `status` code — never responds directly.
  */
 export default function authenticate(req, _res, next) {
-  const token = req.cookies?.jwt || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+  const token = req.cookies?.token || req.cookies?.jwt || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
 
   // ── Missing token ──────────────────────────────────────────────────────
   if (!token) {

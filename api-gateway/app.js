@@ -36,8 +36,9 @@ app.use(helmet({
 }));
 
 const defaultOrigins = [
-  'http://localhost:5173',
-  'https://flowgateway.dev'
+  'http://localhost:3000',
+  'https://flowgateway.dev',
+  'https://www.flowgateway.dev'
 ];
 const envOrigins = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
 const allowedOrigins = [...new Set([...defaultOrigins, ...envOrigins])];
