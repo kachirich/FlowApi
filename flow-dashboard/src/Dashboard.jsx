@@ -1634,24 +1634,24 @@ function EgressTester({ leads }) {
 
       {/* Bottom-anchored Raw Trace Drawer */}
       {showRawTraceDrawer && log && (
-        <div className="fixed bottom-6 right-6 z-50 max-w-md w-full rounded-2xl border border-rose-500/30 bg-slate-950 p-5 shadow-2xl shadow-rose-950/20 animate-slide-up">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-3">
+        <div className="fixed bottom-6 right-6 z-50 max-w-md w-full rounded-2xl border border-white/20 bg-black p-5 shadow-2xl shadow-black/50 animate-slide-up">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
             <div className="flex items-center gap-2">
-              <Terminal className="h-4 w-4 text-rose-400" />
-              <span className="font-mono text-xs font-bold uppercase tracking-wider text-rose-450">
+              <Terminal className="h-4 w-4 text-white" />
+              <span className="font-mono text-xs font-bold uppercase tracking-wider text-white">
                 System Error Trace
               </span>
             </div>
             <button
               onClick={() => setShowRawTraceDrawer(false)}
-              className="rounded-lg p-1 text-slate-500 hover:bg-slate-900 hover:text-slate-350 transition"
+              className="rounded-lg p-1 text-white/60 hover:bg-white/10 hover:text-white transition"
               title="Close trace drawer"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
           
-          <pre className="font-mono text-[10.5px] leading-relaxed text-rose-500 overflow-auto max-h-[200px] bg-rose-950/[0.04] border border-rose-500/10 rounded-lg p-3 scrollbar-thin scrollbar-thumb-rose-950/50">
+          <pre className="font-mono text-[10.5px] leading-relaxed text-white overflow-auto max-h-[200px] bg-black border border-white/10 rounded-lg p-3 scrollbar-thin scrollbar-thumb-white/20">
             {getRawTraceString()}
           </pre>
         </div>
