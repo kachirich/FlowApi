@@ -8,7 +8,6 @@ import {
   BrainCircuit,
   Loader2,
   CheckCircle2,
-  GitBranch,
   Mail,
   Phone,
   LogOut,
@@ -650,19 +649,52 @@ function StackCards({ onCardClick }) {
    Webhook Tools Panel — Generator, Tax Counter, Schema Export
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, generating, toast, destinationUrl, onDestinationChange, onSaveDestination, savingDestination, onRefreshStats, refreshingStats, onFireTestPayload, hasWebhook }) {
-  const [schemaOpen, setSchemaOpen] = useState(false);
-  const [webhookOpen, setWebhookOpen] = useState(false);
-  const [schemaCopied, setSchemaCopied] = useState(false);
-  const [webhookCopied, setWebhookCopied] = useState(false);
+function RecentInboundActivity({ leads = [] }) {
+  const recent = leads.slice(0, 4);
 
-  const handleCopySchema = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(GHL_STANDARD_SCHEMA, null, 2));
-      setSchemaCopied(true);
-      setTimeout(() => setSchemaCopied(false), 2000);
-    } catch { /* noop */ }
-  };
+  return (
+    <div className="rounded-xl border border-slate-800 bg-surface-raised p-5 shadow-xl flex flex-col h-full min-h-[140px]">
+      <div className="flex items-center gap-2 mb-4 border-b border-slate-800/60 pb-3">
+        <Activity className="h-4 w-4 text-emerald-400" />
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">Recent Inbound Activity</h3>
+      </div>
+      
+      {recent.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center text-[11px] text-slate-500 italic border border-dashed border-slate-700/50 rounded-lg bg-slate-900/50">
+          No recent inbound activity
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {recent.map((lead, idx) => {
+            const timeAgo = Math.round((Date.now() - new Date(lead.created_at).getTime()) / 60000);
+            const timeStr = timeAgo < 1 ? "Just now" : `${timeAgo}m ago`;
+            const method = "POST";
+            const path = "/api/leads/inbound";
+            const status = lead.status === "200" || lead.deliveryStatus === "DELIVERED" || lead.is_test ? "200 OK" : "500 ERR";
+            const statusColor = status === "200 OK" ? "text-emerald-400" : "text-rose-400";
+            
+            return (
+              <div key={lead.id || idx} className="flex items-center justify-between text-[11px] font-mono border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-cyan-400 font-bold">{method}</span>
+                  <span className="text-slate-400 truncate max-w-[120px] sm:max-w-[180px]">{path}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`font-semibold ${statusColor}`}>{status}</span>
+                  <span className="text-slate-500 text-right min-w-[45px]">{timeStr}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook, generating, toast, destinationUrl, onDestinationChange, onSaveDestination, savingDestination, onRefreshStats, refreshingStats, hasWebhook }) {
+  const [webhookOpen, setWebhookOpen] = useState(false);
+  const [webhookCopied, setWebhookCopied] = useState(false);
 
   const handleCopyWebhook = async () => {
     if (!generatedWebhook) return;
@@ -684,7 +716,7 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
         {/* Webhook Action */}
         <div id="tour-webhook-generator" className="relative">
           <button
-            onClick={() => { setWebhookOpen(!webhookOpen); setSchemaOpen(false); }}
+            onClick={() => { setWebhookOpen(!webhookOpen); }}
             className={`w-full flex items-center justify-between rounded-xl border px-5 py-3.5 transition-all duration-200 ${
               webhookOpen ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-400" : "border-slate-700/50 bg-surface-raised hover:border-cyan-500/30 hover:bg-surface-overlay text-slate-200"
             }`}
@@ -728,54 +760,8 @@ function DashboardTopActions({ stats, onGenerateWebhook, generatedWebhook, gener
           </div>
         </div>
 
-        {/* Schema Action */}
-        <div className="relative">
-          <button
-            onClick={() => { setSchemaOpen(!schemaOpen); setWebhookOpen(false); }}
-            className={`w-full flex items-center justify-between rounded-xl border px-5 py-3.5 transition-all duration-200 ${
-              schemaOpen ? "border-violet-500/40 bg-violet-500/10 text-violet-400" : "border-slate-700/50 bg-surface-raised hover:border-violet-500/30 hover:bg-surface-overlay text-slate-200"
-            }`}
-          >
-            <div className="flex items-center gap-3">
-              <Webhook className={`h-4 w-4 ${schemaOpen ? "text-violet-400" : "text-slate-400"}`} />
-              <span className="text-sm font-semibold">Standard JSON Schema</span>
-            </div>
-            <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${schemaOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          {/* Dropdown Content */}
-          <div className={`overflow-hidden transition-all duration-300 ${schemaOpen ? "max-h-[550px] mt-2 opacity-100" : "max-h-0 opacity-0"}`}>
-            <div className="rounded-xl border border-violet-500/20 bg-surface-raised p-5 shadow-xl space-y-4">
-              <div className="flex gap-3">
-                <button
-                  onClick={handleCopySchema}
-                  className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-semibold transition-colors ${schemaCopied ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20"}`}
-                >
-                  {schemaCopied ? <><ClipboardCheck className="h-3.5 w-3.5"/> Copied!</> : <><Copy className="h-3.5 w-3.5" /> Copy Schema</>}
-                </button>
-                
-                <button
-                  onClick={onFireTestPayload}
-                  disabled={!hasWebhook}
-                  className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-semibold transition-all ${
-                    hasWebhook 
-                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 animate-pulse" 
-                      : "bg-slate-800/40 border-slate-800 text-slate-500 cursor-not-allowed"
-                  }`}
-                  title={hasWebhook ? "Send simulated lead payload to active webhook" : "Generate a secure webhook first to test"}
-                >
-                  <Play className="h-3.5 w-3.5" /> Send Test Lead
-                </button>
-              </div>
-
-              <div className="max-h-[180px] overflow-y-auto rounded border border-slate-700/50 bg-slate-900 p-3">
-                <pre className="font-mono text-[10px] text-slate-400 leading-relaxed">
-                  {JSON.stringify(GHL_STANDARD_SCHEMA, null, 2)}
-                </pre>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Recent Inbound Activity */}
+        <RecentInboundActivity leads={leads} />
       </div>
     </section>
   );
@@ -1337,27 +1323,19 @@ function EgressTester({ leads }) {
     return "Dispatch failed. Review the raw response log below for details.";
   };
 
-  // Grab the most recently vaulted lead or a fallback dummy lead
-  const activeLead = leads.length > 0 ? leads[0] : {
-    first_name: "Antigravity",
-    last_name: "Test",
-    email: "antigravity@testcompany.com",
-    phone: "+1234567890",
-  };
+  // Dynamically compute the mapped egress payload preview based on GHL_STANDARD_SCHEMA
+  const egressPayload = {};
+  if (mappings.firstName?.trim()) egressPayload[mappings.firstName.trim()] = GHL_STANDARD_SCHEMA.first_name;
+  if (mappings.lastName?.trim()) egressPayload[mappings.lastName.trim()] = GHL_STANDARD_SCHEMA.last_name;
+  if (mappings.email?.trim()) egressPayload[mappings.email.trim()] = GHL_STANDARD_SCHEMA.email;
+  if (mappings.phone?.trim()) egressPayload[mappings.phone.trim()] = GHL_STANDARD_SCHEMA.phone;
 
-  // Dynamically compute the mapped egress payload preview
-  const egressPayload = {
-    [mappings.firstName]: activeLead.first_name || activeLead.firstName || "",
-    [mappings.lastName]: activeLead.last_name || activeLead.lastName || "",
-    [mappings.email]: activeLead.email || "",
-    [mappings.phone]: activeLead.phone || "",
-  };
+  // New disabled guard logic
+  const hasMappings = Object.values(mappings).some(v => v && v.trim() !== "");
+  const canFire = !urlError && destinationUrl && destinationUrl.trim() !== "" && hasMappings;
 
   const handleFireEgress = async () => {
-    if (!destinationUrl) {
-      alert("Please provide a Destination URL.");
-      return;
-    }
+    if (!canFire) return;
     setSending(true);
     setLog(null);
 
@@ -1408,9 +1386,24 @@ function EgressTester({ leads }) {
         Local sandbox executions are secure and bypass CORS restrictions.
       </p>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Left Column: Destination Configuration */}
-        <div className="space-y-5 rounded-2xl border border-slate-800 bg-surface-raised p-5 shadow-xl">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Column 1: Schema Reference */}
+        <div className="flex flex-col rounded-2xl border border-slate-800 bg-surface-raised overflow-hidden h-fit">
+          <div className="flex items-center gap-2 border-b border-slate-800/60 bg-surface px-5 py-3">
+            <Webhook className="h-4 w-4 text-violet-400" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+              Standard JSON Schema
+            </h3>
+          </div>
+          <div className="p-5 overflow-y-auto bg-slate-900/50">
+            <pre className="font-mono text-[10px] text-violet-300 leading-relaxed">
+              {JSON.stringify(GHL_STANDARD_SCHEMA, null, 2)}
+            </pre>
+          </div>
+        </div>
+
+        {/* Column 2: Destination Configuration */}
+        <div className="flex flex-col space-y-5 rounded-2xl border border-slate-800 bg-surface-raised p-5 shadow-xl">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
             Downstream Integration Setup
           </h3>
@@ -1494,16 +1487,15 @@ function EgressTester({ leads }) {
             </div>
           </div>
 
-          {/* Action Trigger */}
           <button
             onClick={handleFireEgress}
-            disabled={sending || !isFormValid}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-950 hover:bg-amber-400 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/10"
+            disabled={sending || !canFire}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-950 hover:bg-amber-400 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-amber-500/10 mt-auto"
           >
             {sending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin text-slate-950" />
-                Executing Egress Synchronization...
+                Executing...
               </>
             ) : (
               <>
@@ -1514,7 +1506,7 @@ function EgressTester({ leads }) {
           </button>
         </div>
 
-        {/* Right Column: Outgoing Payload and Egress Logs */}
+        {/* Column 3: Outgoing Payload and Egress Logs */}
         <div className="flex flex-col gap-5">
           {/* Payload Preview Card */}
           <div className="rounded-2xl border border-slate-800 bg-surface-raised overflow-hidden">
@@ -1522,7 +1514,7 @@ function EgressTester({ leads }) {
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
               <span className="ml-2 font-mono text-[11px] text-slate-500">outgoing_payload.json</span>
               <span className="ml-auto rounded bg-cyan-500/10 px-2 py-0.5 font-mono text-[10px] text-cyan-400 uppercase">
-                {leads.length > 0 ? "LEDGER SOURCE" : "DUMMY SOURCE"}
+                MAPPED PREVIEW
               </span>
             </div>
             <pre className="p-5 font-mono text-[11px] leading-relaxed text-emerald-300 overflow-auto max-h-[160px]">
@@ -2656,6 +2648,7 @@ export default function Dashboard() {
 
               {/* Dashboard Top Actions & Stats */}
               <DashboardTopActions
+                leads={leads}
                 stats={stats}
                 onGenerateWebhook={handleGenerateWebhook}
                 generatedWebhook={generatedWebhook}
@@ -2667,7 +2660,6 @@ export default function Dashboard() {
                 savingDestination={savingDestination}
                 onRefreshStats={handleRefreshStats}
                 refreshingStats={refreshingStats}
-                onFireTestPayload={handleFireTestPayload}
                 hasWebhook={!!generatedWebhook}
               />
 
