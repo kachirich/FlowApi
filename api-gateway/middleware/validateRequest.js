@@ -55,18 +55,13 @@ export const webhookDestinationSchema = z
 
 /**
  * Zod schema for JSON mapping keys/values.
- * Strips whitespace, max 50 chars, allows only alphanumeric + underscores.
+ * Validates that it is a standard string with a maximum length of 255.
  */
 export const jsonKeyMappingSchema = z
   .string()
   .trim()
-  .transform((val) => val.replace(/\s+/g, ""))
-  .pipe(
-    z
-      .string()
-      .regex(/^[a-zA-Z0-9_]+$/, "Only alphanumeric characters and underscores are allowed")
-      .max(50, "Maximum length is 50 characters")
-  );
+  .min(1, "Cannot be empty")
+  .max(255, "Maximum length is 255 characters");
 
 /**
  * Schema for an entire mappings object (custom headers or payload keys).
