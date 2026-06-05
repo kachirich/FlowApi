@@ -29,7 +29,7 @@ const GHL_DUMMY_PAYLOAD = {
   date_added: new Date().toISOString(),
   custom_fields: {
     company: "Acme Corp",
-    deal_value: "5000",
+    deal_value: 5000,
     lead_status: "new",
   },
   location_id: "loc_abc123",
