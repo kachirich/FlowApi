@@ -70,6 +70,21 @@ export const jsonKeyMappingSchema = z
  */
 export const mappingsObjectSchema = z.record(z.string(), jsonKeyMappingSchema);
 
+const jsonPrimitiveSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
+
+const jsonValueSchema = z.lazy(() => z.union([
+  jsonPrimitiveSchema,
+  z.array(jsonValueSchema),
+  z.record(z.string(), jsonValueSchema),
+]));
+
+export const egressPayloadSchema = z.record(z.string(), jsonValueSchema);
+
 /**
  * Express middleware factory to validate the request body against a Zod schema.
  */
@@ -114,5 +129,5 @@ export const webhookConfigBodySchema = z.object({
  */
 export const egressTestBodySchema = z.object({
   destinationUrl: webhookDestinationSchema,
-  payload: mappingsObjectSchema,
+  payload: egressPayloadSchema,
 });
