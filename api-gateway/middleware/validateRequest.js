@@ -55,12 +55,13 @@ export const webhookDestinationSchema = z
 
 /**
  * Zod schema for JSON mapping keys/values.
- * Validates that it is a standard string or array of strings (arrays are joined with ", ").
- * Maximum length is 255 characters for strings.
+ * Validates that it is a standard string, number, or array of strings (arrays are joined with ", ").
+ * Numbers are coerced to strings. Maximum length is 255 characters for strings.
  */
 export const jsonKeyMappingSchema = z
   .union([
     z.string().trim().min(1, "Cannot be empty").max(255, "Maximum length is 255 characters"),
+    z.number().transform((n) => n.toString()),
     z.array(z.string()).min(1, "Cannot be empty array").transform((arr) => arr.join(", "))
   ]);
 

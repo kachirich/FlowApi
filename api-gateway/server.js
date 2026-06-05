@@ -7,6 +7,7 @@ import { connectRedis } from "./utils/redisClient.js";
 import "./services/queue.js";
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 // ---------------------------------------------------------------------------
 // Startup
@@ -17,8 +18,8 @@ async function start() {
     await connectRedis();
     // startQueueWorker();
     startJanitorService();
-    app.listen(PORT, () => {
-      console.log(`[server] API Gateway listening on http://localhost:${PORT}`);
+    app.listen(PORT, HOST, () => {
+      console.log(`[server] API Gateway listening on http://${HOST}:${PORT}`);
       console.log(`[server] Environment: ${process.env.NODE_ENV || "development"}`);
     });
   } catch (err) {
