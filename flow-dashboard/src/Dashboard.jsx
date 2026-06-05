@@ -81,7 +81,7 @@ const GHL_STANDARD_SCHEMA = {
   date_added: new Date().toISOString(),
   custom_fields: {
     company: "Acme Corporation",
-    deal_value: "5000",
+    deal_value: 5000,
     lead_status: "new",
   },
   location_id: "loc_abc123",
