@@ -97,6 +97,14 @@ export async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys (user_id);
       CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 
+      -- Optional per-key HMAC request signing.
+      -- signing_secret is a 64-char hex shared secret (crypto.randomBytes(32)).
+      -- It is intentionally stored UN-hashed — like an OAuth client secret —
+      -- because the gateway must recompute the HMAC at request time. It is
+      -- shown to the user exactly once on rotation and never returned again.
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS signing_secret VARCHAR(128);
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS require_signature BOOLEAN NOT NULL DEFAULT FALSE;
+
       -- 4. The OTP Engine
       CREATE TABLE IF NOT EXISTS otps (
         id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -203,6 +211,26 @@ export async function initializeDatabase() {
 
       ALTER TABLE webhook_logs ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE;
       ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL;
+
+      -- Flows: named pipelines grouping a subset of destinations with their own strategy
+      CREATE TABLE IF NOT EXISTS flows (
+        id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id          UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name             VARCHAR(255) NOT NULL,
+        routing_strategy VARCHAR(20) NOT NULL DEFAULT 'round_robin',
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_flows_user_id ON flows(user_id);
+
+      CREATE TABLE IF NOT EXISTS flow_destinations (
+        flow_id        UUID NOT NULL REFERENCES flows(id) ON DELETE CASCADE,
+        destination_id UUID NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+        PRIMARY KEY (flow_id, destination_id)
+      );
+
+      -- An API key may optionally point to a Flow; unassign (SET NULL) if the flow is deleted
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS flow_id UUID
+        REFERENCES flows(id) ON DELETE SET NULL;
     `);
     console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters, lead_counters & destinations tables ready");
   } catch (err) {

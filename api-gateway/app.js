@@ -15,6 +15,8 @@ import webhookRoutes from "./routes/webhooks.js";
 import catchRoutes from "./routes/catch.js";
 import authRoutes from "./routes/auth.js";
 import leadsRoutes from "./routes/leads.js";
+import v1LeadsRoutes from "./routes/v1/leads.js";
+import flowRoutes from "./routes/flows.js";
 import workflowRoutes from "./routes/workflow.js";
 import stripeRoutes from "./routes/stripe.js";
 import billingRoutes from "./routes/billing.js";
@@ -67,6 +69,14 @@ app.use("/api/stripe", stripeRoutes);
 // Billing Webhook — MUST come before express.json() to retain raw body
 app.use("/api/billing", billingRoutes);
 
+// Public v1 ingestion — parse JSON AND retain the raw bytes so verifySignature
+// can recompute the HMAC. Mounted before the global parser so body-parser
+// captures rawBody here; the global express.json() then no-ops for this path.
+app.use("/api/v1/leads", express.json({
+  limit: "100kb",
+  verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); },
+}));
+
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use(requestLogger);           // Log every request to PostgreSQL
@@ -80,8 +90,14 @@ app.use("/api/webhooks", webhookRoutes);
 // Dynamic Dispatcher
 app.use("/api/catch", catchRoutes);
 
-// Lead simulation
+// Lead simulation (legacy)
 app.use("/api/leads", leadsRoutes);
+
+// Public lead ingestion API (v1)
+app.use("/api/v1/leads", v1LeadsRoutes);
+
+// Flow management
+app.use("/api/flows", flowRoutes);
 
 // Workflow overrides
 app.use("/api/workflow", workflowRoutes);
