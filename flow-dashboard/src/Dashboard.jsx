@@ -47,6 +47,8 @@ import {
   Settings,
   Lock,
   Shuffle,
+  Workflow,
+  Plug,
 } from "lucide-react";
 
 import BookingWidget from "./components/BookingWidget";
@@ -56,6 +58,9 @@ import UpgradeModal from "./components/UpgradeModal";
 import WebhookConfig from "./components/WebhookConfig";
 import SetupTutorial from "./components/SetupTutorial";
 import DestinationManager from "./components/DestinationManager";
+import FlowManager from "./components/FlowManager";
+import IntegrationsTab from "./components/IntegrationsTab";
+import apiClient from "./utils/api";
 import { useAuth } from "./context/AuthContext";
 import { API_BASE_URL } from "./utils/apiConfig";
 import { webhookDestinationSchema, jsonKeyMappingSchema } from "./utils/validators";
@@ -977,7 +982,7 @@ function OneTimeSecretModal({ webhook, onClose }) {
    Webhooks Table Component (Smart List)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleCollapse, onDeleteAll, planType, setUpgradeModal, onTestPing }) {
+function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleCollapse, onDeleteAll, planType, setUpgradeModal, onTestPing, flows = [], onAssignFlow }) {
   const [expanded, setExpanded] = useState(false);
   const [configModal, setConfigModal] = useState(null);
   const [configTargetUrl, setConfigTargetUrl] = useState("");
@@ -1042,6 +1047,7 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
           <thead>
             <tr className="border-b border-slate-800 text-slate-400">
               <th className="pb-3 font-semibold px-2">API Key (Masked)</th>
+              <th className="pb-3 font-semibold px-2">Routing Flow</th>
               <th className="pb-3 font-semibold px-2">Created At</th>
               <th className="pb-3 font-semibold px-2">Last Used</th>
               <th className="pb-3 font-semibold text-right px-2">Actions</th>
@@ -1051,6 +1057,21 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
             {displayWebhooks.map((wh) => (
               <tr key={wh.id} className="transition-colors hover:bg-slate-800/20">
                 <td className="py-3 px-2 font-mono text-[11px] text-amber-400/70">{wh.prefix}...{wh.last_four}</td>
+                <td className="py-3 px-2">
+                  <select
+                    value={wh.flow_id || ""}
+                    onChange={(e) => onAssignFlow && onAssignFlow(wh.id, e.target.value || null)}
+                    title={wh.flow_id ? "Routing to assigned flow" : "No flow — routes to all destinations"}
+                    className={`max-w-[170px] rounded border bg-slate-950 px-2 py-1 text-[11px] outline-none transition focus:border-cyan-500/40 ${
+                      wh.flow_id ? "border-cyan-500/30 text-cyan-400" : "border-slate-700 text-slate-500"
+                    }`}
+                  >
+                    <option value="">No flow — all destinations</option>
+                    {flows.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </td>
                 <td className="py-3 px-2 text-slate-300">{new Date(wh.created_at).toLocaleDateString()}</td>
                 <td className="py-3 px-2 text-slate-400 italic">{wh.last_used_at ? new Date(wh.last_used_at).toLocaleDateString() : 'Never'}</td>
                 <td className="py-3 px-2 text-right">
@@ -1067,7 +1088,7 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
             ))}
             {webhooks.length === 0 && (
               <tr>
-                <td colSpan="4" className="py-8 text-center text-slate-500 italic">
+                <td colSpan="5" className="py-8 text-center text-slate-500 italic">
                   No active API keys. Generate one above.
                 </td>
               </tr>
@@ -1707,6 +1728,7 @@ export default function Dashboard() {
   const [showFeatures, setShowFeatures] = useState(false);
   const [leads, setLeads] = useState([]);
   const [webhooks, setWebhooks] = useState([]);
+  const [flows, setFlows] = useState([]);
   const [showSecretModal, setShowSecretModal] = useState(false);
 
   // Enterprise Security & 2FA / Danger Zone states
@@ -2212,15 +2234,43 @@ export default function Dashboard() {
     } catch { /* retry silently */ }
   }, []);
 
+  const fetchFlows = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/api/flows');
+      if (res.data?.success) {
+        setFlows(res.data.flows || []);
+      }
+    } catch { /* retry silently */ }
+  }, []);
+
+  const handleAssignFlow = useCallback(async (keyId, flowId) => {
+    // Optimistic update so the select reflects the choice immediately
+    const previous = webhooks;
+    const flowName = flowId ? (flows.find((f) => f.id === flowId)?.name ?? null) : null;
+    setWebhooks((prev) =>
+      prev.map((k) => (k.id === keyId ? { ...k, flow_id: flowId, flow_name: flowName } : k))
+    );
+    try {
+      await apiClient.put(`/api/keys/${keyId}/flow`, { flow_id: flowId });
+      showToast(flowId ? "Flow assigned" : "Flow unassigned", "success");
+    } catch (err) {
+      console.error('Failed to assign flow:', err);
+      setWebhooks(previous); // rollback
+      showToast("Failed to assign flow", "error");
+    }
+  }, [webhooks, flows]);
+
   useEffect(() => {
     fetchLeads();
     fetchWebhooks();
+    fetchFlows();
     const interval = setInterval(() => {
       fetchLeads();
       fetchWebhooks();
+      fetchFlows();
     }, STATS_POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [fetchLeads, fetchWebhooks]);
+  }, [fetchLeads, fetchWebhooks, fetchFlows]);
 
 
 
@@ -2558,6 +2608,12 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab("destinations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "destinations" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Destinations" : ""}>
             <Shuffle className="h-4 w-4" /> {!sidebarCollapsed && "Destinations"}
           </button>
+          <button onClick={() => setActiveTab("flows")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "flows" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Flows" : ""}>
+            <Workflow className="h-4 w-4" /> {!sidebarCollapsed && "Flows"}
+          </button>
+          <button onClick={() => setActiveTab("integrations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "integrations" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Integrations" : ""}>
+            <Plug className="h-4 w-4" /> {!sidebarCollapsed && "Integrations"}
+          </button>
           <button 
             onClick={() => {
               if (stats.planType === 'free') {
@@ -2625,6 +2681,8 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab("dashboard")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "dashboard" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Dashboard</button>
           <button onClick={() => setActiveTab("sandbox")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-500"}`}>Sandbox</button>
           <button onClick={() => setActiveTab("destinations")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "destinations" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Destinations</button>
+          <button onClick={() => setActiveTab("flows")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "flows" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}>Flows</button>
+          <button onClick={() => setActiveTab("integrations")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "integrations" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}>Integrations</button>
           <button 
             onClick={() => {
               if (stats.planType === 'free') {
@@ -2712,6 +2770,8 @@ export default function Dashboard() {
                 planType={stats.planType}
                 setUpgradeModal={setUpgradeModal}
                 onTestPing={handleTestPing}
+                flows={flows}
+                onAssignFlow={handleAssignFlow}
               />
 
               {/* Lead Ledger Table */}
@@ -2730,6 +2790,10 @@ export default function Dashboard() {
             <EgressTester leads={leads} />
           ) : activeTab === "destinations" ? (
             <DestinationManager />
+          ) : activeTab === "flows" ? (
+            <FlowManager />
+          ) : activeTab === "integrations" ? (
+            <IntegrationsTab setActiveTab={setActiveTab} />
           ) : activeTab === "logs" ? (
             <WebhookLogs planType={stats.planType} setUpgradeModal={setUpgradeModal} />
           ) : activeTab === "consulting" ? (
