@@ -28,26 +28,52 @@ const CHECK_CAP_LUA = `
  * @param {object} payload - Lead payload data.
  * @param {string} contactId - Lead contact identifier.
  * @param {boolean} isTest - Whether this is a test lead.
+ * @param {string|null} flowId - Optional flow id. When provided, destinations are
+ *   resolved from the flow's attached subset and the flow's routing_strategy is
+ *   used instead of the user-wide strategy. When null, behaviour is unchanged
+ *   (all of the user's active destinations + the user's routing_strategy).
  * @returns {Promise<object>} Dispatch result status.
  */
-export async function dispatchLead(userId, payload, contactId, isTest = false) {
-  // 1. Fetch broker's strategy
+export async function dispatchLead(userId, payload, contactId, isTest = false, flowId = null) {
+  // 1. Fetch broker's strategy + billing context
   const userRes = await query("SELECT routing_strategy, plan_type, tier FROM users WHERE id = $1", [userId]);
   if (userRes.rowCount === 0) {
     return { success: false, error: "USER_NOT_FOUND", message: "Broker user not found." };
   }
-  const routingStrategy = userRes.rows[0].routing_strategy || "round_robin";
+  let routingStrategy = userRes.rows[0].routing_strategy || "round_robin";
   const planType = userRes.rows[0].plan_type || "free";
   const tier = userRes.rows[0].tier || "sandbox";
 
-  // 2. Fetch active destinations
-  const destinationsRes = await query(
-    `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers 
-     FROM destinations 
-     WHERE user_id = $1 AND is_active = TRUE`,
-    [userId]
-  );
-  const destinations = destinationsRes.rows;
+  // 2. Resolve active destinations — via the flow's subset when a flow is set,
+  //    otherwise fall back to all of the user's active destinations.
+  let destinations;
+  if (flowId) {
+    const flowRes = await query(
+      "SELECT routing_strategy FROM flows WHERE id = $1 AND user_id = $2",
+      [flowId, userId]
+    );
+    if (flowRes.rowCount === 0) {
+      return { success: false, error: "FLOW_NOT_FOUND", message: "Flow not found." };
+    }
+    routingStrategy = flowRes.rows[0].routing_strategy || "round_robin";
+
+    const flowDestRes = await query(
+      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+       FROM flow_destinations fd
+       JOIN destinations d ON d.id = fd.destination_id
+       WHERE fd.flow_id = $1 AND d.is_active = TRUE`,
+      [flowId]
+    );
+    destinations = flowDestRes.rows;
+  } else {
+    const destinationsRes = await query(
+      `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+       FROM destinations
+       WHERE user_id = $1 AND is_active = TRUE`,
+      [userId]
+    );
+    destinations = destinationsRes.rows;
+  }
 
   if (destinations.length === 0) {
     return { success: false, error: "NO_DESTINATIONS", message: "No active destinations configured." };

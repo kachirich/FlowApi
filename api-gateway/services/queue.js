@@ -21,7 +21,20 @@ export const webhookQueue = new Queue("webhook-dispatch", { connection });
 export const worker = new Worker(
   "webhook-dispatch",
   async (job) => {
-    const { webhook, payload, headers, method, contactId, isTest } = job.data;
+    const { webhook, payload, headers, method, contactId, isTest, userId, flow_id } = job.data;
+
+    // Destination/flow routing path: jobs enqueued without a single `webhook`
+    // target (e.g. /api/v1/leads) fan out via the smart dispatcher, which
+    // resolves the flow's (or user's) destinations and handles its own retries.
+    if (!webhook) {
+      const { dispatchLead } = await import("./WebhookDispatcher.js");
+      const result = await dispatchLead(userId, payload, contactId, isTest, flow_id ?? null);
+      if (!result || !result.success) {
+        throw new Error(result?.message || "Lead dispatch failed");
+      }
+      return result;
+    }
+
     const targetUrl = webhook.target_url;
 
     if (!targetUrl) {
@@ -145,6 +158,10 @@ export const worker = new Worker(
 // ── Worker Final Failure Listener ────────────────────────────────────────────
 worker.on("failed", async (job, err) => {
   if (!job) return;
+
+  // Destination/flow routing jobs have no single `webhook` to log against;
+  // dispatchLead() owns their logging and lead-status writes.
+  if (!job.data?.webhook) return;
 
   const attempts = job.opts.attempts || 1;
   if (job.attemptsMade >= attempts) {

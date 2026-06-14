@@ -43,7 +43,7 @@ export const listKeys = async (req, res) => {
     const userId = req.user.id;
 
     const result = await query(
-      `SELECT id, prefix, last_four, created_at, last_used_at
+      `SELECT id, prefix, last_four, flow_id, created_at, last_used_at
        FROM api_keys
        WHERE user_id = $1
        ORDER BY created_at DESC`,
@@ -98,5 +98,60 @@ export const revokeKey = async (req, res) => {
   } catch (error) {
     console.error('Error revoking API key:', error);
     return res.status(500).json({ error: 'Failed to revoke API key' });
+  }
+};
+
+/**
+ * PUT /api/keys/:id/flow
+ * body: { flow_id | null }
+ *
+ * Assigns (or, with null, unassigns) a Flow to an API key. The flow must belong
+ * to the requesting user. The cached key payload is invalidated so subsequent
+ * ingest requests pick up the new flow routing immediately.
+ */
+export const assignKeyFlow = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const keyId = req.params.id;
+    const { flow_id } = req.body; // validated by assignFlowSchema (uuid | null)
+
+    // Verify the key belongs to the user (also grab the hash for cache busting)
+    const keyResult = await query(
+      `SELECT id, key_hash FROM api_keys WHERE id = $1 AND user_id = $2`,
+      [keyId, userId]
+    );
+    if (keyResult.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'API Key not found' });
+    }
+
+    // If assigning (not unassigning), verify the flow belongs to the user
+    if (flow_id) {
+      const flowResult = await query(
+        `SELECT id FROM flows WHERE id = $1 AND user_id = $2`,
+        [flow_id, userId]
+      );
+      if (flowResult.rowCount === 0) {
+        return res.status(404).json({ success: false, message: 'Flow not found' });
+      }
+    }
+
+    const updated = await query(
+      `UPDATE api_keys SET flow_id = $1 WHERE id = $2
+       RETURNING id, prefix, last_four, flow_id, created_at, last_used_at`,
+      [flow_id || null, keyId]
+    );
+
+    // Invalidate the cached auth payload so the new flow_id is honoured at once
+    try {
+      const { default: redisClient } = await import('../utils/redisClient.js');
+      await redisClient.del(`apikey:${keyResult.rows[0].key_hash}`);
+    } catch (redisErr) {
+      console.error('Failed to clear API key cache on flow assignment:', redisErr);
+    }
+
+    return res.status(200).json({ success: true, key: updated.rows[0] });
+  } catch (error) {
+    console.error('Error assigning flow to API key:', error);
+    return res.status(500).json({ error: 'Failed to assign flow to API key' });
   }
 };

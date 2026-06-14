@@ -45,7 +45,7 @@ export const apiKeyAuth = async (req, res, next) => {
 
     // 2. Cache miss -> Query the database for the hash
     const result = await query(
-      `SELECT api_keys.id AS key_id, users.id AS user_id, users.email, users.tier 
+      `SELECT api_keys.id AS key_id, api_keys.flow_id, users.id AS user_id, users.email, users.tier, users.plan_type
        FROM api_keys
        JOIN users ON api_keys.user_id = users.id
        WHERE api_keys.key_hash = $1`,
@@ -59,13 +59,15 @@ export const apiKeyAuth = async (req, res, next) => {
       return next(error);
     }
 
-    const { key_id, user_id, email, tier } = result.rows[0];
+    const { key_id, flow_id, user_id, email, tier, plan_type } = result.rows[0];
 
     const userPayload = {
       key_id,
       id: user_id,
       email,
-      tier
+      tier,
+      plan_type,
+      flow_id: flow_id || null
     };
 
     // 3. Save to Redis for subsequent requests (1 hour expiration)

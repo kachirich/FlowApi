@@ -131,3 +131,53 @@ export const egressTestBodySchema = z.object({
   destinationUrl: webhookDestinationSchema,
   payload: egressPayloadSchema,
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Flow management schemas
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const routingStrategySchema = z.enum(["round_robin", "broadcast"], {
+  message: "routing_strategy must be 'round_robin' or 'broadcast'",
+});
+
+const flowNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Name cannot be empty")
+  .max(255, "Maximum length is 255 characters");
+
+/**
+ * POST /api/flows
+ */
+export const createFlowSchema = z.object({
+  name: flowNameSchema,
+  routing_strategy: routingStrategySchema.optional(),
+  destination_ids: z.array(z.string().uuid("Invalid destination id")).optional(),
+});
+
+/**
+ * PUT /api/flows/:id
+ */
+export const updateFlowSchema = z
+  .object({
+    name: flowNameSchema.optional(),
+    routing_strategy: routingStrategySchema.optional(),
+  })
+  .refine(
+    (data) => data.name !== undefined || data.routing_strategy !== undefined,
+    { message: "At least one of name or routing_strategy is required" }
+  );
+
+/**
+ * POST /api/flows/:id/destinations
+ */
+export const addFlowDestinationSchema = z.object({
+  destination_id: z.string().uuid("Invalid destination id"),
+});
+
+/**
+ * PUT /api/keys/:id/flow  (null unassigns the flow)
+ */
+export const assignFlowSchema = z.object({
+  flow_id: z.string().uuid("Invalid flow id").nullable(),
+});

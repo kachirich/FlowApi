@@ -15,6 +15,8 @@ import webhookRoutes from "./routes/webhooks.js";
 import catchRoutes from "./routes/catch.js";
 import authRoutes from "./routes/auth.js";
 import leadsRoutes from "./routes/leads.js";
+import v1LeadsRoutes from "./routes/v1/leads.js";
+import flowRoutes from "./routes/flows.js";
 import workflowRoutes from "./routes/workflow.js";
 import stripeRoutes from "./routes/stripe.js";
 import billingRoutes from "./routes/billing.js";
@@ -80,8 +82,14 @@ app.use("/api/webhooks", webhookRoutes);
 // Dynamic Dispatcher
 app.use("/api/catch", catchRoutes);
 
-// Lead simulation
+// Lead simulation (legacy)
 app.use("/api/leads", leadsRoutes);
+
+// Public lead ingestion API (v1)
+app.use("/api/v1/leads", v1LeadsRoutes);
+
+// Flow management
+app.use("/api/flows", flowRoutes);
 
 // Workflow overrides
 app.use("/api/workflow", workflowRoutes);
