@@ -97,6 +97,14 @@ export async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys (user_id);
       CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys (key_hash);
 
+      -- Optional per-key HMAC request signing.
+      -- signing_secret is a 64-char hex shared secret (crypto.randomBytes(32)).
+      -- It is intentionally stored UN-hashed — like an OAuth client secret —
+      -- because the gateway must recompute the HMAC at request time. It is
+      -- shown to the user exactly once on rotation and never returned again.
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS signing_secret VARCHAR(128);
+      ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS require_signature BOOLEAN NOT NULL DEFAULT FALSE;
+
       -- 4. The OTP Engine
       CREATE TABLE IF NOT EXISTS otps (
         id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),

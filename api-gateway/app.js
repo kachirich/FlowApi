@@ -69,6 +69,14 @@ app.use("/api/stripe", stripeRoutes);
 // Billing Webhook — MUST come before express.json() to retain raw body
 app.use("/api/billing", billingRoutes);
 
+// Public v1 ingestion — parse JSON AND retain the raw bytes so verifySignature
+// can recompute the HMAC. Mounted before the global parser so body-parser
+// captures rawBody here; the global express.json() then no-ops for this path.
+app.use("/api/v1/leads", express.json({
+  limit: "100kb",
+  verify: (req, _res, buf) => { req.rawBody = buf.toString("utf8"); },
+}));
+
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ extended: true, limit: "100kb" }));
 app.use(requestLogger);           // Log every request to PostgreSQL

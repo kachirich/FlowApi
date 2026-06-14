@@ -1,7 +1,15 @@
 import { Router } from 'express';
-import { generateKey, listKeys, revokeKey, assignKeyFlow } from '../controllers/apiKey.controller.js';
+import {
+  generateKey,
+  listKeys,
+  revokeKey,
+  assignKeyFlow,
+  rotateSigningSecret,
+  deleteSigningSecret,
+  setSignatureRequired,
+} from '../controllers/apiKey.controller.js';
 import authenticate from '../middleware/auth.js';
-import { validateRequest, assignFlowSchema } from '../middleware/validateRequest.js';
+import { validateRequest, assignFlowSchema, signatureRequiredSchema } from '../middleware/validateRequest.js';
 
 const router = Router();
 
@@ -16,6 +24,13 @@ router.get('/', listKeys);
 
 // Assign (or unassign) a Flow to an API Key
 router.put('/:id/flow', validateRequest(assignFlowSchema), assignKeyFlow);
+
+// HMAC signing secret — generate/rotate (returned once) and remove
+router.post('/:id/signing-secret', rotateSigningSecret);
+router.delete('/:id/signing-secret', deleteSigningSecret);
+
+// Toggle HMAC signature enforcement for a key
+router.put('/:id/signature-required', validateRequest(signatureRequiredSchema), setSignatureRequired);
 
 // Revoke an API Key by ID
 router.delete('/:id', revokeKey);

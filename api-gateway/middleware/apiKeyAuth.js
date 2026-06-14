@@ -3,21 +3,49 @@ import { query } from '../db/connection.js';
 import redisClient from '../utils/redisClient.js';
 
 /**
+ * Delete a cached API key payload from Redis.
+ *
+ * Callers MUST invoke this after mutating an api_keys row (flow assignment,
+ * signing-secret rotation/removal, signature toggle, revocation) so the edge
+ * cache does not serve a stale payload for up to an hour.
+ *
+ * @param {string} keyHash - SHA-256 hash stored in api_keys.key_hash.
+ */
+export async function invalidateApiKeyCache(keyHash) {
+  if (!keyHash) return;
+  try {
+    await redisClient.del(`apikey:${keyHash}`);
+  } catch (err) {
+    console.error('Failed to invalidate API key cache:', err);
+  }
+}
+
+/**
  * Middleware for authenticating requests using API Keys.
  * Intended for inbound webhook traffic or programmatic access.
+ *
+ * Accepts the key via EITHER the `x-api-key` header (preferred, advertised in
+ * the integration docs) OR `Authorization: Bearer <token>`. x-api-key wins when
+ * both are present.
  */
 export const apiKeyAuth = async (req, res, next) => {
   try {
+    const apiKeyHeader = req.headers['x-api-key'];
     const authHeader = req.headers.authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    let token;
+    if (typeof apiKeyHeader === 'string' && apiKeyHeader.trim()) {
+      token = apiKeyHeader.trim();
+    } else if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+
+    if (!token) {
       const error = new Error('Authentication required — no API key provided');
       error.name = 'Unauthorized';
       error.status = 401;
       return next(error);
     }
-
-    const token = authHeader.split(' ')[1];
 
     // Hash the provided token
     const keyHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -45,7 +73,8 @@ export const apiKeyAuth = async (req, res, next) => {
 
     // 2. Cache miss -> Query the database for the hash
     const result = await query(
-      `SELECT api_keys.id AS key_id, api_keys.flow_id, users.id AS user_id, users.email, users.tier, users.plan_type
+      `SELECT api_keys.id AS key_id, api_keys.flow_id, api_keys.signing_secret, api_keys.require_signature,
+              users.id AS user_id, users.email, users.tier, users.plan_type
        FROM api_keys
        JOIN users ON api_keys.user_id = users.id
        WHERE api_keys.key_hash = $1`,
@@ -59,7 +88,7 @@ export const apiKeyAuth = async (req, res, next) => {
       return next(error);
     }
 
-    const { key_id, flow_id, user_id, email, tier, plan_type } = result.rows[0];
+    const { key_id, flow_id, signing_secret, require_signature, user_id, email, tier, plan_type } = result.rows[0];
 
     const userPayload = {
       key_id,
@@ -67,7 +96,9 @@ export const apiKeyAuth = async (req, res, next) => {
       email,
       tier,
       plan_type,
-      flow_id: flow_id || null
+      flow_id: flow_id || null,
+      signing_secret: signing_secret || null,
+      require_signature: require_signature === true,
     };
 
     // 3. Save to Redis for subsequent requests (1 hour expiration)

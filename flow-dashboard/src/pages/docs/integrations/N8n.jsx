@@ -20,6 +20,7 @@ export default function N8n() {
         { step: 'Add Header: x-api-key', detail: 'Under "Headers", add x-api-key with your FlowAPI key (store it as an n8n credential or expression so it stays out of the workflow JSON).' },
       ]}
       samplePayload={SAMPLE}
+      showSigning
     />
   );
 }

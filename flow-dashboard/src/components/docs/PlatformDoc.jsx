@@ -29,6 +29,27 @@ const CURL_EXAMPLE = `curl -X POST ${WEBHOOK_URL} \\
   -H "Content-Type: application/json" \\
   -d '{"email":"test@example.com","first_name":"Test"}'`;
 
+/* Optional HMAC signing reference (shown on platforms that commonly use it) */
+const SIGNING_HEADERS = [
+  'x-api-key:           <key>',
+  'x-flowapi-timestamp: <unix ms>',
+  'x-flowapi-signature: hex(hmac_sha256(secret, `${timestamp}.${body}`))',
+].join('\n');
+
+const SIGN_NODE_EXAMPLE = `const crypto = require('crypto');
+const body = JSON.stringify({ email: 'jane@acme.com' });
+const ts = Date.now().toString();
+const sig = crypto.createHmac('sha256', SECRET).update(\`\${ts}.\${body}\`).digest('hex');
+await fetch('${WEBHOOK_URL}', { method: 'POST', body,
+  headers: { 'content-type': 'application/json', 'x-api-key': KEY, 'x-flowapi-timestamp': ts, 'x-flowapi-signature': sig } });`;
+
+const SIGN_CURL_EXAMPLE = `BODY='{"email":"jane@acme.com"}'
+TS=$(date +%s000)
+SIG=$(printf "$TS.$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
+curl -X POST ${WEBHOOK_URL} \\
+  -H "x-api-key: $KEY" -H "x-flowapi-timestamp: $TS" \\
+  -H "x-flowapi-signature: $SIG" -H "content-type: application/json" -d "$BODY"`;
+
 function CodeBlock({ children }) {
   return (
     <pre className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 font-mono text-[12px] leading-relaxed text-zinc-300">
@@ -48,7 +69,7 @@ function CodeBlock({ children }) {
  *                  IntegrationsTab.jsx verbatim, detail adds one sentence)
  *   samplePayload- realistic JSON string this platform typically sends
  */
-export default function PlatformDoc({ name, accent = 'indigo', subtitle, steps = [], samplePayload }) {
+export default function PlatformDoc({ name, accent = 'indigo', subtitle, steps = [], samplePayload, showSigning = false }) {
   const a = ACCENTS[accent] || ACCENTS.indigo;
 
   return (
@@ -129,6 +150,25 @@ export default function PlatformDoc({ name, accent = 'indigo', subtitle, steps =
         </p>
         <CopyBox label="cURL" value={CURL_EXAMPLE} />
       </section>
+
+      {/* Signed Requests (optional) */}
+      {showSigning && (
+        <section className="mb-12">
+          <h2 className="text-2xl font-bold mb-3">Signed requests (optional)</h2>
+          <p className="text-sm text-zinc-400 leading-relaxed mb-4 max-w-2xl">
+            If you enable signature enforcement on your key (dashboard → API Keys → signing secret),
+            sign every request with HMAC-SHA256. Send these headers — requests older than 5 minutes
+            or with a bad signature are rejected with <code className="font-mono text-zinc-200">401</code>:
+          </p>
+          <CopyBox label="Headers to send when signatures are enabled" value={SIGNING_HEADERS} />
+
+          <p className="mt-6 mb-2 text-sm font-semibold text-zinc-200">Node.js</p>
+          <CodeBlock>{SIGN_NODE_EXAMPLE}</CodeBlock>
+
+          <p className="mt-6 mb-2 text-sm font-semibold text-zinc-200">curl + openssl</p>
+          <CodeBlock>{SIGN_CURL_EXAMPLE}</CodeBlock>
+        </section>
+      )}
 
       {/* 8. CTA */}
       <section className="rounded-2xl border border-indigo-500/30 bg-gradient-to-b from-indigo-500/[0.07] to-zinc-950 p-8 text-center shadow-[0_0_40px_-20px_rgba(99,102,241,0.5)]">

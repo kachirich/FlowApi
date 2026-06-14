@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { query } from '../db/connection.js';
+import { invalidateApiKeyCache } from '../middleware/apiKeyAuth.js';
 
 export const generateKey = async (req, res) => {
   try {
@@ -87,12 +88,7 @@ export const revokeKey = async (req, res) => {
     );
 
     // Invalidate cache
-    try {
-      const { default: redisClient } = await import('../utils/redisClient.js');
-      await redisClient.del(`apikey:${keyHash}`);
-    } catch (redisErr) {
-      console.error('Failed to clear API key cache on revoke:', redisErr);
-    }
+    await invalidateApiKeyCache(keyHash);
 
     return res.status(200).json({ success: true, message: 'API Key revoked successfully' });
   } catch (error) {
@@ -142,16 +138,126 @@ export const assignKeyFlow = async (req, res) => {
     );
 
     // Invalidate the cached auth payload so the new flow_id is honoured at once
-    try {
-      const { default: redisClient } = await import('../utils/redisClient.js');
-      await redisClient.del(`apikey:${keyResult.rows[0].key_hash}`);
-    } catch (redisErr) {
-      console.error('Failed to clear API key cache on flow assignment:', redisErr);
-    }
+    await invalidateApiKeyCache(keyResult.rows[0].key_hash);
 
     return res.status(200).json({ success: true, key: updated.rows[0] });
   } catch (error) {
     console.error('Error assigning flow to API key:', error);
     return res.status(500).json({ error: 'Failed to assign flow to API key' });
+  }
+};
+
+/**
+ * POST /api/keys/:id/signing-secret
+ *
+ * Generates (or rotates) the HMAC signing secret for a key and returns it ONCE.
+ * The secret is never returned by any subsequent GET — treat it like a client
+ * secret. Caller must own the key.
+ */
+export const rotateSigningSecret = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const keyId = req.params.id;
+
+    const keyResult = await query(
+      `SELECT key_hash FROM api_keys WHERE id = $1 AND user_id = $2`,
+      [keyId, userId]
+    );
+    if (keyResult.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'API Key not found' });
+    }
+
+    const signingSecret = crypto.randomBytes(32).toString('hex');
+
+    await query(
+      `UPDATE api_keys SET signing_secret = $1 WHERE id = $2`,
+      [signingSecret, keyId]
+    );
+
+    // Invalidate cache so the new secret is used on the next request
+    await invalidateApiKeyCache(keyResult.rows[0].key_hash);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Signing secret generated. Save it now — it will not be shown again.',
+      signing_secret: signingSecret,
+    });
+  } catch (error) {
+    console.error('Error rotating signing secret:', error);
+    return res.status(500).json({ error: 'Failed to rotate signing secret' });
+  }
+};
+
+/**
+ * DELETE /api/keys/:id/signing-secret
+ *
+ * Removes the signing secret and disables signature enforcement for the key.
+ */
+export const deleteSigningSecret = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const keyId = req.params.id;
+
+    const keyResult = await query(
+      `SELECT key_hash FROM api_keys WHERE id = $1 AND user_id = $2`,
+      [keyId, userId]
+    );
+    if (keyResult.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'API Key not found' });
+    }
+
+    await query(
+      `UPDATE api_keys SET signing_secret = NULL, require_signature = FALSE WHERE id = $1`,
+      [keyId]
+    );
+
+    await invalidateApiKeyCache(keyResult.rows[0].key_hash);
+
+    return res.status(200).json({ success: true, message: 'Signing secret removed' });
+  } catch (error) {
+    console.error('Error deleting signing secret:', error);
+    return res.status(500).json({ error: 'Failed to delete signing secret' });
+  }
+};
+
+/**
+ * PUT /api/keys/:id/signature-required
+ * body: { required: boolean }
+ *
+ * Toggles HMAC signature enforcement. Cannot be enabled until a signing secret
+ * exists for the key.
+ */
+export const setSignatureRequired = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const keyId = req.params.id;
+    const { required } = req.body; // validated boolean
+
+    const keyResult = await query(
+      `SELECT key_hash, signing_secret FROM api_keys WHERE id = $1 AND user_id = $2`,
+      [keyId, userId]
+    );
+    if (keyResult.rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'API Key not found' });
+    }
+
+    if (required === true && !keyResult.rows[0].signing_secret) {
+      return res.status(400).json({
+        success: false,
+        message: 'Generate a signing secret before requiring signatures.',
+      });
+    }
+
+    await query(
+      `UPDATE api_keys SET require_signature = $1 WHERE id = $2`,
+      [required === true, keyId]
+    );
+
+    await invalidateApiKeyCache(keyResult.rows[0].key_hash);
+
+    return res.status(200).json({ success: true, require_signature: required === true });
+  } catch (error) {
+    console.error('Error setting signature requirement:', error);
+    return res.status(500).json({ error: 'Failed to update signature requirement' });
   }
 };

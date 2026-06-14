@@ -21,6 +21,7 @@ export default function Zapier() {
         { step: 'Add x-api-key as a request header', detail: 'In the headers section, add x-api-key with your FlowAPI key, then turn the Zap/Scenario on.' },
       ]}
       samplePayload={SAMPLE}
+      showSigning
     />
   );
 }

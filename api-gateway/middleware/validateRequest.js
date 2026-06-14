@@ -181,3 +181,10 @@ export const addFlowDestinationSchema = z.object({
 export const assignFlowSchema = z.object({
   flow_id: z.string().uuid("Invalid flow id").nullable(),
 });
+
+/**
+ * PUT /api/keys/:id/signature-required
+ */
+export const signatureRequiredSchema = z.object({
+  required: z.boolean({ message: "required must be a boolean" }),
+});
