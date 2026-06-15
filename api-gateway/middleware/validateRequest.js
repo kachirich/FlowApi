@@ -188,3 +188,29 @@ export const assignFlowSchema = z.object({
 export const signatureRequiredSchema = z.object({
   required: z.boolean({ message: "required must be a boolean" }),
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Per-destination lead metering / credit balance schemas
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** PUT /api/destinations/:id/balance/settings */
+export const balanceSettingsSchema = z
+  .object({
+    is_metered: z.boolean().optional(),
+    exhausted_action: z.enum(["pause", "continue"]).optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: "At least one field required",
+  });
+
+/** POST /api/destinations/:id/balance/top-up-request */
+export const topUpRequestSchema = z.object({
+  pack: z.enum(["starter", "growth", "pro"]),
+});
+
+/** POST /api/destinations/:id/balance/admin-credit */
+export const adminCreditSchema = z.object({
+  amount: z.number().int().positive().max(100000),
+  pack_name: z.string().optional(),
+  note: z.string().max(200).optional(),
+});

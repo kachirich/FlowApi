@@ -1729,6 +1729,7 @@ export default function Dashboard() {
   const [leads, setLeads] = useState([]);
   const [webhooks, setWebhooks] = useState([]);
   const [flows, setFlows] = useState([]);
+  const [creditSummary, setCreditSummary] = useState(null);
   const [showSecretModal, setShowSecretModal] = useState(false);
 
   // Enterprise Security & 2FA / Danger Zone states
@@ -2272,6 +2273,22 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [fetchLeads, fetchWebhooks, fetchFlows]);
 
+  // Lead-credit summary (Growth/Enterprise tiers only)
+  useEffect(() => {
+    const tier = user?.tier;
+    if (tier !== "growth" && tier !== "enterprise") return;
+    let active = true;
+    const load = async () => {
+      try {
+        const r = await apiClient.get("/api/balance/summary");
+        if (active && r.data?.success) setCreditSummary(r.data);
+      } catch { /* silent */ }
+    };
+    load();
+    const iv = setInterval(load, STATS_POLL_INTERVAL);
+    return () => { active = false; clearInterval(iv); };
+  }, [user?.tier]);
+
 
 
   /** Trigger Step-Up 2FA Flow for Webhook Generation */
@@ -2794,7 +2811,7 @@ export default function Dashboard() {
           ) : activeTab === "sandbox" ? (
             <EgressTester leads={leads} />
           ) : activeTab === "destinations" ? (
-            <DestinationManager />
+            <DestinationManager setActiveTab={setActiveTab} />
           ) : activeTab === "flows" ? (
             <FlowManager />
           ) : activeTab === "integrations" ? (
@@ -2862,6 +2879,32 @@ export default function Dashboard() {
                   {stats.botsBlocked}
                 </div>
               </div>
+
+              {/* Lead Credits — Growth/Enterprise only */}
+              {(user?.tier === "growth" || user?.tier === "enterprise") && creditSummary && (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5 w-full">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-500/10">
+                      <CreditCard className="h-4 w-4 text-indigo-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500 leading-none">Lead Credits</p>
+                      <p className="text-[9px] text-zinc-500 mt-1">{creditSummary.metered_count} destination(s) metered</p>
+                    </div>
+                  </div>
+                  <div className="font-mono text-2xl font-medium text-zinc-50">
+                    {(creditSummary.total_balance ?? 0).toLocaleString()}
+                  </div>
+                  {creditSummary.paused_count > 0 && (
+                    <button
+                      onClick={() => setActiveTab("destinations")}
+                      className="mt-2 flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 transition-colors"
+                    >
+                      ● {creditSummary.paused_count} destination{creditSummary.paused_count === 1 ? "" : "s"} paused
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </aside>
         )}

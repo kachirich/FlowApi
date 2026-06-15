@@ -23,6 +23,7 @@ import billingRoutes from "./routes/billing.js";
 import apiKeyRoutes from "./routes/apiKeys.js";
 import userRoutes from "./routes/users.js";
 import destinationRoutes from "./routes/destinations.js";
+import destBalanceRouter from "./routes/destinationBalance.js";
 import routes from "./routes/index.js";
 
 const app = express();
@@ -113,6 +114,11 @@ app.use("/api/users", userRoutes);
 
 // Destinations routes
 app.use("/api/destinations", destinationRoutes);
+
+// Per-destination lead metering / credit balances
+// (mounted on /api/destinations for /:id/balance/* and /api/balance for /summary)
+app.use("/api/destinations", destBalanceRouter);
+app.use("/api/balance", destBalanceRouter);
 
 // Public fallback routes
 app.use(routes);

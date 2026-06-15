@@ -4,6 +4,49 @@ import { URL } from "url";
 import { query } from "../db/connection.js";
 import redisClient from "../utils/redisClient.js";
 import { webhookQueue } from "../services/queue.js";
+import { getMeteringState, invalidateMeteringCache } from "./destinationMetering.js";
+
+/**
+ * Debit one credit from a metered destination after a CONFIRMED 2xx delivery.
+ * Atomic single-statement update; records a debit transaction and busts cache.
+ */
+async function debitDestination(destinationId, userId, contactId) {
+  await query(
+    `UPDATE destination_balances
+       SET balance = GREATEST(balance - 1, 0),
+           total_consumed = total_consumed + 1,
+           updated_at = NOW()
+     WHERE destination_id = $1 AND is_metered = TRUE`,
+    [destinationId]
+  ).catch((e) => console.error("[Dispatcher] Credit debit failed:", e.message));
+
+  await query(
+    `INSERT INTO balance_transactions (destination_id, user_id, type, amount, lead_id, note)
+     VALUES ($1, $2, 'debit', 1, (SELECT id FROM ghl_leads WHERE contact_id = $3), 'Lead delivered')`,
+    [destinationId, userId, contactId]
+  ).catch((e) => console.error("[Dispatcher] Debit transaction insert failed:", e.message));
+
+  await invalidateMeteringCache(destinationId);
+}
+
+/**
+ * Returns true if the destination is metered, out of credits, and set to pause.
+ * Logs a PAUSED_NO_CREDITS marker and releases the reserved daily-cap slot.
+ */
+async function isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey) {
+  if (!(metering.is_metered && metering.balance === 0 && metering.exhausted_action === "pause")) {
+    return false;
+  }
+  if (cap > 0) {
+    await redisClient.decr(redisKey).catch(() => {});
+  }
+  await query(
+    `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [userId, wh.id, wh.http_method || "POST", 0, JSON.stringify(payload), "PAUSED_NO_CREDITS", isTest]
+  ).catch((e) => console.error("[Dispatcher] Failed to write paused log:", e.message));
+  return true;
+}
 
 // Atomic Lua script to check daily lead cap and increment in Redis
 const CHECK_CAP_LUA = `
@@ -95,6 +138,12 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
       }
 
       if (isUnderCap === 1) {
+        // Metering: daily cap → metering check → dispatch → debit on success.
+        const metering = await getMeteringState(wh.id);
+        if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
+          continue; // out of credits + pause: skip this buyer, not a failure
+        }
+
         try {
           const success = await attemptHttpRequest(wh, payload, planType, isTest);
           if (success) {
@@ -105,11 +154,15 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
             ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
 
             await query(
-              `UPDATE ghl_leads 
+              `UPDATE ghl_leads
                SET delivery_status = 'DELIVERED', status = '200', destination_id = $1, last_delivery_error = NULL
                WHERE contact_id = $2`,
               [wh.id, contactId]
             ).catch(() => {});
+
+            if (metering.is_metered) {
+              await debitDestination(wh.id, userId, contactId);
+            }
 
             return {
               success: true,
@@ -172,6 +225,12 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
       }
 
       if (isUnderCap === 1) {
+        // Metering: daily cap → metering check → dispatch → debit on success.
+        const metering = await getMeteringState(wh.id);
+        if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
+          continue; // out of credits + pause: skip this buyer, not a failure
+        }
+
         try {
           const success = await attemptHttpRequest(wh, payload, planType, isTest);
           if (success) {
@@ -181,6 +240,10 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
                VALUES ($1, $2, $3, 200, $4, $5)`,
               [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), isTest]
             ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
+
+            if (metering.is_metered) {
+              await debitDestination(wh.id, userId, contactId);
+            }
           } else {
             throw new Error("HTTP request failed with non-2xx status code");
           }
