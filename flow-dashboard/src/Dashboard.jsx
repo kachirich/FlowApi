@@ -2564,7 +2564,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Left Sidebar (Desktop) ───────────────────────────────────── */}
-      <aside className={`hidden md:flex flex-col border-r border-slate-800/60 bg-surface/80 backdrop-blur-xl h-screen sticky top-0 z-40 transition-all duration-300 ${sidebarCollapsed ? "w-20" : "w-64"}`}>
+      <aside className={`hidden md:flex flex-col border-r border-zinc-900 bg-zinc-950 h-screen sticky top-0 z-40 transition-all duration-150 ${sidebarCollapsed ? "w-20" : "w-60"}`}>
         <div className={`p-6 flex items-center justify-between border-b border-slate-800/60 ${sidebarCollapsed ? "flex-col gap-3 px-2 py-6" : ""}`}>
           <div className="flex items-center gap-3">
             {sidebarCollapsed ? (
@@ -2583,15 +2583,17 @@ export default function Dashboard() {
             )}
             {!sidebarCollapsed && (
               <div>
-                <h1 className="text-sm font-bold tracking-wide text-slate-100">FLOW GATEWAY</h1>
-                <p className="text-[9px] font-medium uppercase tracking-widest text-slate-500">Enterprise Lead Router</p>
-                <p className="text-xs text-slate-400 font-medium mt-1">Hi {displayName}</p>
+                <h1 className="flex items-center gap-2 text-sm font-medium tracking-tight text-zinc-50">
+                  <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                  FlowGateway
+                </h1>
+                <p className="text-xs text-zinc-500 mt-1">Hi {displayName}</p>
               </div>
             )}
           </div>
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1 text-slate-500 hover:text-emerald-400 hover:bg-slate-800/50 rounded-md transition"
+            className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 rounded-md transition-colors duration-150"
             title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
           >
             {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
@@ -2599,19 +2601,19 @@ export default function Dashboard() {
         </div>
 
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <button onClick={() => setActiveTab("dashboard")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "dashboard" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Live Dashboard" : ""}>
+          <button onClick={() => setActiveTab("dashboard")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "dashboard" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Live Dashboard" : ""}>
             <LayoutDashboard className="h-4 w-4" /> {!sidebarCollapsed && "Live Dashboard"}
           </button>
-          <button id="tour-destination-sandbox" onClick={() => setActiveTab("sandbox")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Destination Sandbox" : ""}>
+          <button id="tour-destination-sandbox" onClick={() => setActiveTab("sandbox")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "sandbox" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Destination Sandbox" : ""}>
             <FlaskConical className="h-4 w-4" /> {!sidebarCollapsed && "Destination Sandbox"}
           </button>
-          <button onClick={() => setActiveTab("destinations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "destinations" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Destinations" : ""}>
+          <button onClick={() => setActiveTab("destinations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "destinations" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Destinations" : ""}>
             <Shuffle className="h-4 w-4" /> {!sidebarCollapsed && "Destinations"}
           </button>
-          <button onClick={() => setActiveTab("flows")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "flows" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Flows" : ""}>
+          <button onClick={() => setActiveTab("flows")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "flows" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Flows" : ""}>
             <Workflow className="h-4 w-4" /> {!sidebarCollapsed && "Flows"}
           </button>
-          <button onClick={() => setActiveTab("integrations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "integrations" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Integrations" : ""}>
+          <button onClick={() => setActiveTab("integrations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "integrations" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Integrations" : ""}>
             <Plug className="h-4 w-4" /> {!sidebarCollapsed && "Integrations"}
           </button>
           <button 
@@ -2622,19 +2624,19 @@ export default function Dashboard() {
                 setActiveTab("logs");
               }
             }} 
-            className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "logs" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} 
+            className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "logs" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} 
             title={sidebarCollapsed ? "Analytics" : ""}
           >
             {stats.planType === 'free' ? <Lock className="h-4 w-4 text-slate-500" /> : <Activity className="h-4 w-4" />} 
             {!sidebarCollapsed && "Analytics"}
           </button>
-          <button onClick={() => setActiveTab("tutorial")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "tutorial" ? "bg-violet-500/15 text-violet-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Setup Tutorial" : ""}>
+          <button onClick={() => setActiveTab("tutorial")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "tutorial" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Setup Tutorial" : ""}>
             <BookOpen className="h-4 w-4" /> {!sidebarCollapsed && "Setup Tutorial"}
           </button>
-          <button onClick={() => setActiveTab("consulting")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "consulting" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Consulting" : ""}>
+          <button onClick={() => setActiveTab("consulting")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "consulting" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Consulting" : ""}>
             <PhoneCall className="h-4 w-4" /> {!sidebarCollapsed && "Consulting"}
           </button>
-          <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "pricing" ? "bg-indigo-500/15 text-indigo-400" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`} title={sidebarCollapsed ? "Billing" : ""}>
+          <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "pricing" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Billing" : ""}>
             <CreditCard className="h-4 w-4" /> {!sidebarCollapsed && "Billing"}
           </button>
         </nav>
@@ -2668,21 +2670,24 @@ export default function Dashboard() {
             <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
               <Zap className="h-4 w-4" />
             </div>
-            <h1 className="text-sm font-bold tracking-wide text-slate-100">FLOW GATEWAY</h1>
+            <h1 className="flex items-center gap-2 text-sm font-medium tracking-tight text-zinc-50">
+              <span className="h-2 w-2 rounded-full bg-indigo-500" />
+              FlowGateway
+            </h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowSecurityModal(true)} className="p-2 text-slate-500 hover:text-emerald-400"><Shield className="h-4 w-4" /></button>
+            <button onClick={() => setShowSecurityModal(true)} className="p-2 text-zinc-500 hover:text-zinc-200"><Shield className="h-4 w-4" /></button>
             <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-rose-400"><LogOut className="h-4 w-4" /></button>
           </div>
         </header>
 
         {/* Mobile Navigation (Simple Pill Menu below header) */}
-        <nav className="md:hidden flex overflow-x-auto border-b border-slate-800/60 bg-surface px-4 py-2 gap-2 hide-scrollbar">
-          <button onClick={() => setActiveTab("dashboard")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "dashboard" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Dashboard</button>
-          <button onClick={() => setActiveTab("sandbox")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "sandbox" ? "bg-amber-500/15 text-amber-400" : "text-slate-500"}`}>Sandbox</button>
-          <button onClick={() => setActiveTab("destinations")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "destinations" ? "bg-emerald-500/15 text-emerald-400" : "text-slate-500"}`}>Destinations</button>
-          <button onClick={() => setActiveTab("flows")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "flows" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}>Flows</button>
-          <button onClick={() => setActiveTab("integrations")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "integrations" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}>Integrations</button>
+        <nav className="md:hidden flex overflow-x-auto border-b border-zinc-900 bg-zinc-950 px-4 gap-6 hide-scrollbar">
+          <button onClick={() => setActiveTab("dashboard")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "dashboard" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Dashboard</button>
+          <button onClick={() => setActiveTab("sandbox")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "sandbox" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Sandbox</button>
+          <button onClick={() => setActiveTab("destinations")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "destinations" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Destinations</button>
+          <button onClick={() => setActiveTab("flows")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "flows" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Flows</button>
+          <button onClick={() => setActiveTab("integrations")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "integrations" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Integrations</button>
           <button 
             onClick={() => {
               if (stats.planType === 'free') {
@@ -2691,19 +2696,19 @@ export default function Dashboard() {
                 setActiveTab("logs");
               }
             }} 
-            className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "logs" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}
+            className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "logs" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}
           >
             {stats.planType === 'free' && <Lock className="h-3 w-3 text-slate-500" />} Analytics
           </button>
-          <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "tutorial" ? "bg-violet-500/15 text-violet-400" : "text-slate-500"}`}>Tutorial</button>
-          <button onClick={() => setActiveTab("consulting")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "consulting" ? "bg-cyan-500/15 text-cyan-400" : "text-slate-500"}`}>Consulting</button>
-          <button onClick={() => setActiveTab("pricing")} className={`whitespace-nowrap flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-semibold ${activeTab === "pricing" ? "bg-indigo-500/15 text-indigo-400" : "text-slate-500"}`}>Billing</button>
+          <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "tutorial" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Tutorial</button>
+          <button onClick={() => setActiveTab("consulting")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "consulting" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Consulting</button>
+          <button onClick={() => setActiveTab("pricing")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "pricing" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Billing</button>
         </nav>
 
         {/* Desktop Header (Top right tools) */}
         <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-end border-b border-slate-800/60 bg-surface/80 px-8 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowSecurityModal(true)} title="Security & 2FA Settings" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors duration-200 hover:bg-emerald-500/10 hover:text-emerald-400">
+            <button onClick={() => setShowSecurityModal(true)} title="Security & 2FA Settings" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100">
               <Shield className="h-4 w-4" />
             </button>
             <button onClick={handleLogout} title="End session" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors duration-200 hover:bg-rose-500/10 hover:text-rose-400">
@@ -2809,7 +2814,7 @@ export default function Dashboard() {
 
         {/* Right-Side Metrics Column */}
         {activeTab === "dashboard" && (
-          <aside id="tour-metrics-panel" className="w-full lg:w-96 shrink-0 border-t lg:border-t-0 lg:border-l border-slate-800/60 bg-surface/30 backdrop-blur-xl p-6 lg:py-8 lg:px-8 space-y-6 lg:h-[calc(100vh-3.5rem)] lg:sticky lg:top-14 overflow-y-auto">
+          <aside id="tour-metrics-panel" className="w-full lg:w-96 shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-900 bg-zinc-950 p-6 lg:py-8 lg:px-8 space-y-6 lg:h-[calc(100vh-3.5rem)] lg:sticky lg:top-14 overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800/60 pb-3">
               <div className="flex items-center gap-2">
                 <Terminal className="h-4 w-4 text-emerald-400" />
@@ -2818,7 +2823,7 @@ export default function Dashboard() {
               <button
                 onClick={fetchStats}
                 disabled={refreshingStats}
-                className="p-1.5 text-slate-500 hover:text-emerald-400 transition-colors disabled:opacity-50 rounded-md hover:bg-emerald-500/10"
+                className="p-1.5 text-zinc-500 hover:text-zinc-200 transition-colors duration-150 disabled:opacity-50 rounded-md hover:bg-zinc-800"
                 title="Refresh Metrics"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${refreshingStats ? "animate-spin" : ""}`} />
@@ -2991,7 +2996,7 @@ export default function Dashboard() {
                   </h4>
                   <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
                     stats.twoFactorEnabled
-                      ? "bg-emerald-500/15 text-emerald-400"
+                      ? "bg-indigo-500/10 text-zinc-50"
                       : "bg-rose-500/15 text-rose-400"
                   }`}>
                     {stats.twoFactorEnabled ? "Active" : "Disabled"}

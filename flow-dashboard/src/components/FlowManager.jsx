@@ -17,8 +17,8 @@ import toast from 'react-hot-toast';
    Routing strategy presentation helpers
    ═══════════════════════════════════════════════════════════════════════════ */
 const STRATEGY_BADGE = {
-  round_robin: { label: 'Round Robin', className: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' },
-  broadcast: { label: 'Broadcast', className: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
+  round_robin: { label: 'Round Robin', className: 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20' },
+  broadcast: { label: 'Broadcast', className: 'bg-zinc-800 text-zinc-300 border-zinc-700' },
 };
 
 export default function FlowManager() {
@@ -199,18 +199,18 @@ export default function FlowManager() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-100 flex items-center gap-2">
-            <Workflow className="h-6 w-6 text-cyan-400" />
+          <h2 className="text-2xl font-medium tracking-tight text-zinc-50 flex items-center gap-2">
+            <Workflow className="h-6 w-6 text-indigo-400" />
             Flows
           </h2>
-          <p className="text-xs text-slate-400 mt-1 leading-normal">
+          <p className="text-sm text-zinc-400 mt-1 leading-relaxed">
             Group a subset of your destinations into a named pipeline with its own routing strategy.
             Assign a flow to an API key to control exactly where its leads go.
           </p>
         </div>
         <button
           onClick={openCreate}
-          className="shrink-0 flex items-center gap-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 px-4 py-2.5 text-xs font-bold text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+          className="shrink-0 flex items-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150"
         >
           <Plus className="h-4 w-4" />
           New Flow
@@ -219,22 +219,20 @@ export default function FlowManager() {
 
       {/* List */}
       {loading ? (
-        <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500">
-          <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+        <div className="py-12 flex flex-col items-center justify-center gap-3 text-zinc-500">
+          <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
           <p className="text-xs">Loading flows...</p>
         </div>
       ) : flows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-700/60 bg-slate-900/40 p-12 flex flex-col items-center justify-center text-center">
-          <div className="h-14 w-14 rounded-2xl bg-slate-800/60 border border-slate-700/50 flex items-center justify-center mb-4">
-            <Workflow className="h-6 w-6 text-slate-400" />
-          </div>
-          <h3 className="text-base font-bold text-slate-200 mb-1">Create your first flow</h3>
-          <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
+        <div className="py-12 flex flex-col items-center justify-center text-center">
+          <Workflow className="h-8 w-8 text-zinc-700 mb-3" />
+          <h3 className="text-sm font-medium text-zinc-300 mb-1">Create your first flow</h3>
+          <p className="text-xs text-zinc-500 max-w-sm mb-6 leading-relaxed">
             Flows let you route leads from a specific API key to a chosen set of destinations instead of all of them.
           </p>
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 px-5 py-2.5 text-sm font-semibold text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+            className="flex items-center gap-2 rounded-md bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-700 transition-colors duration-150"
           >
             <Plus className="h-4 w-4" /> New Flow
           </button>
@@ -248,13 +246,13 @@ export default function FlowManager() {
             return (
               <div
                 key={flow.id}
-                className="rounded-2xl border border-slate-800/60 bg-slate-900/40 backdrop-blur-xl p-5 shadow-xl transition-colors hover:border-slate-700/80"
+                className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 transition-colors duration-150 hover:border-zinc-700"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2.5 flex-wrap">
-                      <h3 className="text-sm font-bold text-slate-100 truncate">{flow.name}</h3>
-                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${badge.className}`}>
+                      <h3 className="text-base font-medium text-zinc-50 truncate">{flow.name}</h3>
+                      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
                         {badge.label}
                       </span>
                     </div>
@@ -262,12 +260,12 @@ export default function FlowManager() {
                     {/* Destination pills */}
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {dests.length === 0 ? (
-                        <span className="text-[11px] text-slate-500 italic">No destinations</span>
+                        <span className="text-xs text-zinc-500 italic">No destinations</span>
                       ) : (
                         dests.map((d) => (
                           <span
                             key={d.id}
-                            className="inline-flex items-center rounded-md bg-slate-800/70 border border-slate-700/50 px-2 py-0.5 text-[10px] font-medium text-slate-300"
+                            className="inline-flex items-center rounded-md bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-xs font-medium text-zinc-300"
                             title={d.target_url}
                           >
                             {d.name}
@@ -276,7 +274,7 @@ export default function FlowManager() {
                       )}
                     </div>
 
-                    <p className="mt-3 text-[11px] text-slate-500">
+                    <p className="mt-3 text-xs text-zinc-500">
                       {keyCount} key{keyCount === 1 ? '' : 's'} assigned
                     </p>
                   </div>
@@ -285,7 +283,7 @@ export default function FlowManager() {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => openEdit(flow)}
-                      className="rounded bg-slate-800/70 p-2 text-slate-300 transition-colors hover:bg-slate-700 hover:text-white border border-slate-700/50"
+                      className="rounded-md bg-zinc-800 p-2 text-zinc-300 transition-colors duration-150 hover:bg-zinc-700 hover:text-zinc-100 border border-zinc-700"
                       title="Edit flow"
                     >
                       <Pencil className="h-3.5 w-3.5" />
@@ -293,7 +291,7 @@ export default function FlowManager() {
                     <button
                       onClick={() => handleDelete(flow.id)}
                       disabled={deletingId === flow.id}
-                      className="rounded bg-rose-500/10 p-2 text-rose-400 transition-colors hover:bg-rose-500/20 border border-rose-500/20 disabled:opacity-50"
+                      className="rounded-md p-2 text-rose-400 transition-colors duration-150 hover:bg-rose-500/10 disabled:opacity-50"
                       title="Delete flow"
                     >
                       {deletingId === flow.id ? (
@@ -318,22 +316,22 @@ export default function FlowManager() {
         >
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-fade-in" />
           <div
-            className="relative z-10 w-full max-w-lg animate-modal-in overflow-hidden rounded-2xl border border-slate-700/60 bg-surface-raised shadow-2xl shadow-black/40"
+            className="relative z-10 w-full max-w-lg animate-modal-in overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-start justify-between border-b border-slate-800/60 p-6 pb-4">
+            <div className="flex items-start justify-between border-b border-zinc-800 p-6 pb-4">
               <div>
-                <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400">
+                <p className="mb-1 text-xs font-medium uppercase tracking-widest text-indigo-300">
                   {isEditMode ? 'Edit Flow' : 'New Flow'}
                 </p>
-                <h3 className="text-lg font-bold text-slate-100">
+                <h3 className="text-lg font-medium text-zinc-50">
                   {isEditMode ? name || 'Untitled Flow' : 'Build a routing flow'}
                 </h3>
               </div>
               <button
                 onClick={closeBuilder}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -344,7 +342,7 @@ export default function FlowManager() {
               <div className="max-h-[60vh] overflow-y-auto p-6 space-y-5">
                 {/* Flow name */}
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
+                  <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5">
                     Flow Name
                   </label>
                   <input
@@ -352,23 +350,23 @@ export default function FlowManager() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. GHL → n8n + KCB Bank"
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-xs text-slate-200 outline-none transition focus:border-cyan-500/40 placeholder:text-slate-600"
+                    className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 placeholder:text-zinc-600"
                   />
                 </div>
 
                 {/* Routing strategy */}
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
+                  <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5">
                     Routing Strategy
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setStrategy('round_robin')}
-                      className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors duration-150 ${
                         strategy === 'round_robin'
-                          ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-300'
-                          : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600'
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
+                          : 'border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-600'
                       }`}
                     >
                       <Shuffle className="h-3.5 w-3.5" /> Round Robin
@@ -376,16 +374,16 @@ export default function FlowManager() {
                     <button
                       type="button"
                       onClick={() => setStrategy('broadcast')}
-                      className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-xs font-semibold transition-colors ${
+                      className={`flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors duration-150 ${
                         strategy === 'broadcast'
-                          ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-300'
-                          : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-600'
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
+                          : 'border-zinc-700 bg-zinc-950 text-zinc-400 hover:border-zinc-600'
                       }`}
                     >
                       <Radio className="h-3.5 w-3.5" /> Broadcast
                     </button>
                   </div>
-                  <p className="mt-1.5 text-[10px] text-slate-500 leading-relaxed">
+                  <p className="mt-1.5 text-xs text-zinc-500 leading-relaxed">
                     {strategy === 'round_robin'
                       ? 'Round Robin delivers each lead to the first available destination under its cap.'
                       : 'Broadcast delivers each lead to every destination under its cap.'}
@@ -394,15 +392,15 @@ export default function FlowManager() {
 
                 {/* Destinations */}
                 <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
-                    Destinations {isEditMode && <span className="text-slate-600 normal-case">(saved instantly)</span>}
+                  <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5">
+                    Destinations {isEditMode && <span className="text-zinc-600 normal-case">(saved instantly)</span>}
                   </label>
                   {destinations.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-slate-700/60 bg-slate-950/50 p-4 text-center text-[11px] text-slate-500 italic">
+                    <div className="rounded-md border border-dashed border-zinc-700 bg-zinc-950 p-4 text-center text-xs text-zinc-500 italic">
                       No destinations yet. Create destinations first, then add them to this flow.
                     </div>
                   ) : (
-                    <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-950/40 p-2 max-h-52 overflow-y-auto">
+                    <div className="space-y-2 rounded-md border border-zinc-800 bg-zinc-950 p-2 max-h-52 overflow-y-auto">
                       {destinations.map((dest) => {
                         const checked = selectedIds.includes(dest.id);
                         const isToggling = togglingId === dest.id;
@@ -412,24 +410,24 @@ export default function FlowManager() {
                             key={dest.id}
                             onClick={() => !isToggling && toggleDestination(dest.id)}
                             disabled={isToggling}
-                            className="w-full flex items-center gap-3 rounded-lg border border-slate-800/60 bg-slate-900/50 px-3 py-2.5 text-left transition-colors hover:border-slate-700 disabled:opacity-60"
+                            className="w-full flex items-center gap-3 rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-left transition-colors duration-150 hover:border-zinc-700 disabled:opacity-60"
                           >
                             <span
                               className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
                                 checked
-                                  ? 'border-cyan-500/50 bg-cyan-500/20 text-cyan-300'
-                                  : 'border-slate-600 bg-slate-950'
+                                  ? 'border-indigo-500 bg-indigo-500 text-white'
+                                  : 'border-zinc-600 bg-zinc-950'
                               }`}
                             >
                               {isToggling ? (
-                                <Loader2 className="h-3 w-3 animate-spin text-slate-400" />
+                                <Loader2 className="h-3 w-3 animate-spin text-zinc-400" />
                               ) : checked ? (
                                 <Check className="h-3 w-3" />
                               ) : null}
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block text-xs font-semibold text-slate-200 truncate">{dest.name}</span>
-                              <span className="block font-mono text-[10px] text-slate-500 truncate" title={dest.target_url}>
+                              <span className="block text-sm font-medium text-zinc-200 truncate">{dest.name}</span>
+                              <span className="block font-mono text-xs text-zinc-500 truncate" title={dest.target_url}>
                                 {dest.target_url}
                               </span>
                             </span>
@@ -442,19 +440,19 @@ export default function FlowManager() {
               </div>
 
               {/* Footer */}
-              <div className="border-t border-slate-800/60 px-6 py-4 flex items-center justify-end gap-3">
+              <div className="border-t border-zinc-800 px-6 py-4 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={closeBuilder}
                   disabled={submitting}
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800 disabled:opacity-50"
+                  className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:bg-zinc-700 disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting || !name.trim()}
-                  className="flex items-center justify-center gap-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 px-5 py-2.5 text-xs font-bold text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? (
                     <>
