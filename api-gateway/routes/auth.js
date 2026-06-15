@@ -406,7 +406,7 @@ router.post("/login", authRateLimiter, login);
 router.get("/me", authenticate, async (req, res, next) => {
   try {
     const result = await query(
-      "SELECT id, email, plan_type, two_factor_enabled, has_completed_onboarding, lifetime_webhooks_created, first_name, last_name FROM users WHERE id = $1",
+      "SELECT id, email, plan_type, tier, is_admin, two_factor_enabled, has_completed_onboarding, lifetime_webhooks_created, first_name, last_name FROM users WHERE id = $1",
       [req.user.id]
     );
 

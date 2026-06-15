@@ -231,6 +231,41 @@ export async function initializeDatabase() {
       -- An API key may optionally point to a Flow; unassign (SET NULL) if the flow is deleted
       ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS flow_id UUID
         REFERENCES flows(id) ON DELETE SET NULL;
+
+      -- ── Per-destination lead metering / prepaid credit balances ──────────
+      -- 1 credit = 1 successfully delivered lead. Credits are prepaid and never
+      -- expire. Metering is opt-in per destination (Growth/Enterprise tiers).
+      CREATE TABLE IF NOT EXISTS destination_balances (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        destination_id    UUID NOT NULL UNIQUE REFERENCES destinations(id) ON DELETE CASCADE,
+        user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        is_metered        BOOLEAN NOT NULL DEFAULT FALSE,
+        exhausted_action  VARCHAR(10) NOT NULL DEFAULT 'continue'
+                            CHECK (exhausted_action IN ('pause','continue')),
+        balance           INTEGER NOT NULL DEFAULT 0,
+        total_purchased   INTEGER NOT NULL DEFAULT 0,
+        total_consumed    INTEGER NOT NULL DEFAULT 0,
+        updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_dest_balances_user
+        ON destination_balances(user_id);
+
+      CREATE TABLE IF NOT EXISTS balance_transactions (
+        id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        destination_id UUID NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+        user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type           VARCHAR(10) NOT NULL CHECK (type IN ('credit','debit')),
+        amount         INTEGER NOT NULL,
+        pack_name      VARCHAR(20),
+        lead_id        UUID REFERENCES ghl_leads(id) ON DELETE SET NULL,
+        note           TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_balance_tx_dest
+        ON balance_transactions(destination_id, created_at DESC);
+
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin
+        BOOLEAN NOT NULL DEFAULT FALSE;
     `);
     console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters, lead_counters & destinations tables ready");
   } catch (err) {
