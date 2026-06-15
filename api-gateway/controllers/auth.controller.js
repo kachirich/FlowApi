@@ -5,6 +5,10 @@ import { sendEmailVerification } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import blocklist from 'disposable-email-blocklist';
+import { enqueueNotification } from '../services/notification.queue.js';
+import { NOTIFICATION_TYPES } from '../services/notification.service.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const normalizeEmail = (rawEmail) => {
   if (!rawEmail || typeof rawEmail !== 'string') return rawEmail;
@@ -138,6 +142,14 @@ export const verifyOtp = async (req, res) => {
         [email, "PASSWORDLESS_ACCOUNT"]
       );
       user = insertResult.rows[0];
+
+      // Schedule onboarding drip (day 0 immediately, day 3, day 7)
+      const newUserId = user.id;
+      Promise.all([
+        enqueueNotification(newUserId, NOTIFICATION_TYPES.ONBOARDING, { day: 0 }),
+        enqueueNotification(newUserId, NOTIFICATION_TYPES.ONBOARDING, { day: 3 }, { delay: 3 * DAY_MS }),
+        enqueueNotification(newUserId, NOTIFICATION_TYPES.ONBOARDING, { day: 7 }, { delay: 7 * DAY_MS }),
+      ]).catch(err => console.error('[auth] Onboarding drip schedule failed:', err.message));
     }
 
     return sendTokenResponse(user, 200, res, 'OTP verified successfully');

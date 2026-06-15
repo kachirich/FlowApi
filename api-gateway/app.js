@@ -24,6 +24,7 @@ import apiKeyRoutes from "./routes/apiKeys.js";
 import userRoutes from "./routes/users.js";
 import destinationRoutes from "./routes/destinations.js";
 import destBalanceRouter from "./routes/destinationBalance.js";
+import notificationRoutes from "./routes/notifications.js";
 import routes from "./routes/index.js";
 
 const app = express();
@@ -119,6 +120,9 @@ app.use("/api/destinations", destinationRoutes);
 // (mounted on /api/destinations for /:id/balance/* and /api/balance for /summary)
 app.use("/api/destinations", destBalanceRouter);
 app.use("/api/balance", destBalanceRouter);
+
+// Notification preferences + unsubscribe
+app.use("/api/notifications", notificationRoutes);
 
 // Public fallback routes
 app.use(routes);
