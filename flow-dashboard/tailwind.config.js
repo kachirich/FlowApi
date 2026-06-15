@@ -13,10 +13,15 @@ export default {
       colors: {
         black: '#000000',
         white: '#FFFFFF',
+        // 3 deliberate surface layers (Phase 7 overhaul).
+        // Repurposed so existing bg-surface* usages map onto the new system:
+        //   bg-surface         → zinc-950 (page / app background)
+        //   bg-surface-raised  → zinc-900 (cards, panels)
+        //   bg-surface-overlay → zinc-800 (modals, raised, hover)
         surface: {
-          DEFAULT: '#000000',
-          raised: '#09090B',
-          overlay: '#121212',
+          DEFAULT: '#09090B',
+          raised: '#18181B',
+          overlay: '#27272A',
         },
         slate: {
           50: '#F4F4F5',
@@ -52,14 +57,26 @@ export default {
           400: '#D4D4D8',
           100: '#18181B',
         },
-        rose: {
-          500: '#3F3F46',
-          400: '#27272A',
-          100: '#18181B',
-        }
+        // rose is intentionally NOT overridden — it renders the real Tailwind
+        // rose scale so destructive/error states are genuinely red.
+
+        // ── Design-system aliases (Phase 7) ──────────────────────────────
+        app: '#09090B',        // zinc-950 — page background
+        raised: '#27272A',     // zinc-800 — modals / raised surfaces
+        accent: {
+          DEFAULT: '#6366F1',  // indigo-500 — primary buttons, active nav
+          hover: '#818CF8',    // indigo-400
+          muted: 'rgba(99, 102, 241, 0.10)', // subtle active backgrounds
+          text: '#A5B4FC',     // indigo-300 — links / accent text on dark
+        },
+        success: '#10B981',    // emerald-500
+        warning: '#F59E0B',    // amber-500
+        error: '#F43F5E',      // rose-500
+        info: '#6366F1',       // indigo-500 (same as accent)
       },
+      // Flat design — all "glow" shadows neutralised to none app-wide.
       boxShadow: {
-        glow: '0 0 10px rgba(255, 255, 255, 0.1)',
+        glow: 'none',
         'glow-rose': 'none',
         'glow-amber': 'none',
       },
@@ -68,7 +85,6 @@ export default {
         'slide-up': 'slideUp 0.3s ease-out',
         'fade-in': 'fadeIn 0.2s ease-out',
         'modal-in': 'modalIn 0.25s ease-out',
-        'glow-pulse': 'glowPulse 2s ease-in-out infinite',
         'toast-in': 'toastIn 0.3s ease-out forwards',
         'toast-out': 'toastOut 0.3s ease-in forwards',
       },
@@ -84,10 +100,6 @@ export default {
         modalIn: {
           '0%': { opacity: '0', transform: 'scale(0.95) translateY(10px)' },
           '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
-        },
-        glowPulse: {
-          '0%, 100%': { boxShadow: '0 0 20px -5px rgba(16, 185, 129, 0.3), 0 0 60px -15px rgba(16, 185, 129, 0.1)' },
-          '50%': { boxShadow: '0 0 30px -5px rgba(16, 185, 129, 0.5), 0 0 80px -15px rgba(16, 185, 129, 0.2)' },
         },
         toastIn: {
           '0%': { opacity: '0', transform: 'translateY(-8px) scale(0.95)' },

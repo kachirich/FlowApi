@@ -1,287 +1,273 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Database, Activity, Webhook, Zap, Shield, Sliders, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Inbox, Workflow, Gauge, ArrowRight, Check } from 'lucide-react';
+
+const INTAKE_SOURCES = ['GHL', 'Tally', 'Typeform', 'Jotform', 'Zapier', 'n8n', 'Webflow', 'Make'];
+
+const FEATURES = [
+  {
+    icon: Inbox,
+    title: 'Universal intake',
+    body: 'One endpoint accepts leads from any platform. The smart extractor pulls name, email, phone, and company from whatever JSON shape you send.',
+  },
+  {
+    icon: Workflow,
+    title: 'Flows you control',
+    body: 'Group destinations into named flows — Realtor leads to one buyer, fitness leads to another. Round-robin or broadcast, your call.',
+  },
+  {
+    icon: Gauge,
+    title: 'Built for volume',
+    body: 'Tier-based retries, daily caps per destination, audit logs for every dispatch. When a buyer pays per lead, every lead matters.',
+  },
+];
+
+const STEPS = [
+  { n: '01', title: 'INTAKE', body: 'Connect GHL, Tally, or anything that fires a webhook.' },
+  { n: '02', title: 'ROUTE', body: 'Build flows that send leads to the right buyer or CRM.' },
+  { n: '03', title: 'DISPATCH', body: 'Every lead delivered, logged, and counted in real time.' },
+];
+
+const BROKER_SPECS = [
+  'Daily caps per buyer destination',
+  'Round-robin and broadcast routing',
+  'Retries scaled to your plan',
+  'Full delivery audit log',
+  'API keys scoped to specific flows',
+];
+
+const TIERS = [
+  {
+    name: 'Sandbox',
+    price: '$0',
+    blurb: 'Perfect for testing the pipe.',
+    features: ['Up to 500 leads/day', '1 active destination', 'Standard rate limiting', 'No retry queue'],
+    cta: 'Start free',
+    highlight: false,
+  },
+  {
+    name: 'Growth',
+    price: '$99',
+    blurb: 'For growing lead brokers.',
+    features: ['Up to 10,000 leads/day', 'Up to 5 destinations', 'Edge authentication', 'Standard retry queue (3x)'],
+    cta: 'Get started',
+    highlight: true,
+  },
+  {
+    name: 'Enterprise',
+    price: '$249',
+    blurb: 'For high-volume agencies.',
+    features: ['Up to 100,000 leads/day', 'Unlimited destinations', 'Exponential backoff retries', 'Dedicated throughput'],
+    cta: 'Book setup call',
+    highlight: false,
+  },
+];
+
+function Wordmark() {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-2 w-2 rounded-full bg-indigo-500" />
+      <span className="text-base font-medium tracking-tight text-zinc-50">FlowGateway</span>
+    </div>
+  );
+}
 
 export default function LandingPage() {
   const navigate = useNavigate();
-
-  const handleCtaClick = () => {
-    navigate('/login');
+  const goToLogin = () => navigate('/login');
+  const scrollToFeatures = () => {
+    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-indigo-500/30">
-      {/* Sticky Navigation */}
-      <nav className="sticky top-0 z-50 w-full border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">FlowAPI</span>
+    <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans">
+      {/* ── Top nav ───────────────────────────────────────────────────── */}
+      <nav className="sticky top-0 z-50 w-full border-b border-zinc-900 bg-zinc-950/80 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
+          <Link to="/"><Wordmark /></Link>
+          <div className="hidden items-center gap-7 md:flex">
+            <a href="#pricing" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Pricing</a>
+            <Link to="/docs" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Integrations</Link>
+            <Link to="/docs" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Docs</Link>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleCtaClick}
-              className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+              onClick={goToLogin}
+              className="rounded-md px-3 py-2 text-sm text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
             >
-              Sign In
+              Log in
             </button>
             <button
-              onClick={handleCtaClick}
-              className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-md hover:bg-white transition-colors"
+              onClick={goToLogin}
+              className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-400"
             >
-              Dashboard
+              Get started
             </button>
           </div>
         </div>
       </nav>
 
       <main>
-        {/* Hero Section */}
-        <section className="relative pt-32 pb-20 px-6 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900/20 via-zinc-950 to-zinc-950"></div>
-          
-          <div className="max-w-4xl mx-auto text-center relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 text-indigo-400 text-sm font-medium mb-8 border border-indigo-500/20">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+        {/* ── Hero ────────────────────────────────────────────────────── */}
+        <section className="mx-auto max-w-5xl px-6 py-24 text-center md:py-32">
+          <p className="mb-6 text-xs font-medium uppercase tracking-widest text-indigo-300">
+            For lead brokers and high-volume ops
+          </p>
+          <h1 className="mx-auto max-w-4xl text-5xl font-medium leading-tight tracking-tight text-zinc-50 md:text-6xl">
+            Route every lead to the buyer who pays the most.
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-zinc-400">
+            FlowGateway is the routing layer for lead brokers. Intake from any source — GHL, Tally,
+            Typeform, your own forms — and dispatch in real time to your buyers, your CRMs, your automations.
+          </p>
+          <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <button
+              onClick={goToLogin}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-500 px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-400 sm:w-auto"
+            >
+              Start routing leads <ArrowRight className="h-4 w-4" />
+            </button>
+            <button
+              onClick={scrollToFeatures}
+              className="inline-flex w-full items-center justify-center rounded-md px-5 py-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 sm:w-auto"
+            >
+              See how it works
+            </button>
+          </div>
+        </section>
+
+        {/* ── Trust strip ─────────────────────────────────────────────── */}
+        <section className="border-y border-zinc-900 py-8">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-4 gap-y-2 px-6 text-xs uppercase tracking-widest text-zinc-600">
+            <span>Intake from</span>
+            {INTAKE_SOURCES.map((s, i) => (
+              <span key={s} className="flex items-center gap-4">
+                {i > 0 && <span className="text-zinc-700">·</span>}
+                <span className="text-zinc-500">{s}</span>
               </span>
-              v2.0 Routing Engine Now Live
-            </div>
-            
-            <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
-              Stop chasing stale lists. <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
-                Route live leads in milliseconds.
-              </span>
-            </h1>
-            
-            <p className="text-xl text-zinc-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-              The enterprise-grade webhook routing engine for lead brokers. Deliver exclusive data to your buyers' CRMs instantly without manual uploads.
-            </p>
-            
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button
-                onClick={handleCtaClick}
-                className="w-full sm:w-auto px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-medium text-lg transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_30px_rgba(79,70,229,0.5)]"
-              >
-                Generate API Key <ArrowRight className="w-5 h-5" />
-              </button>
-              <button className="w-full sm:w-auto px-8 py-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-white rounded-lg font-medium text-lg transition-all">
-                View Documentation
-              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Features ────────────────────────────────────────────────── */}
+        <section id="features" className="mx-auto max-w-6xl px-6 py-24">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            {FEATURES.map((f) => (
+              <div key={f.title} className="rounded-lg border border-zinc-800 bg-zinc-900 p-6 transition-colors hover:border-zinc-700">
+                <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-md bg-indigo-500/10">
+                  <f.icon className="h-5 w-5 text-indigo-400" />
+                </div>
+                <h3 className="mb-2 text-base font-medium text-zinc-50">{f.title}</h3>
+                <p className="text-sm leading-relaxed text-zinc-400">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── How it works ────────────────────────────────────────────── */}
+        <section className="border-t border-zinc-900 py-24">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="grid grid-cols-1 gap-10 md:grid-cols-3">
+              {STEPS.map((s) => (
+                <div key={s.n}>
+                  <div className="font-mono text-4xl font-light text-zinc-700">{s.n}</div>
+                  <h3 className="mt-4 text-sm font-medium uppercase tracking-wider text-zinc-50">{s.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{s.body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* How It Works Section */}
-        <section className="py-24 px-6 bg-zinc-900/30 border-y border-zinc-800/50">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold mb-4">The Routing Flow</h2>
-              <p className="text-zinc-400 max-w-2xl mx-auto">From capture to CRM in under 50ms. A fully transparent, reliable pipeline for your data.</p>
+        {/* ── For lead brokers ────────────────────────────────────────── */}
+        <section className="border-t border-zinc-900 py-24">
+          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-12 px-6 md:grid-cols-2">
+            <div>
+              <h2 className="text-2xl font-medium tracking-tight text-zinc-50">Built for the broker economy</h2>
+              <p className="mt-4 max-w-md text-sm leading-relaxed text-zinc-400">
+                Your buyers have caps. Your sellers have volume. FlowGateway sits in the middle and makes
+                sure every lead lands where it&apos;s worth the most.
+              </p>
             </div>
-            
-            <div className="grid md:grid-cols-3 gap-8 relative">
-              {/* Desktop connecting lines */}
-              <div className="hidden md:block absolute top-1/2 left-[16%] right-[16%] h-[2px] bg-gradient-to-r from-indigo-500/20 via-indigo-500/50 to-indigo-500/20 -translate-y-1/2 z-0"></div>
-              
-              <div className="relative z-10 bg-zinc-950 p-8 rounded-2xl border border-zinc-800 shadow-xl flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center mb-6 shadow-inner">
-                  <Database className="w-8 h-8 text-indigo-400" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">1. Inbound Capture</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                  You capture the lead via your forms or affiliates, and push the JSON payload to our secure vault using your API Key.
-                </p>
-              </div>
-
-              <div className="relative z-10 bg-zinc-950 p-8 rounded-2xl border border-indigo-500/30 shadow-[0_0_30px_rgba(79,70,229,0.1)] flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-indigo-900/50 border border-indigo-500/50 flex items-center justify-center mb-6 shadow-inner">
-                  <Activity className="w-8 h-8 text-indigo-400" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">2. The Routing Engine</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                  We instantly filter the payload, enforce buyer lead caps, and apply intelligent rate limits to ensure compliance.
-                </p>
-              </div>
-
-              <div className="relative z-10 bg-zinc-950 p-8 rounded-2xl border border-zinc-800 shadow-xl flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-zinc-900 border border-zinc-700 flex items-center justify-center mb-6 shadow-inner">
-                  <Webhook className="w-8 h-8 text-indigo-400" />
-                </div>
-                <h3 className="text-xl font-semibold mb-3">3. Outbound Delivery</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                  Instant delivery to your buyer's GoHighLevel, Salesforce, or custom webhook endpoint with automatic retries on failure.
-                </p>
-              </div>
-            </div>
+            <ul className="space-y-3">
+              {BROKER_SPECS.map((spec) => (
+                <li key={spec} className="flex items-center gap-3 text-sm text-zinc-300">
+                  <Check className="h-4 w-4 shrink-0 text-indigo-400" />
+                  {spec}
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
-        {/* Features Grid */}
-        <section className="py-24 px-6">
-          <div className="max-w-7xl mx-auto">
-            <h2 className="text-3xl font-bold mb-12 text-center">Engineered for Scale</h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="p-8 rounded-2xl bg-gradient-to-b from-zinc-900/50 to-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors">
-                <Zap className="w-10 h-10 text-cyan-400 mb-6" />
-                <h3 className="text-lg font-semibold mb-3">Zero-Latency Delivery</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                  Built on a high-performance Node.js architecture with Redis caching to ensure leads are routed the millisecond they are received.
-                </p>
-              </div>
-              
-              <div className="p-8 rounded-2xl bg-gradient-to-b from-zinc-900/50 to-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors">
-                <Sliders className="w-10 h-10 text-indigo-400 mb-6" />
-                <h3 className="text-lg font-semibold mb-3">Smart Buyer Lead Caps</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                  Never oversell a campaign. Set daily, weekly, or lifetime limits per buyer endpoint, and let our engine handle the math.
-                </p>
-              </div>
-
-              <div className="p-8 rounded-2xl bg-gradient-to-b from-zinc-900/50 to-zinc-950 border border-zinc-800 hover:border-zinc-700 transition-colors">
-                <Shield className="w-10 h-10 text-emerald-400 mb-6" />
-                <h3 className="text-lg font-semibold mb-3">Cryptographic API Security</h3>
-                <p className="text-zinc-400 text-sm leading-relaxed">
-                  Bank-grade security. We use SHA-256 hashing for all API keys, ensuring your inbound data pipes cannot be compromised.
-                </p>
-              </div>
+        {/* ── Pricing teaser ──────────────────────────────────────────── */}
+        <section id="pricing" className="border-t border-zinc-900 py-24">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="mb-12 text-center">
+              <h2 className="text-2xl font-medium tracking-tight text-zinc-50">Pricing that scales with volume</h2>
+              <p className="mt-2 text-sm text-zinc-400">Start routing for free. Upgrade when the leads do.</p>
             </div>
-          </div>
-        </section>
-
-        {/* Pricing Section */}
-        <section className="py-24 px-6 bg-zinc-900/30 border-y border-zinc-800/50">
-          <div className="max-w-7xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold mb-4">Transparent Pricing</h2>
-              <p className="text-zinc-400">Start routing for free. Scale when you need to.</p>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-              {/* Sandbox */}
-              <div className="p-8 rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col">
-                <h3 className="text-xl font-semibold mb-2">Sandbox</h3>
-                <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-4xl font-bold">$0</span>
-                  <span className="text-zinc-500">/mo</span>
-                </div>
-                <p className="text-zinc-400 text-sm mb-8">Perfect for testing the pipe.</p>
-                
-                <ul className="space-y-4 mb-8 flex-1">
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Up to 500 requests/day
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    1 Active Destination Route
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Standard Rate Limiting
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    No Retry Queue (Instant Fail)
-                  </li>
-                </ul>
-                <button
-                  onClick={handleCtaClick}
-                  className="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-colors border border-zinc-700"
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              {TIERS.map((t) => (
+                <div
+                  key={t.name}
+                  className={`flex flex-col rounded-lg border bg-zinc-900 p-6 ${
+                    t.highlight ? 'border-indigo-500' : 'border-zinc-800'
+                  }`}
                 >
-                  Start Free
-                </button>
-              </div>
-
-              {/* Growth */}
-              <div className="p-8 rounded-2xl bg-zinc-950 border-2 border-indigo-500 relative transform md:-translate-y-4 shadow-2xl flex flex-col">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
-                  Most Popular
+                  <h3 className="text-base font-medium text-zinc-50">{t.name}</h3>
+                  <div className="mt-3 flex items-baseline gap-1">
+                    <span className="font-mono text-3xl font-medium text-zinc-50">{t.price}</span>
+                    <span className="text-sm text-zinc-500">/mo</span>
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-400">{t.blurb}</p>
+                  <ul className="mt-6 flex-1 space-y-3">
+                    {t.features.map((feat) => (
+                      <li key={feat} className="flex items-center gap-2.5 text-sm text-zinc-300">
+                        <Check className="h-4 w-4 shrink-0 text-indigo-400" />
+                        {feat}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={goToLogin}
+                    className={`mt-8 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                      t.highlight
+                        ? 'bg-indigo-500 text-white hover:bg-indigo-400'
+                        : 'border border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {t.cta}
+                  </button>
                 </div>
-                <h3 className="text-xl font-semibold mb-2 text-indigo-400">Growth</h3>
-                <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-4xl font-bold">$99</span>
-                  <span className="text-zinc-500">/mo</span>
-                </div>
-                <p className="text-zinc-400 text-sm mb-8">For growing lead brokers.</p>
-                
-                <ul className="space-y-4 mb-8 flex-1">
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Up to 10,000 requests/day
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Up to 5 Destination Routes
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Redis Edge Authentication
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Standard Retry Queue (3x)
-                  </li>
-                </ul>
-                <button
-                  onClick={handleCtaClick}
-                  className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors shadow-[0_0_15px_rgba(79,70,229,0.4)]"
-                >
-                  Request Early Access
-                </button>
-              </div>
-
-              {/* Enterprise */}
-              <div className="p-8 rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col">
-                <h3 className="text-xl font-semibold mb-2">Enterprise</h3>
-                <div className="flex items-baseline gap-1 mb-6">
-                  <span className="text-4xl font-bold">$249</span>
-                  <span className="text-zinc-500">/mo</span>
-                </div>
-                <p className="text-zinc-400 text-sm mb-8">For high-volume agencies.</p>
-                
-                <ul className="space-y-4 mb-8 flex-1">
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Up to 100,000 requests/day
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Unlimited Destinations
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Unbreakable Exponential Backoff
-                  </li>
-                  <li className="flex items-center gap-3 text-sm text-zinc-300">
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500" />
-                    Dedicated High-Throughput Lanes
-                  </li>
-                </ul>
-                <button className="w-full py-3 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white font-medium transition-colors border border-zinc-700">
-                  Book Setup Call
-                </button>
-              </div>
+              ))}
             </div>
+          </div>
+        </section>
+
+        {/* ── Final CTA ───────────────────────────────────────────────── */}
+        <section className="border-t border-zinc-900 py-24">
+          <div className="mx-auto max-w-3xl px-6 text-center">
+            <h2 className="text-3xl font-medium tracking-tight text-zinc-50">
+              Stop losing leads to bad routing.
+            </h2>
+            <button
+              onClick={goToLogin}
+              className="mt-8 inline-flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-400"
+            >
+              Get your API key <ArrowRight className="h-4 w-4" />
+            </button>
           </div>
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="py-12 px-6 border-t border-zinc-900 text-center text-zinc-500 text-sm">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-zinc-600" />
-            <span>© 2026 FlowAPI. All rights reserved.</span>
-          </div>
-          <div className="flex gap-6">
-            <a href="/terms" className="hover:text-zinc-300 transition-colors">Terms</a>
-            <a href="/privacy" className="hover:text-zinc-300 transition-colors">Privacy</a>
-            <a href="/docs" className="hover:text-zinc-300 transition-colors">Docs</a>
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <footer className="border-t border-zinc-900 py-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 text-xs text-zinc-500 sm:flex-row">
+          <span>FlowGateway © 2026</span>
+          <div className="flex items-center gap-6">
+            <Link to="/terms" className="transition-colors hover:text-zinc-300">Terms</Link>
+            <Link to="/privacy" className="transition-colors hover:text-zinc-300">Privacy</Link>
+            <Link to="/docs" className="transition-colors hover:text-zinc-300">Docs</Link>
           </div>
         </div>
       </footer>

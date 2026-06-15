@@ -32,47 +32,32 @@
 }
 
 @layer components {
+  /* Flat metric/content card — Linear style: single hairline, no shadow/glow */
   .stat-card {
-    @apply relative overflow-hidden rounded-xl border border-slate-800
-           bg-surface-raised p-5 transition-all duration-300
-           hover:bg-surface-overlay;
-  }
-
-  .stat-card::before {
-    content: '';
-    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
-    background: radial-gradient(
-      600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-      rgba(255, 255, 255, 0.02),
-      transparent 40%
-    );
-  }
-
-  .stat-card:hover::before {
-    @apply opacity-100;
+    @apply rounded-lg border border-zinc-800 bg-zinc-900 p-6
+           transition-colors duration-150 hover:border-zinc-700;
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-lg px-3 py-2.5
-           text-sm font-medium text-slate-450 transition-all duration-200
-           hover:bg-slate-800/30 hover:text-white;
+    @apply flex items-center gap-3 rounded-md px-3 py-2
+           text-sm text-zinc-400 transition-colors duration-150
+           hover:bg-zinc-900 hover:text-zinc-100;
   }
 
   .sidebar-link.active {
-    @apply bg-white/5 text-white border border-slate-800 shadow-glow;
+    @apply bg-indigo-500/10 text-zinc-50 border-l-2 border-indigo-500;
   }
 
-  /* Brutalist Action Elements */
+  /* Action elements — fast, flat, single indigo accent */
   .btn-primary {
-    @apply bg-white text-black font-semibold rounded-lg px-4 py-2.5 
-           border border-transparent transition-all duration-250
-           hover:bg-black hover:text-white hover:border-white;
+    @apply bg-indigo-500 text-white font-medium rounded-md px-4 py-2 text-sm
+           transition-colors duration-150 hover:bg-indigo-400;
   }
 
   .btn-secondary {
-    @apply bg-[#1F1F23] text-slate-200 font-semibold rounded-lg px-4 py-2.5
-           border border-slate-850 transition-all duration-250
-           hover:bg-[#27272A] hover:text-white;
+    @apply bg-zinc-800 text-zinc-100 font-medium rounded-md px-4 py-2 text-sm
+           border border-zinc-700 transition-colors duration-150
+           hover:bg-zinc-700;
   }
 
   /* Tier Component Styling */
