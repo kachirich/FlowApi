@@ -60,6 +60,7 @@ import SetupTutorial from "./components/SetupTutorial";
 import DestinationManager from "./components/DestinationManager";
 import FlowManager from "./components/FlowManager";
 import IntegrationsTab from "./components/IntegrationsTab";
+import NotificationPreferences from "./components/NotificationPreferences";
 import apiClient from "./utils/api";
 import { useAuth } from "./context/AuthContext";
 import { API_BASE_URL } from "./utils/apiConfig";
@@ -2656,6 +2657,9 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "pricing" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Billing" : ""}>
             <CreditCard className="h-4 w-4" /> {!sidebarCollapsed && "Billing"}
           </button>
+          <button onClick={() => setActiveTab("notifications")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "notifications" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Notifications" : ""}>
+            <Settings className="h-4 w-4" /> {!sidebarCollapsed && "Notifications"}
+          </button>
         </nav>
 
         <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
@@ -2720,6 +2724,7 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "tutorial" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Tutorial</button>
           <button onClick={() => setActiveTab("consulting")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "consulting" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Consulting</button>
           <button onClick={() => setActiveTab("pricing")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "pricing" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Billing</button>
+          <button onClick={() => setActiveTab("notifications")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "notifications" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Notifications</button>
         </nav>
 
         {/* Desktop Header (Top right tools) */}
@@ -2824,6 +2829,8 @@ export default function Dashboard() {
             </div>
           ) : activeTab === "pricing" ? (
             <Pricing setActiveTab={setActiveTab} />
+          ) : activeTab === "notifications" ? (
+            <NotificationPreferences />
           ) : (
             <SetupTutorial onOpenFeatures={() => setShowFeatures(true)} setActiveTab={setActiveTab} />
           )}

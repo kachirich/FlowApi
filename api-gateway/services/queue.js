@@ -3,6 +3,8 @@ import { URL } from "url";
 import dns from "dns/promises";
 import axios from "axios";
 import { query } from "../db/connection.js";
+import { enqueueNotification } from "./notification.queue.js";
+import { dedupCheck, NOTIFICATION_TYPES } from "./notification.service.js";
 
 const redisUrl = process.env.REDIS_URL || "redis://redis:6379";
 const parsed = new URL(redisUrl);
@@ -193,10 +195,29 @@ worker.on("failed", async (job, err) => {
 
     // Guarantee delivery status is FAILED
     await query(
-      `UPDATE ghl_leads 
+      `UPDATE ghl_leads
        SET delivery_status = 'FAILED', last_delivery_error = $1, status = $2
        WHERE contact_id = $3`,
       [`Failed after all retries: ${err.message}`, String(statusCode), contactId]
     ).catch(() => {});
+
+    // Delivery failure notification (one per lead, 24h dedup)
+    if (webhook.user_id && contactId) {
+      const dedupKey = `notif:failure:${contactId}`;
+      dedupCheck(dedupKey, 24 * 3600).then(async (already) => {
+        if (already) return;
+        // Fetch lead email for context
+        const leadRes = await query(
+          'SELECT email FROM ghl_leads WHERE contact_id = $1',
+          [contactId]
+        ).catch(() => ({ rows: [] }));
+        await enqueueNotification(webhook.user_id, NOTIFICATION_TYPES.DELIVERY_FAILURE, {
+          destination_name: webhook.id,
+          lead_email: leadRes.rows[0]?.email || null,
+          attempts: job.attemptsMade,
+          error_message: err.message,
+        }).catch(() => {});
+      }).catch(() => {});
+    }
   }
 });
