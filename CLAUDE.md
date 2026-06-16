@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Identity
+
+**FlowGateway / FlowAPI** — Main active project. Lead routing gateway and brokerage platform.
+
+- **Brand:** FlowAPI (domain: flowgateway.dev)
+- **Market:** Whitelabel lead intelligence platform targeting Nairobi/Kenya SMEs
+- **Target buyers:** KCB, Pesapal
+- **Core flow:** API key → webhook URL → GHL/Tally → routes to buyer destination
+- **Planned AI layer:** Lead scoring agent using Anthropic API — scores incoming leads against buyer specs before routing
+- **Status:** Work in progress
+
 ## Project Overview
 
 FlowAPI is a lead-routing platform that receives incoming webhooks (primarily from GoHighLevel/GHL), scores and stores leads, then dispatches them to configured downstream destinations using round-robin or broadcast strategies with tier-based retry logic.
