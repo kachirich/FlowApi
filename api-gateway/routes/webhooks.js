@@ -9,6 +9,8 @@ import { webhookQueue } from "../services/queue.js";
 import { validateRequest, webhookConfigBodySchema } from "../middleware/validateRequest.js";
 import { findValue, calculateLeadScore } from "../services/leadIngest.js";
 
+const router = Router();
+
 /**
  * GET /api/webhooks/logs
  *
