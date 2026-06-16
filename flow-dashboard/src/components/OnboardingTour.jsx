@@ -20,8 +20,10 @@ const TOUR_STYLES = {
  * Robustness: a per-step watchdog auto-advances on TARGET_NOT_FOUND so a
  * missing/unmounted anchor can never softlock the user — they can always
  * reach "Finish" even if a single step's element fails to mount.
+ *
+ * Tab switching: EVENTS.STEP_BEFORE triggers tab switch if step has a `tab` field.
  */
-export default function OnboardingTour({ user, run, mandatory, onFinish }) {
+export default function OnboardingTour({ user, run, mandatory, onFinish, setActiveTab }) {
   const [stepIndex, setStepIndex] = useState(0);
   const steps = getTourSteps(user?.plan_type);
 
@@ -33,6 +35,15 @@ export default function OnboardingTour({ user, run, mandatory, onFinish }) {
   const handleCallback = useCallback(
     async (data) => {
       const { status, type, index, action } = data;
+
+      // Switch tab before showing a step that has a tab field.
+      if (type === EVENTS.STEP_BEFORE) {
+        const step = steps[index];
+        if (step?.tab && setActiveTab) {
+          setActiveTab(step.tab);
+        }
+        return;
+      }
 
       // Auto-advance past a missing target instead of softlocking.
       if (type === EVENTS.TARGET_NOT_FOUND) {
@@ -58,7 +69,7 @@ export default function OnboardingTour({ user, run, mandatory, onFinish }) {
         onFinish?.();
       }
     },
-    [onFinish]
+    [onFinish, setActiveTab, steps]
   );
 
   return (
@@ -72,6 +83,8 @@ export default function OnboardingTour({ user, run, mandatory, onFinish }) {
       disableOverlayClose={mandatory}
       disableCloseOnEsc={mandatory}
       spotlightClicks
+      disableBeacon={true}
+      floaterProps={{ disableAnimation: true }}
       styles={TOUR_STYLES}
       locale={{ last: 'Finish Setup', skip: 'Skip tour' }}
       callback={handleCallback}
