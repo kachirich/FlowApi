@@ -15,19 +15,13 @@ const TOUR_STYLES = {
 };
 
 /**
- * Tier-aware product tour.
- *
- * Robustness: a per-step watchdog auto-advances on TARGET_NOT_FOUND so a
- * missing/unmounted anchor can never softlock the user — they can always
- * reach "Finish" even if a single step's element fails to mount.
- *
- * Tab switching: EVENTS.STEP_BEFORE triggers tab switch if step has a `tab` field.
+ * Universal product tour. No tier branching in step shape — only soft copy.
+ * Beacons disabled globally to prevent idle dot clutter on the dashboard.
  */
-export default function OnboardingTour({ user, run, mandatory, onFinish, setActiveTab }) {
+export default function OnboardingTour({ run, mandatory, onFinish }) {
   const [stepIndex, setStepIndex] = useState(0);
-  const steps = getTourSteps(user?.plan_type);
+  const steps = getTourSteps();
 
-  // Reset to the first step whenever a run is (re)started.
   useEffect(() => {
     if (run) setStepIndex(0);
   }, [run]);
@@ -36,40 +30,25 @@ export default function OnboardingTour({ user, run, mandatory, onFinish, setActi
     async (data) => {
       const { status, type, index, action } = data;
 
-      // Switch tab before showing a step that has a tab field.
-      if (type === EVENTS.STEP_BEFORE) {
-        const step = steps[index];
-        if (step?.tab && setActiveTab) {
-          setActiveTab(step.tab);
-        }
-        return;
-      }
-
-      // Auto-advance past a missing target instead of softlocking.
       if (type === EVENTS.TARGET_NOT_FOUND) {
         setStepIndex(index + 1);
         return;
       }
-
       if (type === EVENTS.STEP_AFTER) {
         setStepIndex(index + (action === ACTIONS.PREV ? -1 : 1));
       }
-
       if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-        // Persist completion. Cookie auth — credentials:'include', no Bearer header.
         try {
           await fetch(`${API_BASE_URL}/api/admin/onboarding/complete`, {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
           });
-        } catch {
-          /* noop — local state still flips so the user isn't re-prompted this session */
-        }
+        } catch { /* noop */ }
         onFinish?.();
       }
     },
-    [onFinish, setActiveTab, steps]
+    [onFinish]
   );
 
   return (
@@ -83,10 +62,10 @@ export default function OnboardingTour({ user, run, mandatory, onFinish, setActi
       disableOverlayClose={mandatory}
       disableCloseOnEsc={mandatory}
       spotlightClicks
-      disableBeacon={true}
+      disableBeacon
       floaterProps={{ disableAnimation: true }}
       styles={TOUR_STYLES}
-      locale={{ last: 'Finish Setup', skip: 'Skip tour' }}
+      locale={{ last: 'Finish', skip: 'Skip tour' }}
       callback={handleCallback}
     />
   );

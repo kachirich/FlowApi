@@ -1,21 +1,18 @@
 import React from 'react';
+import { PLAN_PERKS, displayPlan } from '../constants/plans';
 
 /**
  * Post-checkout celebration modal.
  *
  * Distinct from UpgradeModal.jsx (which is the *feature-gate* paywall prompt).
  * This one fires after a successful Stripe checkout once the plan flip has
- * been confirmed, and chains into the tier-aware tour so the newly-unlocked
+ * been confirmed, and chains into the tour so the newly-unlocked
  * features get pointed out immediately.
  */
-const PLAN_PERKS = {
-  basic: ['3-attempt retries', '7-day log retention', 'Round-robin routing'],
-  pro: ['Custom headers', 'Broadcast routing', '100-attempt retries', '30-day log retention'],
-  plus: ['Everything in Pro', 'Unlimited log retention', 'Enterprise retry tiers', 'Priority support'],
-};
-
 export default function CheckoutSuccessModal({ user, onClose, onStartTour }) {
-  const perks = PLAN_PERKS[user?.plan_type] || [];
+  const planKey = (user?.plan_type || '').toLowerCase();
+  const perks = PLAN_PERKS[planKey] || [];
+  const friendlyPlan = displayPlan(user?.plan_type);
   const raw = user?.last_name || user?.first_name || 'there';
   const display = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
 
@@ -24,7 +21,7 @@ export default function CheckoutSuccessModal({ user, onClose, onStartTour }) {
       <div className="w-full max-w-md rounded-2xl border border-amber-500/40 bg-zinc-900 p-8 text-center shadow-2xl">
         <div className="mb-3 text-4xl">⚡</div>
         <h2 className="mb-1 text-2xl font-bold text-white">
-          Welcome to {user?.plan_type?.toUpperCase()}, {display}
+          Welcome to {friendlyPlan}, {display}
         </h2>
         <p className="mb-6 text-sm text-zinc-400">Your new features are live right now.</p>
         <ul className="mb-8 space-y-2 text-left">
