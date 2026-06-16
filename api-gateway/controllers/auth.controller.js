@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { sendTokenResponse } from '../utils/authUtils.js';
 import { redisClient } from '../middleware/rateLimiter.js';
@@ -5,20 +6,17 @@ import { sendEmailVerification } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
 import blocklist from 'disposable-email-blocklist';
-import { enqueueNotification } from '../services/notification.queue.js';
-import { NOTIFICATION_TYPES } from '../services/notification.service.js';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { enqueueNotification, NOTIFICATION_TYPES, DAY_MS } from '../services/notifications.js';
 
 const normalizeEmail = (rawEmail) => {
   if (!rawEmail || typeof rawEmail !== 'string') return rawEmail;
   let email = rawEmail.trim().toLowerCase();
   const [localPart, domain] = email.split('@');
   if (!domain) return email;
-  
+
   const plusIndex = localPart.indexOf('+');
   const cleanLocal = plusIndex !== -1 ? localPart.substring(0, plusIndex) : localPart;
-  
+
   return `${cleanLocal}@${domain}`;
 };
 
@@ -41,13 +39,31 @@ export const sendOtp = async (req, res) => {
       return res.status(400).json({ error: 'Please use a permanent email address' });
     }
 
-    // Generate a 6-digit numeric OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Check if existing user has verified OTP within the last 7 days — skip OTP if so
+    const recentVerify = await query(
+      `SELECT u.id, u.email, u.first_name, u.last_name
+       FROM users u
+       JOIN user_auth ua ON ua.user_id = u.id
+       WHERE u.email = $1 AND ua.last_otp_verified_at > NOW() - INTERVAL '7 days'`,
+      [email]
+    );
 
-    // Store in PostgreSQL with 10 minute expiration
+    if (recentVerify.rows.length > 0) {
+      const user = recentVerify.rows[0];
+      return sendTokenResponse(user, 200, res, 'Signed in successfully');
+    }
+
+    // Clear any previous OTPs for this email
+    await query("DELETE FROM otps WHERE email = $1", [email]);
+
+    // Generate a cryptographically secure 6-digit OTP
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+
+    // Store hashed code — never persist the raw OTP
     await query(
-      "INSERT INTO otps (email, code, expires_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes')",
-      [email, code]
+      "INSERT INTO otps (email, code_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes')",
+      [email, codeHash]
     );
 
     // Send email via Nodemailer
@@ -63,7 +79,7 @@ export const sendOtp = async (req, res) => {
 export const sendStepUpOtp = async (req, res) => {
   try {
     const email = req.user.email; // Extracted from JWT token via authenticate middleware
-    
+
     if (!email) {
       return res.status(401).json({ error: 'Unauthorized: No email attached to token' });
     }
@@ -80,16 +96,17 @@ export const sendStepUpOtp = async (req, res) => {
       }
     }
 
-    // Generate a 6-digit numeric OTP
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate a cryptographically secure 6-digit OTP
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
 
     // Clear any previous OTPs for this email to prevent spam/clutter
     await query("DELETE FROM otps WHERE email = $1", [email]);
 
-    // Store in PostgreSQL with 5 minute expiration (tighter window for step-up)
+    // Store hashed code — never persist the raw OTP (tighter 5-minute window for step-up)
     await query(
-      "INSERT INTO otps (email, code, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes')",
-      [email, code]
+      "INSERT INTO otps (email, code_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes')",
+      [email, codeHash]
     );
 
     // Send email via Nodemailer
@@ -116,10 +133,13 @@ export const verifyOtp = async (req, res) => {
     // Calculate current time in Node.js to avoid PostgreSQL timezone mismatches
     const currentTime = new Date();
 
-    // Strict Dual-Check with expiration
+    // Hash the user-supplied code and compare against the stored hash
+    const inputHash = crypto.createHash('sha256').update(code).digest('hex');
+
+    // Strict dual-check with expiration
     const otpResult = await query(
-      "SELECT id FROM otps WHERE email = $1 AND code = $2 AND expires_at > $3",
-      [email, code, currentTime]
+      "SELECT id FROM otps WHERE email = $1 AND code_hash = $2 AND expires_at > $3",
+      [email, inputHash, currentTime]
     );
 
     if (otpResult.rows.length === 0) {
@@ -135,13 +155,21 @@ export const verifyOtp = async (req, res) => {
 
     if (userResult.rows.length > 0) {
       user = userResult.rows[0];
+      // Update OTP verification timestamp
+      await query("UPDATE user_auth SET last_otp_verified_at = NOW() WHERE user_id = $1", [user.id]);
     } else {
-      // Insert new user with dummy password_hash (passwordless account)
+      // Insert new passwordless user — trigger auto-creates satellite rows
       const insertResult = await query(
         "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email",
         [email, "PASSWORDLESS_ACCOUNT"]
       );
       user = insertResult.rows[0];
+
+      // Set passwordless + OTP timestamp on the auto-created user_auth row
+      await query(
+        "UPDATE user_auth SET is_passwordless = TRUE, last_otp_verified_at = NOW() WHERE user_id = $1",
+        [user.id]
+      );
 
       // Schedule onboarding drip (day 0 immediately, day 3, day 7)
       const newUserId = user.id;
@@ -178,8 +206,8 @@ export const register = async (req, res) => {
     // Strict Password Policy Enforcement
     const passwordRegex = /^(?=.*[0-9])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
     if (!passwordRegex.test(password)) {
-      return res.status(400).json({ 
-        error: 'Password must be at least 8 characters long, contain at least one number, and one special character.' 
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters long, contain at least one number, and one special character.'
       });
     }
 
@@ -192,7 +220,7 @@ export const register = async (req, res) => {
     // Hash password
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
-    
+
     // Generate avatar
     const profilePic = `https://ui-avatars.com/api/?name=${encodeURIComponent(firstName)}+${encodeURIComponent(lastName)}&background=random`;
 
@@ -201,8 +229,15 @@ export const register = async (req, res) => {
       "INSERT INTO users (email, password_hash, first_name, last_name, profile_pic) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, first_name, last_name, profile_pic",
       [email, passwordHash, firstName, lastName, profilePic]
     );
-    
+
     const user = insertResult.rows[0];
+
+    const newUserId = user.id;
+    Promise.all([
+      enqueueNotification(newUserId, NOTIFICATION_TYPES.ONBOARDING, { day: 0 }),
+      enqueueNotification(newUserId, NOTIFICATION_TYPES.ONBOARDING, { day: 3 }, { delay: 3 * DAY_MS }),
+      enqueueNotification(newUserId, NOTIFICATION_TYPES.ONBOARDING, { day: 7 }, { delay: 7 * DAY_MS }),
+    ]).catch(err => console.error('[auth] Onboarding drip failed:', err.message));
 
     return sendTokenResponse(user, 201, res, 'Account created successfully');
   } catch (error) {
@@ -222,22 +257,36 @@ export const login = async (req, res) => {
 
     const email = normalizeEmail(rawEmail);
 
-    const userResult = await query("SELECT id, email, password_hash, first_name, last_name, profile_pic FROM users WHERE email = $1", [email]);
-    
+    const userResult = await query(
+      `SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, u.profile_pic,
+              ua.two_factor_enabled, ua.two_factor_secret, ua.is_passwordless
+       FROM users u
+       JOIN user_auth ua ON ua.user_id = u.id
+       WHERE u.email = $1`,
+      [email]
+    );
+
     if (userResult.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const user = userResult.rows[0];
 
-    // Check passwordless bypass
-    if (user.password_hash === 'PASSWORDLESS_ACCOUNT') {
+    // Check passwordless sentinel
+    if (user.is_passwordless) {
        return res.status(401).json({ error: 'Please sign in with Google or Email OTP' });
     }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // 2FA challenge — do not issue JWT yet
+    if (user.two_factor_enabled) {
+      const challengeToken = crypto.randomUUID();
+      await redisClient.setEx(`2fa_challenge:${challengeToken}`, 300, user.id);
+      return res.status(200).json({ requires_2fa: true, challenge_token: challengeToken });
     }
 
     return sendTokenResponse(user, 200, res, 'Logged in successfully');
@@ -260,9 +309,10 @@ export const verifyResetOtp = async (req, res) => {
     const email = normalizeEmail(rawEmail);
     const currentTime = new Date();
 
+    const inputHash = crypto.createHash('sha256').update(code).digest('hex');
     const otpResult = await query(
-      "SELECT id FROM otps WHERE email = $1 AND code = $2 AND expires_at > $3",
-      [email, code, currentTime]
+      "SELECT id FROM otps WHERE email = $1 AND code_hash = $2 AND expires_at > $3",
+      [email, inputHash, currentTime]
     );
 
     if (otpResult.rows.length === 0) {
@@ -292,16 +342,17 @@ export const forgotPassword = async (req, res) => {
     const userResult = await query("SELECT id FROM users WHERE email = $1", [email]);
 
     if (userResult.rows.length > 0) {
-      // Generate a 6-digit OTP
-      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      // Generate a cryptographically secure 6-digit OTP
+      const code = crypto.randomInt(100000, 1000000).toString();
+      const codeHash = crypto.createHash('sha256').update(code).digest('hex');
 
       // Clear any previous OTPs for this email
       await query("DELETE FROM otps WHERE email = $1", [email]);
 
-      // Store in PostgreSQL with 10 minute expiration
+      // Store hashed code — never persist the raw OTP
       await query(
-        "INSERT INTO otps (email, code, expires_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes')",
-        [email, code]
+        "INSERT INTO otps (email, code_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '10 minutes')",
+        [email, codeHash]
       );
 
       // Dispatch via email service
@@ -342,9 +393,10 @@ export const resetPassword = async (req, res) => {
 
     // Verify OTP with strict dual-check and expiration
     const currentTime = new Date();
+    const inputHash = crypto.createHash('sha256').update(code).digest('hex');
     const otpResult = await query(
-      "SELECT id FROM otps WHERE email = $1 AND code = $2 AND expires_at > $3",
-      [email, code, currentTime]
+      "SELECT id FROM otps WHERE email = $1 AND code_hash = $2 AND expires_at > $3",
+      [email, inputHash, currentTime]
     );
 
     if (otpResult.rows.length === 0) {
