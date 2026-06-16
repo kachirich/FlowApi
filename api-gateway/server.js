@@ -5,6 +5,7 @@ import { startQueueWorker } from "./utils/queueWorker.js";
 import { startJanitorService } from "./services/janitor.service.js";
 import { connectRedis } from "./utils/redisClient.js";
 import "./services/queue.js";
+import "./services/notification.queue.js";
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';

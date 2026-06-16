@@ -1,5 +1,7 @@
 import { query } from '../db/connection.js';
 import { getPlanType } from './index.js';
+import { enqueueNotification } from '../services/notification.queue.js';
+import { dedupCheck, NOTIFICATION_TYPES } from '../services/notification.service.js';
 
 /**
  * Metered Rate Limiter Middleware
@@ -65,10 +67,35 @@ export default async function meteredLimiter(req, res, next) {
     }
 
     // ── Step C: Increment Odometer ───────────────────────────────────────
-    await query(
-      'UPDATE users SET monthly_request_count = monthly_request_count + 1 WHERE id = $1',
+    const updatedRes = await query(
+      'UPDATE users SET monthly_request_count = monthly_request_count + 1 WHERE id = $1 RETURNING monthly_request_count',
       [userId]
     );
+    const newCount = updatedRes.rows[0]?.monthly_request_count || currentCount + 1;
+
+    // ── Step D: Usage Alert Triggers (fire-and-forget) ────────────────────
+    if (limit !== Infinity) {
+      const pct = (newCount / limit) * 100;
+      if (pct >= 100) {
+        const dedupKey = `notif:usage:${userId}:100:${cycleReset.toDateString()}`;
+        dedupCheck(dedupKey, 30 * 24 * 3600).then(already => {
+          if (!already) {
+            enqueueNotification(userId, NOTIFICATION_TYPES.USAGE_ALERT, {
+              threshold: 100, current: newCount, limit, plan_type: planType,
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      } else if (pct >= 80) {
+        const dedupKey = `notif:usage:${userId}:80:${cycleReset.toDateString()}`;
+        dedupCheck(dedupKey, 30 * 24 * 3600).then(already => {
+          if (!already) {
+            enqueueNotification(userId, NOTIFICATION_TYPES.USAGE_ALERT, {
+              threshold: 80, current: newCount, limit, plan_type: planType,
+            }).catch(() => {});
+          }
+        }).catch(() => {});
+      }
+    }
 
     next();
   } catch (err) {

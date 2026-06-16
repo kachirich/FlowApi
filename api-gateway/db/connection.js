@@ -266,6 +266,29 @@ export async function initializeDatabase() {
 
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin
         BOOLEAN NOT NULL DEFAULT FALSE;
+
+      -- Email Automation: unsubscribe token for one-click opt-out
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS unsubscribe_token VARCHAR(64) UNIQUE;
+
+      -- Per-user notification preferences (one row per type, opt-in by default)
+      CREATE TABLE IF NOT EXISTS notification_preferences (
+        user_id    UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type       VARCHAR(50) NOT NULL,
+        enabled    BOOLEAN     NOT NULL DEFAULT TRUE,
+        PRIMARY KEY (user_id, type)
+      );
+
+      -- Audit log of every notification sent or failed
+      CREATE TABLE IF NOT EXISTS notifications (
+        id       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id  UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type     VARCHAR(50) NOT NULL,
+        subject  TEXT        NOT NULL,
+        status   VARCHAR(20) NOT NULL DEFAULT 'sent',
+        metadata JSONB,
+        sent_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, sent_at DESC);
     `);
     console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters, lead_counters & destinations tables ready");
   } catch (err) {
