@@ -8,7 +8,7 @@ import { PLAN_PERKS, displayPlan } from '../constants/plans';
  * Fires after a successful Stripe checkout once the plan flip has been
  * confirmed, and chains into the onboarding tour.
  */
-export default function CheckoutSuccessModal({ user, onClose, onStartTour }) {
+export default function CheckoutSuccessModal({ user, onClose }) {
   const perks = PLAN_PERKS[user?.plan_type] || [];
   const raw = user?.last_name || user?.first_name || 'there';
   const name = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
@@ -31,19 +31,10 @@ export default function CheckoutSuccessModal({ user, onClose, onStartTour }) {
         </ul>
         <div className="flex gap-3">
           <button
-            onClick={() => {
-              onClose();
-              onStartTour();
-            }}
-            className="flex-1 rounded-lg bg-amber-500 py-2.5 font-semibold text-black transition-colors hover:bg-amber-400"
-          >
-            Show me around →
-          </button>
-          <button
             onClick={onClose}
-            className="flex-1 rounded-lg border border-zinc-700 py-2.5 text-zinc-300 transition-colors hover:text-white"
+            className="w-full rounded-lg bg-amber-500 py-2.5 font-semibold text-black transition-colors hover:bg-amber-400"
           >
-            I'll explore myself
+            Open Dashboard →
           </button>
         </div>
       </div>
