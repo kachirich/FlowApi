@@ -49,6 +49,7 @@ import {
   Shuffle,
   Workflow,
   Plug,
+  PlayCircle,
 } from "lucide-react";
 
 import BookingWidget from "./components/BookingWidget";
@@ -2698,14 +2699,6 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
 
-          {onboardingDone && !sidebarCollapsed && (
-            <button
-              onClick={startTour}
-              className="block w-full text-center text-[11px] text-zinc-500 hover:text-amber-400 transition-colors"
-            >
-              Replay setup tour
-            </button>
-          )}
 
           <a
             href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}
@@ -2739,6 +2732,7 @@ export default function Dashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={startTour} title="Replay setup tour" className="p-2 text-zinc-500 hover:text-amber-400"><PlayCircle className="h-4 w-4" /></button>
             <button onClick={() => setShowSecurityModal(true)} className="p-2 text-zinc-500 hover:text-zinc-200"><Shield className="h-4 w-4" /></button>
             <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-rose-400"><LogOut className="h-4 w-4" /></button>
           </div>
@@ -2772,6 +2766,9 @@ export default function Dashboard() {
         {/* Desktop Header (Top right tools) */}
         <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-end border-b border-slate-800/60 bg-surface/80 px-8 backdrop-blur-xl">
           <div className="flex items-center gap-3">
+            <button onClick={startTour} title="Replay setup tour" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-amber-400">
+              <PlayCircle className="h-4 w-4" />
+            </button>
             <button onClick={() => setShowSecurityModal(true)} title="Security & 2FA Settings" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100">
               <Shield className="h-4 w-4" />
             </button>
@@ -3371,6 +3368,7 @@ export default function Dashboard() {
         run={tourRun}
         mandatory={!onboardingDone}
         onFinish={finishTour}
+        setActiveTab={setActiveTab}
       />
 
       {/* ── Post-checkout celebration ────────────────────────────────────── */}

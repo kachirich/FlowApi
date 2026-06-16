@@ -15,17 +15,16 @@ const TOUR_STYLES = {
 };
 
 /**
- * Tier-aware product tour.
+ * Universal product tour.
  *
- * Robustness: a per-step watchdog auto-advances on TARGET_NOT_FOUND so a
- * missing/unmounted anchor can never softlock the user — they can always
- * reach "Finish" even if a single step's element fails to mount.
+ * A per-step watchdog auto-advances on TARGET_NOT_FOUND so a missing/unmounted
+ * anchor can never softlock the user — they can always reach "Finish".
  *
- * Tab switching: EVENTS.STEP_BEFORE triggers tab switch if step has a `tab` field.
+ * Tab switching: EVENTS.STEP_BEFORE triggers a tab switch if the step has a `tab` field.
  */
 export default function OnboardingTour({ user, run, mandatory, onFinish, setActiveTab }) {
   const [stepIndex, setStepIndex] = useState(0);
-  const steps = getTourSteps(user?.plan_type);
+  const steps = getTourSteps();
 
   // Reset to the first step whenever a run is (re)started.
   useEffect(() => {
@@ -80,10 +79,10 @@ export default function OnboardingTour({ user, run, mandatory, onFinish, setActi
       continuous
       showProgress
       showSkipButton={!mandatory}
+      disableBeacon
       disableOverlayClose={mandatory}
       disableCloseOnEsc={mandatory}
       spotlightClicks
-      disableBeacon={true}
       floaterProps={{ disableAnimation: true }}
       styles={TOUR_STYLES}
       locale={{ last: 'Finish Setup', skip: 'Skip tour' }}

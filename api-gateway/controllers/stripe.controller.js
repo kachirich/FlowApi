@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { query } from '../db/connection.js';
 import { redisClient } from '../middleware/rateLimiter.js';
 import { planCacheKey } from '../middleware/requirePlan.js';
+import { enqueueNotification, NOTIFICATION_TYPES } from '../services/notifications.js';
 
 // Lazy load Stripe instance to avoid ES module hoisting traps
 let stripe;
@@ -119,6 +120,15 @@ export const handleStripeWebhook = async (req, res) => {
             console.error(`[stripe-webhook] Redis cache invalidation error:`, e.message)
           );
           console.log(`[stripe-webhook] ✅ Success: User ${userId} upgraded to Pro`);
+
+          // Fire feature-announcement email
+          const planTier = session.metadata?.plan_type || 'pro';
+          enqueueNotification(userId, NOTIFICATION_TYPES.FEATURE_ANNOUNCEMENT, {
+            subject: `Welcome to FlowGateway ${planTier === 'plus' ? 'Enterprise' : 'Growth'} — your new features are live`,
+            headline: `Your ${planTier === 'plus' ? 'Enterprise' : 'Growth'} features are now active`,
+            plan: planTier,
+            cta_label: 'Open Dashboard',
+          }).catch((e) => console.error('[stripe-webhook] Feature announcement email failed:', e.message));
         } catch (dbErr) {
           console.error(`[stripe-webhook] ❌ Database error updating user ${userId}:`, dbErr.message);
         }
