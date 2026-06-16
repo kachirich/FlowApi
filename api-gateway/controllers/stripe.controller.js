@@ -109,9 +109,9 @@ export const handleStripeWebhook = async (req, res) => {
       if (userId) {
         try {
           await query(
-            `UPDATE users 
+            `UPDATE user_billing
              SET stripe_customer_id = $1, stripe_subscription_id = $2, plan_type = $3, subscription_status = $4
-             WHERE id = $5`,
+             WHERE user_id = $5`,
             [customerId, subscriptionId, 'pro', 'active', userId]
           );
           // Invalidate cached plan so the next request reads fresh from Postgres
@@ -140,13 +140,13 @@ export const handleStripeWebhook = async (req, res) => {
 
       try {
         const subUpdateResult = await query(
-          "UPDATE users SET subscription_status = $1, plan_type = $2 WHERE stripe_subscription_id = $3 RETURNING id",
+          "UPDATE user_billing SET subscription_status = $1, plan_type = $2 WHERE stripe_subscription_id = $3 RETURNING user_id",
           [status, planType, subscriptionId]
         );
         // Invalidate cached plan for the affected user
-        if (subUpdateResult.rows[0]?.id) {
-          redisClient.del(planCacheKey(subUpdateResult.rows[0].id)).catch((e) =>
-            console.error(`[stripe-webhook] Redis cache invalidation error:`, e.message)
+        if (subUpdateResult.rows[0]?.user_id) {
+          redisClient.del(planCacheKey(subUpdateResult.rows[0].user_id)).catch((e) =>
+            console.error("[stripe-webhook] Redis cache invalidation error:", e.message)
           );
         }
         console.log(`[stripe-webhook] ✅ Success: Subscription ${subscriptionId} updated to ${status} (${planType})`);

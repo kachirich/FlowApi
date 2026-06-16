@@ -35,7 +35,7 @@ export async function getPlanType(userId) {
   // ── Step 2: Postgres look-up (cache miss) ────────────────────────
   if (!planType) {
     const result = await query(
-      "SELECT plan_type FROM users WHERE id = $1",
+      "SELECT plan_type FROM user_billing WHERE user_id = $1",
       [userId],
     );
 

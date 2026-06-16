@@ -1,18 +1,10 @@
 import jwt from "jsonwebtoken";
+import redisClient from "../utils/redisClient.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-/**
- * JWT authentication middleware.
- *
- * Extracts a Bearer token from the `Authorization` header, verifies it
- * against `JWT_SECRET`, and attaches the decoded payload to `req.user`.
- *
- * Errors are forwarded to the centralised error handler via `next(error)`
- * with an appropriate `status` code — never responds directly.
- */
-export default function authenticate(req, _res, next) {
-  const token = req.cookies?.token || req.cookies?.jwt || (req.headers.authorization && req.headers.authorization.split(' ')[1]);
+export default async function authenticate(req, _res, next) {
+  const token = req.cookies?.jwt || (req.headers.authorization?.startsWith('Bearer ') && req.headers.authorization.split(' ')[1]);
 
   // ── Missing token ──────────────────────────────────────────────────────
   if (!token) {
@@ -33,6 +25,16 @@ export default function authenticate(req, _res, next) {
   // ── Verify token ───────────────────────────────────────────────────────
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // ── Blacklist check ────────────────────────────────────────────────
+    const revoked = await redisClient.get('blacklist:' + token);
+    if (revoked) {
+      const error = new Error("Token has been revoked");
+      error.name = "Unauthorized";
+      error.status = 401;
+      return next(error);
+    }
+
     req.user = decoded;
     next();
   } catch (err) {

@@ -147,7 +147,8 @@ app.use((err, req, res, next) => {
   if (status >= 500) {
     return res.status(500).json({
       success: false,
-      error: 'An unexpected server error occurred. Our team has been notified.'
+      error: 'Internal Server Error',
+      message: 'An unexpected server error occurred.',
     });
   }
 

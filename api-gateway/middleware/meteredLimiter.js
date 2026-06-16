@@ -26,29 +26,30 @@ export default async function meteredLimiter(req, res, next) {
     }
 
     // ── Step A: Billing Cycle Check ──────────────────────────────────────
-    const userResult = await query(
-      'SELECT monthly_request_count, billing_cycle_reset FROM users WHERE id = $1',
+    const billingResult = await query(
+      'SELECT monthly_request_count, billing_cycle_reset FROM user_billing WHERE user_id = $1',
       [userId]
     );
 
-    if (userResult.rows.length === 0) {
+    if (billingResult.rows.length === 0) {
       return res.status(401).json({
         success: false,
         message: 'Unauthorized: User not found',
       });
     }
 
-    const user = userResult.rows[0];
+    const billing = billingResult.rows[0];
     const planType = await getPlanType(userId) || 'free';
-    let currentCount = user.monthly_request_count || 0;
-    const cycleReset = new Date(user.billing_cycle_reset);
+    req.webhookKey.planType = planType;
+    let currentCount = billing.monthly_request_count || 0;
+    const cycleReset = new Date(billing.billing_cycle_reset);
     const now = new Date();
 
     // If 30 days have elapsed since last reset, roll the odometer back to 0
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
     if (now - cycleReset >= thirtyDaysMs) {
       await query(
-        'UPDATE users SET monthly_request_count = 0, billing_cycle_reset = $1 WHERE id = $2',
+        'UPDATE user_billing SET monthly_request_count = 0, billing_cycle_reset = $1 WHERE user_id = $2',
         [now.toISOString(), userId]
       );
       currentCount = 0;

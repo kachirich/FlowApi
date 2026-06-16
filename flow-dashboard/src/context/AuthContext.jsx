@@ -39,6 +39,24 @@ export const AuthProvider = ({ children }) => {
     
     initAuth();
   }, []);
+  /**
+   * Re-pull the freshest user from the server (e.g. after a Stripe plan flip).
+   * Reuses setAuthenticatedUser so the computed `name` stays correct.
+   * Returns the refreshed user, or null on failure.
+   */
+  const refreshUser = async () => {
+    try {
+      const response = await api.get('/api/auth/me');
+      if (response.data?.success && response.data?.user) {
+        setAuthenticatedUser(response.data.user);
+        return response.data.user;
+      }
+    } catch (e) {
+      console.error('[AuthContext] refreshUser failed:', e);
+    }
+    return null;
+  };
+
   const login = async (googleCredential) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
@@ -85,7 +103,7 @@ export const AuthProvider = ({ children }) => {
 
 
   return (
-    <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, login, logout, loading, refreshUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );

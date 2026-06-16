@@ -3,6 +3,8 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import speakeasy from "speakeasy";
+import rateLimit from "express-rate-limit";
+import { RedisStore } from "rate-limit-redis";
 import { query } from "../db/connection.js";
 import authenticate from "../middleware/auth.js";
 import webhookCreationLimiter from "../middleware/webhookCreationLimiter.js";
@@ -12,6 +14,12 @@ import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
+
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  store: new RedisStore({ sendCommand: (...args) => redisClient.sendCommand(args) }),
+});
 
 const router = Router();
 
@@ -101,13 +109,17 @@ router.get("/dashboard", authenticate, async (req, res, next) => {
  *
  * Protected by JWT.
  */
-router.post("/generate-webhook", authenticate, webhookCreationLimiter, async (req, res, next) => {
+router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimiter, async (req, res, next) => {
   try {
     const { totpToken } = req.body;
 
-    // Enforce 2FA verification
+    // Enforce 2FA verification + billing tier check in a single query
     const userResult = await query(
-      "SELECT two_factor_secret, two_factor_enabled FROM users WHERE id = $1",
+      `SELECT ua.two_factor_secret, ua.two_factor_enabled,
+              ub.plan_type, ub.lifetime_webhooks_created
+       FROM user_auth ua
+       JOIN user_billing ub ON ub.user_id = ua.user_id
+       WHERE ua.user_id = $1`,
       [req.user.id]
     );
 
@@ -131,13 +143,8 @@ router.post("/generate-webhook", authenticate, webhookCreationLimiter, async (re
     }
 
     // ── Enforce Billing Tiers (Lifetime Counter) ───────────────────────────
-    const userPlanResult = await query(
-      "SELECT plan_type, lifetime_webhooks_created FROM users WHERE id = $1",
-      [req.user.id]
-    );
-
-    const planType = userPlanResult.rows[0]?.plan_type || 'free';
-    const lifetimeWebhooks = userPlanResult.rows[0]?.lifetime_webhooks_created || 0;
+    const planType = user.plan_type || 'free';
+    const lifetimeWebhooks = user.lifetime_webhooks_created || 0;
 
     let limit = 2;
     if (planType === 'pro') limit = 50;
@@ -175,7 +182,7 @@ router.post("/generate-webhook", authenticate, webhookCreationLimiter, async (re
 
     // ── Update Lifetime Ledger ─────────────────────────────────────────────
     await query(
-      "UPDATE users SET lifetime_webhooks_created = lifetime_webhooks_created + 1 WHERE id = $1",
+      "UPDATE user_billing SET lifetime_webhooks_created = lifetime_webhooks_created + 1 WHERE user_id = $1",
       [req.user.id]
     );
 
@@ -216,7 +223,14 @@ router.get("/stats", authenticate, async (req, res, next) => {
       query("SELECT COUNT(*)::int AS count FROM ghl_leads WHERE user_id = $1 AND is_test = false", [req.user.id]),
       query("SELECT COUNT(*)::int AS count FROM webhook_keys WHERE user_id = $1", [req.user.id]),
       query("SELECT value::int AS count FROM gateway_counters WHERE key = 'bots_blocked'"),
-      query("SELECT two_factor_enabled, has_completed_onboarding, plan_type FROM users WHERE id = $1", [req.user.id]),
+      query(
+        `SELECT ua.two_factor_enabled, us.has_completed_onboarding, ub.plan_type
+         FROM user_auth ua
+         JOIN user_billing  ub ON ub.user_id = ua.user_id
+         JOIN user_settings us ON us.user_id = ua.user_id
+         WHERE ua.user_id = $1`,
+        [req.user.id]
+      ),
     ]);
 
     const totalLeads = leadsResult.rows[0].count;
@@ -249,7 +263,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
  */
 router.post("/onboarding/complete", authenticate, async (req, res, next) => {
   try {
-    await query("UPDATE users SET has_completed_onboarding = true WHERE id = $1", [req.user.id]);
+    await query("UPDATE user_settings SET has_completed_onboarding = TRUE WHERE user_id = $1", [req.user.id]);
     return res.json({
       success: true,
       message: "Onboarding completed successfully"
@@ -376,7 +390,6 @@ router.get("/leads", authenticate, async (req, res, next) => {
         gl.last_name,
         gl.email,
         gl.phone,
-        gl.status,
         gl.lead_score,
         gl.created_at,
         gl.delivery_status AS "deliveryStatus",
@@ -461,7 +474,7 @@ router.delete("/webhooks/:id", authenticate, async (req, res, next) => {
 
       // Enforce 2FA verification
       const userResult = await query(
-        "SELECT two_factor_secret, two_factor_enabled FROM users WHERE id = $1",
+        "SELECT two_factor_secret, two_factor_enabled FROM user_auth WHERE user_id = $1",
         [req.user.id]
       );
 
@@ -662,7 +675,7 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
  *
  * Protected by JWT.
  */
-router.post("/upgrade-user", authenticate, async (req, res, next) => {
+router.post("/upgrade-user", authenticate, adminLimiter, async (req, res, next) => {
   try {
     const { email, newPlan } = req.body;
 
@@ -683,7 +696,11 @@ router.post("/upgrade-user", authenticate, async (req, res, next) => {
 
     // Update the user's plan in the database
     const result = await query(
-      "UPDATE users SET plan_type = $1 WHERE email = $2 RETURNING id, email, first_name, last_name, plan_type",
+      `UPDATE user_billing ub
+       SET plan_type = $1
+       FROM users u
+       WHERE ub.user_id = u.id AND u.email = $2
+       RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
       [newPlan, email.trim().toLowerCase()]
     );
 

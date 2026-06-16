@@ -9,12 +9,13 @@ import { authenticate } from "../middleware/index.js";
 import { authRateLimiter, stepUpLimiter, otpGenerationLimiter, otpVerificationLimiter, redisClient } from "../middleware/rateLimiter.js";
 import { sendOtp, verifyOtp, sendStepUpOtp, register, login, forgotPassword, resetPassword, verifyResetOtp } from "../controllers/auth.controller.js";
 import { googleLogin, googleCallback, logout } from "../controllers/googleAuth.controller.js";
-import { verifyToken } from "../middleware/auth.middleware.js";
+import { sendTokenResponse } from "../utils/authUtils.js";
+import { calculateLeadScore } from "../services/leadIngest.js";
 
 const router = Router();
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "24h";
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 const SALT_ROUNDS = 12;
 
 
@@ -98,7 +99,7 @@ router.post("/2fa/enable", authenticate, otpVerificationLimiter, async (req, res
 
     // Enable 2FA in DB and permanently save the secret
     await query(
-      "UPDATE users SET two_factor_secret = $1, two_factor_enabled = true WHERE id = $2",
+      "UPDATE user_auth SET two_factor_secret = $1, two_factor_enabled = TRUE WHERE user_id = $2",
       [tempSecret, userId]
     );
 
@@ -123,19 +124,33 @@ router.post("/2fa/enable", authenticate, otpVerificationLimiter, async (req, res
  */
 router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
   try {
-    const { userId, token } = req.body;
+    const { challenge_token, token } = req.body;
 
-    if (!userId || !token) {
+    if (!challenge_token || !token) {
       return res.status(400).json({
         status: 400,
         error: "Bad Request",
-        message: "userId and 2FA token are required",
+        message: "challenge_token and 2FA token are required",
+      });
+    }
+
+    // Look up userId from the short-lived Redis challenge key
+    const userId = await redisClient.get(`2fa_challenge:${challenge_token}`);
+    if (!userId) {
+      return res.status(401).json({
+        status: 401,
+        error: "Unauthorized",
+        message: "Challenge token expired or invalid. Please log in again.",
       });
     }
 
     // Look up the user
     const result = await query(
-      "SELECT id, email, password_hash, two_factor_secret, two_factor_enabled FROM users WHERE id = $1",
+      `SELECT u.id, u.email, u.first_name, u.last_name,
+              ua.two_factor_secret, ua.two_factor_enabled
+       FROM users u
+       JOIN user_auth ua ON ua.user_id = u.id
+       WHERE u.id = $1`,
       [userId]
     );
     const user = result.rows[0];
@@ -148,7 +163,7 @@ router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
       });
     }
 
-    // Verify token
+    // Verify TOTP token
     const verified = speakeasy.totp.verify({
       secret: user.two_factor_secret,
       encoding: "base32",
@@ -163,38 +178,10 @@ router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
       });
     }
 
-    // Generate JWT
-    if (!JWT_SECRET) {
-      const error = new Error("JWT_SECRET is not configured on the server");
-      error.name = "Internal Server Error";
-      error.status = 500;
-      return next(error);
-    }
+    // Consume the challenge key
+    await redisClient.del(`2fa_challenge:${challenge_token}`);
 
-    const jwtToken = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-      },
-      JWT_SECRET,
-      { expiresIn: "24h" }
-    );
-
-    res.cookie('jwt', jwtToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
-
-    return res.json({
-      status: 200,
-      message: "Login successful",
-      user: {
-        id: user.id,
-        email: user.email,
-      },
-    });
+    return sendTokenResponse(user, 200, res, 'Login successful');
   } catch (err) {
     next(err);
   }
@@ -203,27 +190,6 @@ router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
 /* ═══════════════════════════════════════════════════════════════════════════
    Guest Session — Ignition Route
    ═══════════════════════════════════════════════════════════════════════════ */
-
-function calculateLeadScore(payload) {
-  let score = 50;
-  // Safely extract values regardless of nested GHL structures
-  const email = (payload.email || payload.Email || "").toLowerCase();
-  const phone = payload.phone || payload.Phone || "";
-  const company = payload.companyName || payload.company || "";
-  const firstName = (payload.first_name || payload.firstName || "").toLowerCase();
-
-  if (email.endsWith("@gmail.com") || email.endsWith("@yahoo.com") || email.endsWith("@hotmail.com")) {
-    score -= 15;
-  } else if (email.includes("@")) {
-    score += 25; // Business domain
-  }
-
-  if (phone.length > 7) score += 15;
-  if (company.length > 2) score += 10;
-  if (firstName.includes("test") || firstName === "") score -= 30;
-
-  return Math.max(0, Math.min(100, score));
-}
 
 /**
  * POST /api/auth/guest
@@ -243,7 +209,7 @@ router.post("/guest", async (req, res, next) => {
     // ── Input validation ───────────────────────────────────────────────────
     if (!first_name || !last_name || !email) {
       return res.status(400).json({
-        status: 400,
+        success: false,
         error: "Bad Request",
         message: "first_name, last_name, and email are required",
       });
@@ -315,7 +281,7 @@ router.get("/guest/status", authenticate, async (req, res, next) => {
 
     if (!session_id) {
       return res.status(400).json({
-        status: 400,
+        success: false,
         error: "Bad Request",
         message: "Token does not contain a session_id — use a guest JWT",
       });
@@ -333,7 +299,7 @@ router.get("/guest/status", authenticate, async (req, res, next) => {
 
     if (!session) {
       return res.status(404).json({
-        status: 404,
+        success: false,
         error: "Not Found",
         message: "Guest session not found",
       });
@@ -406,7 +372,15 @@ router.post("/login", authRateLimiter, login);
 router.get("/me", authenticate, async (req, res, next) => {
   try {
     const result = await query(
-      "SELECT id, email, plan_type, tier, is_admin, two_factor_enabled, has_completed_onboarding, lifetime_webhooks_created, first_name, last_name FROM users WHERE id = $1",
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.is_admin,
+              ub.plan_type, ub.tier, ub.lifetime_webhooks_created,
+              ua.two_factor_enabled,
+              us.has_completed_onboarding
+       FROM users u
+       JOIN user_billing  ub ON ub.user_id = u.id
+       JOIN user_auth     ua ON ua.user_id = u.id
+       JOIN user_settings us ON us.user_id = u.id
+       WHERE u.id = $1`,
       [req.user.id]
     );
 

@@ -1,7 +1,6 @@
 import { Router } from "express";
 import meteredLimiter from "../middleware/meteredLimiter.js";
 import { webhookIngressLimiter } from "../middleware/rateLimiter.js";
-import { getPlanType } from "../middleware/index.js";
 import { query } from "../db/connection.js";
 import { ingestLead } from "../services/leadIngest.js";
 
@@ -32,7 +31,7 @@ router.get("/:webhook_id", (req, res) => {
    billing, forwards the payload to the configured target_url using the
    stored http_method, and logs every event to webhook_logs.
    ═══════════════════════════════════════════════════════════════════════════ */
-router.all("/:webhook_id", webhookIngressLimiter, async (req, res) => {
+router.post("/:webhook_id", webhookIngressLimiter, async (req, res) => {
   const { webhook_id } = req.params;
 
   try {
@@ -97,7 +96,7 @@ router.all("/:webhook_id", webhookIngressLimiter, async (req, res) => {
         userId,
         payload,
         source: "catch",
-        plan_type: (await getPlanType(userId)) || "free",
+        plan_type: req.webhookKey.planType || "free",
         webhook,
         headers: req.headers,
         method: webhook.http_method || "POST",

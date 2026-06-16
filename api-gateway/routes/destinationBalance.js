@@ -27,7 +27,7 @@ router.use(authenticate);
 // Gate metering features to Growth / Enterprise tiers (Sandbox is excluded).
 async function requireMeteringTier(req, res, next) {
   try {
-    const r = await query("SELECT tier FROM users WHERE id = $1", [req.user.id]);
+    const r = await query("SELECT tier FROM user_billing WHERE user_id = $1", [req.user.id]);
     const tier = r.rows[0]?.tier || "sandbox";
     req.user.tier = tier;
     if (tier !== "growth" && tier !== "enterprise") {

@@ -289,6 +289,13 @@ export async function initializeDatabase() {
         sent_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, sent_at DESC);
+
+      -- Auth hardening
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_otp_verified_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_passwordless BOOLEAN NOT NULL DEFAULT FALSE;
+
+      -- BullMQ job tracking for real queue cancellation
+      ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS bullmq_job_id VARCHAR(64);
     `);
     console.log("[db] Schema initialised — request_logs, users, api_keys, guest_sessions, ghl_leads, webhook_keys, gateway_counters, lead_counters & destinations tables ready");
   } catch (err) {

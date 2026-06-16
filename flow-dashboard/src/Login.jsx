@@ -454,13 +454,13 @@ export default function Login() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="block text-sm font-medium text-white">Password</label>
-                  {/* <button
+                  <button
                     type="button"
                     onClick={() => setStep("FORGOT_EMAIL")}
                     className="text-[11px] text-zinc-500 hover:text-white transition-colors"
                   >
                     Forgot password?
-                  </button> */}
+                  </button>
                 </div>
                 <input
                   type="password"

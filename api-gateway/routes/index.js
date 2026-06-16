@@ -13,7 +13,7 @@ router.get("/health", (_req, res) => {
 /**
  * Catch-all for undefined routes — returns 404.
  */
-router.all("*", (req, res) => {
+router.use((req, res) => {
   res.status(404).json({
     status: 404,
     error: "Not Found",
@@ -22,3 +22,4 @@ router.all("*", (req, res) => {
 });
 
 export default router;
+``

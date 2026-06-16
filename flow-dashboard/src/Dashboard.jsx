@@ -57,6 +57,8 @@ import WebhookLogs from "./components/WebhookLogs";
 import UpgradeModal from "./components/UpgradeModal";
 import WebhookConfig from "./components/WebhookConfig";
 import SetupTutorial from "./components/SetupTutorial";
+import OnboardingTour from "./components/OnboardingTour";
+import CheckoutSuccessModal from "./components/CheckoutSuccessModal";
 import DestinationManager from "./components/DestinationManager";
 import FlowManager from "./components/FlowManager";
 import IntegrationsTab from "./components/IntegrationsTab";
@@ -93,29 +95,6 @@ const GHL_STANDARD_SCHEMA = {
   location_id: "loc_abc123",
   assigned_to: "user_xyz789",
 };
-
-const tourSteps = [
-  {
-    title: "Welcome to the Gateway",
-    copy: "Welcome to the Gateway. This is your central command for routing leads, bypassing taxes, and protecting your CRM."
-  },
-  {
-    title: "Your Arsenal",
-    copy: "Your Arsenal. Generate highly secure, custom endpoints here. Note: 2FA must be enabled to unlock this feature."
-  },
-  {
-    title: "The Testing Ground",
-    copy: "The Testing Ground. Map your custom fields and fire live data tests directly into your CRM before going live."
-  },
-  {
-    title: "The Vault",
-    copy: "The Vault. Every lead caught by the engine is instantly scored, deduplicated, and logged here for total transparency."
-  },
-  {
-    title: "The Scoreboard",
-    copy: "The Scoreboard. Watch your savings grow and malicious bots get blocked in real-time. You are now live."
-  }
-];
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Top Panel — Live Pipeline Terminal
@@ -1694,9 +1673,23 @@ const getBrandConfig = (plan) => {
   return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
 };
 
+/**
+ * Derive a friendly greeting name from the user record.
+ * Prefers last name, then first name, then the email handle, then a neutral fallback.
+ * Capitalizes the first letter so legacy lowercase rows still read cleanly.
+ */
+function greetName(user) {
+  const raw =
+    user?.last_name?.trim() ||
+    user?.first_name?.trim() ||
+    user?.email?.split('@')[0] ||
+    'there';
+  return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, setUser } = useAuth();
+  const { user, setUser, refreshUser } = useAuth();
   const token = "session_cookie";
 
 
@@ -1708,12 +1701,9 @@ export default function Dashboard() {
   const [sandboxStatus, setSandboxStatus] = useState("idle"); // "idle" | "loading" | "success" | "error"
   const [sandboxScore, setSandboxScore] = useState(null);
   const [activeModal, setActiveModal] = useState(null); // { id, accent }
-  const [activeTab, setActiveTab] = useState(() => {
-    if (localStorage.getItem("just_registered") === "true") {
-      return "tutorial";
-    }
-    return "dashboard";
-  });
+  // New signups land on the dashboard so the Joyride onboarding tour can
+  // anchor to its targets (the tour replaces the old auto-shown tutorial tab).
+  const [activeTab, setActiveTab] = useState("dashboard");
 
   useEffect(() => {
     if (localStorage.getItem("just_registered") === "true") {
@@ -1759,20 +1749,25 @@ export default function Dashboard() {
   // Guided Onboarding & 2FA Gate States
   const [mfaGateInterception, setMfaGateInterception] = useState(false);
 
-  const handleCompleteOnboarding = async () => {
-    setStats((prev) => ({ ...prev, hasCompletedOnboarding: true }));
-    // const token = localStorage.getItem("flow_token");
-    if (!token) return;
-    try {
-      await fetch(`${API_BASE}/onboarding/complete`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-    } catch { /* noop */ }
-  };
+  // Joyride onboarding tour state (the tour owns completion persistence)
+  const [tourRun, setTourRun] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState(!!user?.has_completed_onboarding);
+
+  // Post-checkout celebration modal state
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+
+  /** Launch the tour, ensuring its anchors are mounted (dashboard tab only). */
+  const startTour = useCallback(() => {
+    setActiveTab("dashboard");
+    setTourRun(true);
+  }, []);
+
+  /** Mark the tour finished locally + reflect the flag in the user record. */
+  const finishTour = useCallback(() => {
+    setTourRun(false);
+    setOnboardingDone(true);
+    if (user) setUser({ ...user, has_completed_onboarding: true });
+  }, [user, setUser]);
 
   // Advanced UX States
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1788,6 +1783,45 @@ export default function Dashboard() {
       setTimeout(() => setToast(null), 300);
     }, 2500);
   }, []);
+
+  // ── Mandatory onboarding tour for first-time users ──────────────────────
+  // Fires once for users who haven't completed onboarding; the 800ms delay
+  // lets the dashboard layout settle so every tour anchor is mounted.
+  useEffect(() => {
+    if (user && !user.has_completed_onboarding && !onboardingDone) {
+      const t = setTimeout(() => startTour(), 800);
+      return () => clearTimeout(t);
+    }
+  }, [user, onboardingDone, startTour]);
+
+  // ── Post-checkout: poll until the Stripe webhook flips the plan ─────────
+  // The webhook can land 1–3s after the browser redirect, so never trust the
+  // redirect alone — poll /api/auth/me until plan_type changes off the old value.
+  const handleCheckoutSuccess = useCallback(async () => {
+    const before = user?.plan_type;
+    for (let i = 0; i < 8; i++) {
+      const fresh = await refreshUser();
+      if (fresh?.plan_type && fresh.plan_type !== before && fresh.plan_type !== 'free') {
+        setShowCheckoutModal(true);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    // Fallback: still celebrate even if the flip is slow to propagate.
+    setShowCheckoutModal(true);
+  }, [user, refreshUser]);
+
+  // ── Read + clean the Stripe redirect query params on mount ──────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      handleCheckoutSuccess();
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('canceled') === 'true') {
+      showToast(`No changes — you're still on the ${user?.plan_type || 'free'} plan.`, 'error');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Poll for guest session status — SKIPPED when user is authenticated. */
   const guestErrorCount = useRef(0);
@@ -2570,7 +2604,7 @@ export default function Dashboard() {
     setActiveModal(null);
   };
 
-  const displayName = user?.display_name || 'Architect';
+  const displayName = greetName(user);
 
   return (
     <div className="relative min-h-screen bg-surface flex flex-col md:flex-row">
@@ -2664,6 +2698,14 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
 
+          {onboardingDone && !sidebarCollapsed && (
+            <button
+              onClick={startTour}
+              className="block w-full text-center text-[11px] text-zinc-500 hover:text-amber-400 transition-colors"
+            >
+              Replay setup tour
+            </button>
+          )}
 
           <a
             href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}
@@ -3315,13 +3357,30 @@ export default function Dashboard() {
       )}
 
       {/* ── SaaS Tier Upgrade Modal ─────────────────────────────────────── */}
-      <UpgradeModal 
-        isOpen={upgradeModal.isOpen} 
+      <UpgradeModal
+        isOpen={upgradeModal.isOpen}
         onClose={() => setUpgradeModal({ isOpen: false, feature: "", tier: "" })}
         featureName={upgradeModal.feature}
         requiredTier={upgradeModal.tier}
         onNavigateToPricing={() => setActiveTab("pricing")}
       />
+
+      {/* ── Tier-aware onboarding tour ───────────────────────────────────── */}
+      <OnboardingTour
+        user={user}
+        run={tourRun}
+        mandatory={!onboardingDone}
+        onFinish={finishTour}
+      />
+
+      {/* ── Post-checkout celebration ────────────────────────────────────── */}
+      {showCheckoutModal && (
+        <CheckoutSuccessModal
+          user={user}
+          onClose={() => setShowCheckoutModal(false)}
+          onStartTour={() => { setShowCheckoutModal(false); startTour(); }}
+        />
+      )}
 
       {/* Toast Notification */}
       {toast && (
