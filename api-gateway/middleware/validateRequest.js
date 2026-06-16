@@ -37,7 +37,44 @@ export const webhookDestinationSchema = z
         hostname.startsWith("172.30.") ||
         hostname.startsWith("172.31.") ||
         hostname.startsWith("169.254.") || // Cloud metadata SSRF
-        hostname.endsWith(".local");
+        hostname.endsWith(".local") ||
+        // CGNAT 100.64.0.0/10 (AWS NAT, Tailscale)
+        hostname.startsWith("100.64.") || hostname.startsWith("100.65.") ||
+        hostname.startsWith("100.66.") || hostname.startsWith("100.67.") ||
+        hostname.startsWith("100.68.") || hostname.startsWith("100.69.") ||
+        hostname.startsWith("100.70.") || hostname.startsWith("100.71.") ||
+        hostname.startsWith("100.72.") || hostname.startsWith("100.73.") ||
+        hostname.startsWith("100.74.") || hostname.startsWith("100.75.") ||
+        hostname.startsWith("100.76.") || hostname.startsWith("100.77.") ||
+        hostname.startsWith("100.78.") || hostname.startsWith("100.79.") ||
+        hostname.startsWith("100.80.") || hostname.startsWith("100.81.") ||
+        hostname.startsWith("100.82.") || hostname.startsWith("100.83.") ||
+        hostname.startsWith("100.84.") || hostname.startsWith("100.85.") ||
+        hostname.startsWith("100.86.") || hostname.startsWith("100.87.") ||
+        hostname.startsWith("100.88.") || hostname.startsWith("100.89.") ||
+        hostname.startsWith("100.90.") || hostname.startsWith("100.91.") ||
+        hostname.startsWith("100.92.") || hostname.startsWith("100.93.") ||
+        hostname.startsWith("100.94.") || hostname.startsWith("100.95.") ||
+        hostname.startsWith("100.96.") || hostname.startsWith("100.97.") ||
+        hostname.startsWith("100.98.") || hostname.startsWith("100.99.") ||
+        hostname.startsWith("100.100.") || hostname.startsWith("100.101.") ||
+        hostname.startsWith("100.102.") || hostname.startsWith("100.103.") ||
+        hostname.startsWith("100.104.") || hostname.startsWith("100.105.") ||
+        hostname.startsWith("100.106.") || hostname.startsWith("100.107.") ||
+        hostname.startsWith("100.108.") || hostname.startsWith("100.109.") ||
+        hostname.startsWith("100.110.") || hostname.startsWith("100.111.") ||
+        hostname.startsWith("100.112.") || hostname.startsWith("100.113.") ||
+        hostname.startsWith("100.114.") || hostname.startsWith("100.115.") ||
+        hostname.startsWith("100.116.") || hostname.startsWith("100.117.") ||
+        hostname.startsWith("100.118.") || hostname.startsWith("100.119.") ||
+        hostname.startsWith("100.120.") || hostname.startsWith("100.121.") ||
+        hostname.startsWith("100.122.") || hostname.startsWith("100.123.") ||
+        hostname.startsWith("100.124.") || hostname.startsWith("100.125.") ||
+        hostname.startsWith("100.126.") || hostname.startsWith("100.127.") ||
+        // IPv6 private ranges
+        hostname.startsWith("fd") ||
+        hostname.startsWith("fe80") ||
+        hostname.startsWith("::ffff:");
 
       if (isInternal) {
         ctx.addIssue({

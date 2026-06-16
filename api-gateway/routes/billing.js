@@ -35,7 +35,7 @@ router.post("/webhook", express.raw({ type: 'application/json' }), lemonSqueezyA
         }
 
         // 5. Database Update
-        await query("UPDATE users SET plan_type = $1 WHERE id = $2", [planType, userId]);
+        await query("UPDATE user_billing SET plan_type = $1 WHERE user_id = $2", [planType, userId]);
 
         // 6. Invalidate cached plan so downstream middleware sees the new tier immediately
         redisClient.del(planCacheKey(userId)).catch((err) =>

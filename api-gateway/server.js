@@ -1,6 +1,7 @@
 import "dotenv/config";
 import app from "./app.js";
-import { initializeDatabase, closePool } from "./db/connection.js";
+import { migrate } from "./db/migrate.js";
+import { closePool } from "./db/connection.js";
 import { startQueueWorker } from "./utils/queueWorker.js";
 import { startJanitorService } from "./services/janitor.service.js";
 import { connectRedis } from "./utils/redisClient.js";
@@ -15,7 +16,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 // ---------------------------------------------------------------------------
 async function start() {
   try {
-    await initializeDatabase();
+    await migrate();
     await connectRedis();
     // startQueueWorker();
     startJanitorService();

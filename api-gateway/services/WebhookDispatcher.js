@@ -10,7 +10,7 @@ import { getMeteringState, invalidateMeteringCache } from "./destinationMetering
  * Debit one credit from a metered destination after a CONFIRMED 2xx delivery.
  * Atomic single-statement update; records a debit transaction and busts cache.
  */
-async function debitDestination(destinationId, userId, contactId) {
+async function debitDestination(destinationId, userId, leadId) {
   await query(
     `UPDATE destination_balances
        SET balance = GREATEST(balance - 1, 0),
@@ -22,8 +22,8 @@ async function debitDestination(destinationId, userId, contactId) {
 
   await query(
     `INSERT INTO balance_transactions (destination_id, user_id, type, amount, lead_id, note)
-     VALUES ($1, $2, 'debit', 1, (SELECT id FROM ghl_leads WHERE contact_id = $3), 'Lead delivered')`,
-    [destinationId, userId, contactId]
+     VALUES ($1, $2, 'debit', 1, $3, 'Lead delivered')`,
+    [destinationId, userId, leadId]
   ).catch((e) => console.error("[Dispatcher] Debit transaction insert failed:", e.message));
 
   await invalidateMeteringCache(destinationId);
@@ -77,9 +77,16 @@ const CHECK_CAP_LUA = `
  *   (all of the user's active destinations + the user's routing_strategy).
  * @returns {Promise<object>} Dispatch result status.
  */
-export async function dispatchLead(userId, payload, contactId, isTest = false, flowId = null) {
-  // 1. Fetch broker's strategy + billing context
-  const userRes = await query("SELECT routing_strategy, plan_type, tier FROM users WHERE id = $1", [userId]);
+export async function dispatchLead(userId, payload, contactId, isTest = false, flowId = null, leadId = null) {
+  // 1. Fetch broker's strategy + billing context (joined from satellite tables)
+  const userRes = await query(
+    `SELECT us.routing_strategy, ub.plan_type, ub.tier
+     FROM users u
+     JOIN user_billing  ub ON ub.user_id = u.id
+     JOIN user_settings us ON us.user_id = u.id
+     WHERE u.id = $1`,
+    [userId]
+  );
   if (userRes.rowCount === 0) {
     return { success: false, error: "USER_NOT_FOUND", message: "Broker user not found." };
   }
@@ -155,13 +162,13 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
             await query(
               `UPDATE ghl_leads
-               SET delivery_status = 'DELIVERED', status = '200', destination_id = $1, last_delivery_error = NULL
+               SET delivery_status = 'DELIVERED', destination_id = $1, last_delivery_error = NULL
                WHERE contact_id = $2`,
               [wh.id, contactId]
             ).catch(() => {});
 
             if (metering.is_metered) {
-              await debitDestination(wh.id, userId, contactId);
+              await debitDestination(wh.id, userId, leadId);
             }
 
             return {
@@ -184,9 +191,9 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
                VALUES ($1, $2, $3, 500, $4, $5, $6)`,
               [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
             ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
-            
+
             await query(
-              `UPDATE ghl_leads SET delivery_status = 'FAILED', status = '500', last_delivery_error = 'Failed - No Retries for Sandbox' WHERE contact_id = $1`,
+              `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'Failed - No Retries for Sandbox' WHERE contact_id = $1`,
               [contactId]
             ).catch(() => {});
 
@@ -242,7 +249,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
             ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
 
             if (metering.is_metered) {
-              await debitDestination(wh.id, userId, contactId);
+              await debitDestination(wh.id, userId, leadId);
             }
           } else {
             throw new Error("HTTP request failed with non-2xx status code");
@@ -271,8 +278,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
     if (deliveredCount > 0) {
       await query(
-        `UPDATE ghl_leads 
-         SET delivery_status = 'DELIVERED', status = '200', last_delivery_error = NULL
+        `UPDATE ghl_leads
+         SET delivery_status = 'DELIVERED', last_delivery_error = NULL
          WHERE contact_id = $1`,
         [contactId]
       ).catch(() => {});

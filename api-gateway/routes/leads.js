@@ -3,45 +3,9 @@ import { authenticate, apiKeyAuth, webhookIngressLimiter, getPlanType } from "..
 import pool, { query } from "../db/connection.js";
 import { webhookQueue } from "../services/queue.js";
 import { dispatchLead } from "../services/WebhookDispatcher.js";
-
-function findValue(obj, possibleKeys) {
-  if (!obj || typeof obj !== 'object') return undefined;
-  for (const key of possibleKeys) {
-    if (key in obj && obj[key] !== undefined && obj[key] !== null) return obj[key];
-  }
-  const commonContainers = ['contact', 'data', 'lead', 'user', 'customer'];
-  for (const container of commonContainers) {
-    if (obj[container] && typeof obj[container] === 'object') {
-      const val = findValue(obj[container], possibleKeys);
-      if (val !== undefined && val !== null) return val;
-    }
-  }
-  for (const key in obj) {
-    if (obj[key] && typeof obj[key] === 'object' && !commonContainers.includes(key)) {
-      const val = findValue(obj[key], possibleKeys);
-      if (val !== undefined && val !== null) return val;
-    }
-  }
-  return undefined;
-}
-
-function calculateLeadScore(payload) {
-  let score = 50;
-  const email = (findValue(payload, ['email', 'Email', 'emailAddress']) || '').toLowerCase();
-  const phone = findValue(payload, ['phone', 'Phone', 'phoneNumber']) || '';
-  const company = findValue(payload, ['companyName', 'company']) || '';
-  const firstName = (findValue(payload, ['first_name', 'firstName', 'first']) || '').toLowerCase();
-
-  if (email.endsWith('@gmail.com') || email.endsWith('@yahoo.com') || email.endsWith('@hotmail.com')) {
-    score -= 15;
-  } else if (email.includes('@')) {
-    score += 25;
-  }
-  if (phone.length > 7) score += 15;
-  if (company.length > 2) score += 10;
-  if (firstName.includes('test') || firstName === '') score -= 30;
-  return Math.max(0, Math.min(100, score));
-}
+import meteredLimiter from "../middleware/meteredLimiter.js";
+import { findValue, calculateLeadScore } from "../services/leadIngest.js";
+import { webhookDestinationSchema } from "../middleware/validateRequest.js";
 
 const router = Router();
 
@@ -56,6 +20,14 @@ const router = Router();
  */
 router.post("/inbound", apiKeyAuth, webhookIngressLimiter, async (req, res, next) => {
   try {
+    // meteredLimiter requires req.webhookKey.userId — set it from the authenticated API key
+    req.webhookKey = { userId: req.user.id, id: req.user.key_id };
+    const limiterError = await new Promise(resolve => {
+      meteredLimiter(req, res, err => resolve(err || null));
+    });
+    if (res.headersSent) return;
+    if (limiterError) throw limiterError;
+
     const userId = req.user.id;
     const payload = req.body;
     const isTest = !!(payload && payload.flow_api_test);
@@ -133,6 +105,11 @@ router.post("/simulate", authenticate, async (req, res, next) => {
       error: "Service Unavailable",
       message: "No DESTINATION_WEBHOOK_URL configured on the server.",
     });
+  }
+
+  const urlValidation = webhookDestinationSchema.safeParse(destinationUrl);
+  if (!urlValidation.success) {
+    return res.status(400).json({ success: false, message: "Invalid destination URL" });
   }
 
   try {

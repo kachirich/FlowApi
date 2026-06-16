@@ -56,6 +56,16 @@ export const apiKeyAuth = async (req, res, next) => {
       const cachedData = await redisClient.get(cacheKey);
       if (cachedData) {
         const parsed = JSON.parse(cachedData);
+
+        // signing_secret is not cached — fetch fresh when HMAC verification is needed
+        if (parsed.require_signature) {
+          const sk = await query(
+            'SELECT signing_secret FROM api_keys WHERE id = $1',
+            [parsed.key_id]
+          );
+          parsed.signing_secret = sk.rows[0]?.signing_secret || null;
+        }
+
         req.user = parsed;
 
         // Background update of last_used_at to Postgres (fire and forget)
@@ -73,11 +83,12 @@ export const apiKeyAuth = async (req, res, next) => {
 
     // 2. Cache miss -> Query the database for the hash
     const result = await query(
-      `SELECT api_keys.id AS key_id, api_keys.flow_id, api_keys.signing_secret, api_keys.require_signature,
-              users.id AS user_id, users.email, users.tier, users.plan_type
-       FROM api_keys
-       JOIN users ON api_keys.user_id = users.id
-       WHERE api_keys.key_hash = $1`,
+      `SELECT ak.id AS key_id, ak.flow_id, ak.signing_secret, ak.require_signature,
+              u.id AS user_id, u.email, ub.tier, ub.plan_type
+       FROM api_keys ak
+       JOIN users u ON ak.user_id = u.id
+       JOIN user_billing ub ON ub.user_id = u.id
+       WHERE ak.key_hash = $1`,
       [keyHash]
     );
 
@@ -90,20 +101,20 @@ export const apiKeyAuth = async (req, res, next) => {
 
     const { key_id, flow_id, signing_secret, require_signature, user_id, email, tier, plan_type } = result.rows[0];
 
-    const userPayload = {
+    const cachePayload = {
       key_id,
       id: user_id,
       email,
       tier,
       plan_type,
       flow_id: flow_id || null,
-      signing_secret: signing_secret || null,
       require_signature: require_signature === true,
+      // signing_secret intentionally NOT cached — fetched fresh on each cache hit when needed
     };
 
     // 3. Save to Redis for subsequent requests (1 hour expiration)
     try {
-      await redisClient.setEx(cacheKey, 3600, JSON.stringify(userPayload));
+      await redisClient.setEx(cacheKey, 3600, JSON.stringify(cachePayload));
     } catch (redisErr) {
       console.error('Failed to cache API key payload to Redis:', redisErr);
     }
@@ -115,7 +126,8 @@ export const apiKeyAuth = async (req, res, next) => {
     ).catch(err => console.error('Failed to update last_used_at:', err));
 
     // Attach user information to req.user for downstream middleware/controllers
-    req.user = userPayload;
+    // signing_secret is attached for this request only (not persisted to cache)
+    req.user = { ...cachePayload, signing_secret: signing_secret || null };
 
     next();
   } catch (error) {

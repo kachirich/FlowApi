@@ -23,14 +23,14 @@ export const webhookQueue = new Queue("webhook-dispatch", { connection });
 export const worker = new Worker(
   "webhook-dispatch",
   async (job) => {
-    const { webhook, payload, headers, method, contactId, isTest, userId, flow_id } = job.data;
+    const { webhook, payload, headers, method, contactId, isTest, userId, flow_id, plan_type: jobPlanType } = job.data;
 
     // Destination/flow routing path: jobs enqueued without a single `webhook`
     // target (e.g. /api/v1/leads) fan out via the smart dispatcher, which
     // resolves the flow's (or user's) destinations and handles its own retries.
     if (!webhook) {
       const { dispatchLead } = await import("./WebhookDispatcher.js");
-      const result = await dispatchLead(userId, payload, contactId, isTest, flow_id ?? null);
+      const result = await dispatchLead(userId, payload, contactId, isTest, flow_id ?? null, job.data.leadId ?? null);
       if (!result || !result.success) {
         throw new Error(result?.message || "Lead dispatch failed");
       }
@@ -49,9 +49,8 @@ export const worker = new Worker(
     // Explicitly block system-critical headers (case-insensitive checks)
     const blocklistedHeaders = ["host", "content-length", "connection"];
     
-    // Authoritative State Check for Custom Headers Privilege
-    const planRes = await query("SELECT plan_type FROM users WHERE id = $1", [webhook.user_id]);
-    const authoritativePlan = planRes.rows[0]?.plan_type || 'free';
+    // plan_type is included in the job payload at enqueue time (leadIngest.js)
+    const authoritativePlan = jobPlanType || 'free';
     
     if (authoritativePlan !== 'free' && authoritativePlan !== 'basic') {
       if (webhook.custom_headers && typeof webhook.custom_headers === "object") {
@@ -117,10 +116,10 @@ export const worker = new Worker(
 
       // Update lead delivery status
       await query(
-        `UPDATE ghl_leads 
-         SET delivery_status = 'DELIVERED', status = $1, last_delivery_error = NULL 
-         WHERE contact_id = $2`,
-        [String(destStatus), contactId]
+        `UPDATE ghl_leads
+         SET delivery_status = 'DELIVERED', last_delivery_error = NULL
+         WHERE contact_id = $1`,
+        [contactId]
       ).catch(() => {});
 
       return { success: true, status: destStatus };
@@ -141,13 +140,12 @@ export const worker = new Worker(
       }
 
       await query(
-        `UPDATE ghl_leads 
+        `UPDATE ghl_leads
          SET delivery_status = $1,
              retry_count = $2,
-             last_delivery_error = $3,
-             status = $4
-         WHERE contact_id = $5`,
-        [nextStatus, nextRetryCount, err.message, String(statusCode), contactId]
+             last_delivery_error = $3
+         WHERE contact_id = $4`,
+        [nextStatus, nextRetryCount, err.message, contactId]
       ).catch(() => {});
 
       // Throw again to trigger BullMQ's automatic retry

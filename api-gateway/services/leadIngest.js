@@ -175,10 +175,9 @@ export async function ingestLead({
   // ── Vault the lead ───────────────────────────────────────────────────────
   const webhookKeyId = webhook ? webhook.id : null;
   const vaultResult = await query(
-    `INSERT INTO ghl_leads (contact_id, raw_payload, status, webhook_key_id, lead_score, first_name, last_name, email, phone, delivery_status, retry_count, user_id, is_test)
-     VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-     ON CONFLICT (contact_id) DO UPDATE SET
-       status = EXCLUDED.status,
+    `INSERT INTO ghl_leads (contact_id, raw_payload, webhook_key_id, lead_score, first_name, last_name, email, phone, delivery_status, retry_count, user_id, is_test)
+     VALUES ($1, $2::jsonb, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (contact_id, user_id) DO UPDATE SET
        webhook_key_id = EXCLUDED.webhook_key_id,
        lead_score = EXCLUDED.lead_score,
        first_name = EXCLUDED.first_name,
@@ -187,10 +186,9 @@ export async function ingestLead({
        phone = EXCLUDED.phone,
        delivery_status = EXCLUDED.delivery_status,
        retry_count = EXCLUDED.retry_count,
-       user_id = EXCLUDED.user_id,
        is_test = EXCLUDED.is_test
      RETURNING id`,
-    [contactId, JSON.stringify(payload), 'PENDING', webhookKeyId, leadScore, firstName, lastName, email, phone, 'PENDING', 0, userId, isTest]
+    [contactId, JSON.stringify(payload), webhookKeyId, leadScore, firstName, lastName, email, phone, 'PENDING', 0, userId, isTest]
   );
   const leadId = vaultResult.rows[0]?.id;
 
@@ -210,7 +208,7 @@ export async function ingestLead({
       backoff = { type: "exponential", delay: 5000 };
     }
 
-    await webhookQueue.add(
+    const job = await webhookQueue.add(
       "dispatch",
       {
         webhook,
@@ -218,7 +216,9 @@ export async function ingestLead({
         headers,
         method: method || webhook.http_method || "POST",
         contactId,
+        leadId,
         isTest,
+        plan_type: planType,
         flow_id: flowId ?? null,
       },
       {
@@ -228,16 +228,23 @@ export async function ingestLead({
         removeOnFail: false,
       }
     );
+    if (job?.id) {
+      await query(
+        'UPDATE ghl_leads SET bullmq_job_id = $1 WHERE id = $2',
+        [job.id, leadId]
+      ).catch(() => {});
+    }
   } else {
     // Destination/flow routing path: the worker fans the lead out via
     // dispatchLead(), which performs its own tier-based retry handling, so the
     // outer job only needs a single attempt.
-    await webhookQueue.add(
+    const job = await webhookQueue.add(
       "dispatch",
       {
         userId,
         payload,
         contactId,
+        leadId,
         isTest,
         source,
         flow_id: flowId ?? null,
@@ -248,6 +255,12 @@ export async function ingestLead({
         removeOnFail: false,
       }
     );
+    if (job?.id) {
+      await query(
+        'UPDATE ghl_leads SET bullmq_job_id = $1 WHERE id = $2',
+        [job.id, leadId]
+      ).catch(() => {});
+    }
   }
 
   return { lead_id: leadId, contact_id: contactId, score: leadScore, queued: true };

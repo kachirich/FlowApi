@@ -15,13 +15,13 @@ export const generateAuthCookie = (user, res) => {
   const token = jwt.sign(
     { id: user.id, email: user.email },
     process.env.JWT_SECRET,
-    { expiresIn: "24h" }
+    { expiresIn: "7d" }
   );
 
   const isProd = process.env.NODE_ENV === 'production';
-  
+
   res.cookie('jwt', token, {
-    maxAge: 24 * 60 * 60 * 1000, // 1 day
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     httpOnly: true,
     secure: isProd,
     sameSite: isProd ? 'none' : 'lax'

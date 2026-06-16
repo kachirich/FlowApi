@@ -38,7 +38,7 @@ export const createDestination = async (req, res, next) => {
     }
 
     // Check user tier and destination limits
-    const checkTierResult = await query(`SELECT tier FROM users WHERE id = $1`, [userId]);
+    const checkTierResult = await query(`SELECT tier FROM user_billing WHERE user_id = $1`, [userId]);
     const userTier = checkTierResult.rows[0]?.tier || 'sandbox';
 
     const countResult = await query(`SELECT COUNT(*) FROM destinations WHERE user_id = $1 AND is_active = TRUE`, [userId]);

@@ -4,40 +4,48 @@ import { enqueueNotification, notificationQueue } from "./notification.queue.js"
 import { NOTIFICATION_TYPES } from "./notification.service.js";
 
 /**
- * Janitor Service — Log Retention Enforcer
+ * Janitor Service — Log Retention Enforcer + Nightly Housekeeping
  *
- * Runs nightly at midnight (00:00) and purges webhook_logs based on user plan:
- *   • free / basic  → 7-day retention
- *   • pro           → 30-day retention
- *   • plus          → Unlimited (no purge)
+ * Runs at midnight and performs:
+ *   1. Purge webhook_logs by plan (7d free/basic, 30d pro, unlimited plus).
+ *   2. Delete expired OTP codes.
+ *   3. Weekly digest rollup query (uses idx_ghl_leads_user_created index).
  */
 async function purgeExpiredLogs() {
   console.log("[janitor] Running nightly log retention sweep...");
 
   try {
-    // Delete logs for Basic/Free users older than 7 days
+    // Delete logs for free/basic users older than 7 days
     const freeResult = await query(`
       DELETE FROM webhook_logs wl
-      USING users u
+      USING users u, user_billing ub
       WHERE wl.user_id = u.id
-        AND (u.plan_type = 'free' OR u.plan_type IS NULL)
+        AND ub.user_id = u.id
+        AND (ub.plan_type = 'free' OR ub.plan_type = 'basic' OR ub.plan_type IS NULL)
         AND wl.created_at < NOW() - INTERVAL '7 days'
     `);
 
-    // Delete logs for Pro users older than 30 days
+    // Delete logs for pro users older than 30 days
     const proResult = await query(`
       DELETE FROM webhook_logs wl
-      USING users u
+      USING users u, user_billing ub
       WHERE wl.user_id = u.id
-        AND u.plan_type = 'pro'
+        AND ub.user_id = u.id
+        AND ub.plan_type = 'pro'
         AND wl.created_at < NOW() - INTERVAL '30 days'
+    `);
+
+    // Delete expired OTP codes (safe; they've already been rejected or used)
+    const otpResult = await query(`
+      DELETE FROM otps WHERE expires_at < NOW()
     `);
 
     const totalPurged = (freeResult.rowCount || 0) + (proResult.rowCount || 0);
     console.log(`[janitor] Retention sweep complete — ${totalPurged} expired logs purged`);
-    console.log(`[janitor]   Basic/Free (>7d): ${freeResult.rowCount || 0} removed`);
-    console.log(`[janitor]   Pro (>30d):       ${proResult.rowCount || 0} removed`);
-    console.log(`[janitor]   Plus:             Unlimited — no purge`);
+    console.log(`[janitor]   Free/Basic (>7d):  ${freeResult.rowCount || 0} removed`);
+    console.log(`[janitor]   Pro (>30d):         ${proResult.rowCount || 0} removed`);
+    console.log(`[janitor]   Plus:               Unlimited — no purge`);
+    console.log(`[janitor]   Expired OTPs:       ${otpResult.rowCount || 0} removed`);
   } catch (err) {
     console.error("[janitor] Error during log retention sweep:", err.message);
   }
@@ -68,6 +76,23 @@ async function sendWeeklyDigests() {
   } catch (err) {
     console.error("[janitor] Weekly digest error:", err.message);
   }
+}
+
+/**
+ * Weekly lead digest — grouped stats per user for the past 7 days.
+ * Uses the (user_id, created_at DESC) index to avoid a full table scan.
+ */
+export async function weeklyLeadDigest() {
+  return query(`
+    SELECT
+      user_id,
+      COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') AS leads_received,
+      COUNT(*) FILTER (WHERE delivery_status = 'DELIVERED' AND created_at > NOW() - INTERVAL '7 days') AS leads_delivered,
+      COUNT(*) FILTER (WHERE delivery_status = 'FAILED'    AND created_at > NOW() - INTERVAL '7 days') AS leads_failed
+    FROM ghl_leads
+    WHERE created_at > NOW() - INTERVAL '7 days'
+    GROUP BY user_id
+  `);
 }
 
 /**
