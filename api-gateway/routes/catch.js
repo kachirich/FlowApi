@@ -3,6 +3,7 @@ import meteredLimiter from "../middleware/meteredLimiter.js";
 import { webhookIngressLimiter } from "../middleware/rateLimiter.js";
 import { query } from "../db/connection.js";
 import { ingestLead } from "../services/leadIngest.js";
+import redisClient from "../utils/redisClient.js";
 
 const router = Router();
 
@@ -35,6 +36,16 @@ router.post("/:webhook_id", webhookIngressLimiter, async (req, res) => {
   const { webhook_id } = req.params;
 
   try {
+    // ── Idempotency check ────────────────────────────────────────────────
+    const idempotencyKey = req.headers["x-idempotency-key"];
+    if (idempotencyKey) {
+      const cacheKey = `idempotency:catch:${webhook_id}:${idempotencyKey}`;
+      const cached = await redisClient.get(cacheKey).catch(() => null);
+      if (cached) {
+        return res.status(200).json(JSON.parse(cached));
+      }
+    }
+
     // ── Step 1: Look up webhook by UUID ──────────────────────────────────
     const webhookResult = await query(
       `SELECT id, user_id, target_url, http_method, masked_key, custom_headers
@@ -91,8 +102,9 @@ router.post("/:webhook_id", webhookIngressLimiter, async (req, res) => {
     console.log(`📡 Forwarding → ${webhook.target_url} [${(webhook.http_method || 'POST').toUpperCase()}]`);
     console.log("═".repeat(60) + "\n");
 
+    let ingestResult;
     try {
-      await ingestLead({
+      ingestResult = await ingestLead({
         userId,
         payload,
         source: "catch",
@@ -105,16 +117,27 @@ router.post("/:webhook_id", webhookIngressLimiter, async (req, res) => {
       if (ingestErr.status === 429) {
         return res.status(429).json({
           success: false,
+          error_code: ingestErr.code || "RATE_LIMITED",
           message: ingestErr.message,
         });
       }
-      throw ingestErr; // Forward to outer catch block for 500 handling
+      throw ingestErr;
     }
 
-    return res.status(200).json({
+    const responseBody = {
       success: true,
       message: "Webhook queued for processing",
-    });
+      lead_id: ingestResult.lead_id,
+      contact_id: ingestResult.contact_id,
+      score: ingestResult.score,
+    };
+
+    if (idempotencyKey) {
+      const cacheKey = `idempotency:catch:${webhook_id}:${idempotencyKey}`;
+      await redisClient.setEx(cacheKey, 86400, JSON.stringify(responseBody)).catch(() => {});
+    }
+
+    return res.status(200).json(responseBody);
 
   } catch (error) {
     console.error("[catch] Error processing webhook:", error);

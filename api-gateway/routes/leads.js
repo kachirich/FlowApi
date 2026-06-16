@@ -6,6 +6,7 @@ import { dispatchLead } from "../services/WebhookDispatcher.js";
 import meteredLimiter from "../middleware/meteredLimiter.js";
 import { findValue, calculateLeadScore } from "../services/leadIngest.js";
 import { webhookDestinationSchema } from "../middleware/validateRequest.js";
+import redisClient from "../utils/redisClient.js";
 
 const router = Router();
 
@@ -22,6 +23,14 @@ router.post("/inbound", apiKeyAuth, webhookIngressLimiter, async (req, res, next
   try {
     // meteredLimiter requires req.webhookKey.userId — set it from the authenticated API key
     req.webhookKey = { userId: req.user.id, id: req.user.key_id };
+
+    // ── Idempotency check ────────────────────────────────────────────────
+    const idempotencyKey = req.headers["x-idempotency-key"];
+    if (idempotencyKey) {
+      const cacheKey = `idempotency:inbound:${req.user.id}:${idempotencyKey}`;
+      const cached = await redisClient.get(cacheKey).catch(() => null);
+      if (cached) return res.status(200).json(JSON.parse(cached));
+    }
     const limiterError = await new Promise(resolve => {
       meteredLimiter(req, res, err => resolve(err || null));
     });
@@ -79,12 +88,32 @@ router.post("/inbound", apiKeyAuth, webhookIngressLimiter, async (req, res, next
     const dispatchResult = await dispatchLead(userId, payload, contactId, isTest);
 
     if (!dispatchResult.success) {
-      return res.status(422).json(dispatchResult);
+      return res.status(422).json({
+        ...dispatchResult,
+        error_code: dispatchResult.error_code || "DISPATCH_FAILED",
+      });
     }
 
-    return res.status(200).json(dispatchResult);
+    const responseBody = {
+      ...dispatchResult,
+      contact_id: contactId,
+    };
+
+    if (idempotencyKey) {
+      const cacheKey = `idempotency:inbound:${req.user.id}:${idempotencyKey}`;
+      await redisClient.setEx(cacheKey, 86400, JSON.stringify(responseBody)).catch(() => {});
+    }
+
+    return res.status(200).json(responseBody);
   } catch (error) {
     console.error("[inbound] Error processing lead:", error);
+    if (error.status === 429) {
+      return res.status(429).json({
+        success: false,
+        error_code: error.code || "RATE_LIMITED",
+        message: error.message,
+      });
+    }
     next(error);
   }
 });
@@ -161,6 +190,48 @@ router.post("/simulate", authenticate, async (req, res, next) => {
       });
     }
     next(err);
+  }
+});
+
+/**
+ * GET /api/leads/:id/status
+ *
+ * Agent-facing status poll — returns real delivery state for a vaulted lead.
+ * Accepts JWT cookie or x-api-key header.
+ */
+router.get("/:id/status", apiKeyAuth, async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT id, contact_id, lead_score, delivery_status, retry_count,
+              last_delivery_error, is_test, created_at, bullmq_job_id
+       FROM ghl_leads
+       WHERE id = $1 AND user_id = $2`,
+      [req.params.id, req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error_code: "LEAD_NOT_FOUND",
+        message: "Lead not found or does not belong to your account",
+      });
+    }
+
+    const lead = result.rows[0];
+    return res.status(200).json({
+      success: true,
+      lead_id: lead.id,
+      contact_id: lead.contact_id,
+      score: lead.lead_score,
+      delivery_status: lead.delivery_status,
+      retry_count: lead.retry_count,
+      last_delivery_error: lead.last_delivery_error || null,
+      is_test: lead.is_test,
+      created_at: lead.created_at,
+      job_id: lead.bullmq_job_id || null,
+    });
+  } catch (error) {
+    next(error);
   }
 });
 
