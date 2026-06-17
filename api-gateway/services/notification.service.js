@@ -45,16 +45,27 @@ export async function getOrCreateUnsubscribeToken(userId) {
 }
 
 export async function getPreferences(userId) {
-  const saved = await query(
-    'SELECT type, enabled FROM notification_preferences WHERE user_id = $1',
-    [userId]
-  );
-  const savedMap = Object.fromEntries(saved.rows.map(r => [r.type, r.enabled]));
-  return Object.values(NOTIFICATION_TYPES).map(type => ({
-    type,
-    enabled: savedMap[type] ?? true,
-    locked: TRANSACTIONAL.has(type),
-  }));
+  try {
+    const saved = await query(
+      'SELECT type, enabled FROM notification_preferences WHERE user_id = $1',
+      [userId]
+    );
+    const savedMap = Object.fromEntries(saved.rows.map(r => [r.type, r.enabled]));
+    return Object.values(NOTIFICATION_TYPES).map(type => ({
+      type,
+      enabled: savedMap[type] ?? true,
+      locked: TRANSACTIONAL.has(type),
+    }));
+  } catch (err) {
+    if (err.code === '42P01') {
+      return Object.values(NOTIFICATION_TYPES).map(type => ({
+        type,
+        enabled: true,
+        locked: TRANSACTIONAL.has(type),
+      }));
+    }
+    throw err;
+  }
 }
 
 export async function setPreferences(userId, prefs) {
