@@ -152,7 +152,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
         }
 
         try {
-          const success = await attemptHttpRequest(wh, payload, planType, isTest);
+          const success = await attemptHttpRequest(wh, payload, planType);
           if (success) {
             await query(
               `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
@@ -239,7 +239,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
         }
 
         try {
-          const success = await attemptHttpRequest(wh, payload, planType, isTest);
+          const success = await attemptHttpRequest(wh, payload, planType);
           if (success) {
             deliveredCount++;
             await query(
@@ -298,24 +298,23 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 /**
  * Performs DNS Rebinding protection check and triggers the outgoing HTTP POST call.
  */
-async function attemptHttpRequest(webhook, payload, planType, isTest = false) {
+async function attemptHttpRequest(webhook, payload, planType) {
   const targetUrl = webhook.target_url;
   const parsedUrl = new URL(targetUrl);
   
-  // DNS Rebinding protection (bypass only if isTest is explicitly true)
-  if (!isTest) {
-    const resolved = await dns.lookup(parsedUrl.hostname);
-    const ip = resolved.address;
-    
-    if (
-      ip.startsWith("127.") ||
-      ip.startsWith("10.") ||
-      ip.startsWith("192.168.") ||
-      ip.startsWith("169.254.") ||
-      ip === "0.0.0.0"
-    ) {
-      throw new Error("DNS Rebinding Blocked: Target URL resolves to an internal address.");
-    }
+  // DNS Rebinding protection — always enforced; user-controlled test flag must
+  // not bypass a server-side security check.
+  const resolved = await dns.lookup(parsedUrl.hostname);
+  const ip = resolved.address;
+
+  if (
+    ip.startsWith("127.") ||
+    ip.startsWith("10.") ||
+    ip.startsWith("192.168.") ||
+    ip.startsWith("169.254.") ||
+    ip === "0.0.0.0"
+  ) {
+    throw new Error("DNS Rebinding Blocked: Target URL resolves to an internal address.");
   }
 
   // Setup headers (include custom headers if Pro/Plus)
