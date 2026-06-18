@@ -24,7 +24,7 @@ services:
   # PgBouncer Connection Pooler
   # ────────────────────────────────────────────────────────────────────────────
   pgbouncer:
-    image: bitnami/pgbouncer:1
+    image: bitnami/pgbouncer:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:6432:6432"
