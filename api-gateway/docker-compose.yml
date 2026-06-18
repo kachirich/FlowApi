@@ -8,14 +8,14 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     environment:
-      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_USER: ${PGUSER}
       # ... rest of your file stays the same
-      POSTGRES_PASSWORD: ${PGPASSWORD:-flow_secure_admin@123}
-      POSTGRES_DB: ${PGDATABASE:-flow_gateway}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+      POSTGRES_DB: ${PGDATABASE}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flow_gateway}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,9 +30,9 @@ services:
     ports:
       - "127.0.0.1:6432:6432"
     environment:
-      POSTGRESQL_USERNAME: ${PGUSER:-postgres}
-      POSTGRESQL_PASSWORD: ${PGPASSWORD:-flow_secure_admin@123}
-      POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
+      POSTGRESQL_USERNAME: ${PGUSER}
+      POSTGRESQL_PASSWORD: ${PGPASSWORD}
+      POSTGRESQL_DATABASE: ${PGDATABASE}
       POSTGRESQL_HOST: pg-db
       PGBOUNCER_POOL_MODE: transaction
     depends_on:
