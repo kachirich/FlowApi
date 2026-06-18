@@ -74,6 +74,10 @@ services:
       # Override .env localhost values with Docker service names
       PGHOST: pgbouncer
       PGPORT: 6432
+      # Direct Postgres connection (bypasses pgbouncer) used only by
+      # ensureDatabase() at startup to CREATE DATABASE if absent.
+      PG_DIRECT_HOST: pg-db
+      PG_DIRECT_PORT: 5432
       REDIS_URL: redis://redis:6379
       FRONTEND_URL: https://flowgateway.dev
       BASE_URL: https://flowgateway.dev
