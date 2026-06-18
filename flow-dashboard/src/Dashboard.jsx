@@ -49,7 +49,6 @@ import {
   Shuffle,
   Workflow,
   Plug,
-  PlayCircle,
 } from "lucide-react";
 
 import BookingWidget from "./components/BookingWidget";
@@ -58,7 +57,6 @@ import WebhookLogs from "./components/WebhookLogs";
 import UpgradeModal from "./components/UpgradeModal";
 import WebhookConfig from "./components/WebhookConfig";
 import SetupTutorial from "./components/SetupTutorial";
-import OnboardingTour from "./components/OnboardingTour";
 import CheckoutSuccessModal from "./components/CheckoutSuccessModal";
 import DestinationManager from "./components/DestinationManager";
 import FlowManager from "./components/FlowManager";
@@ -1750,25 +1748,8 @@ export default function Dashboard() {
   // Guided Onboarding & 2FA Gate States
   const [mfaGateInterception, setMfaGateInterception] = useState(false);
 
-  // Joyride onboarding tour state (the tour owns completion persistence)
-  const [tourRun, setTourRun] = useState(false);
-  const [onboardingDone, setOnboardingDone] = useState(!!user?.has_completed_onboarding);
-
   // Post-checkout celebration modal state
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-
-  /** Launch the tour, ensuring its anchors are mounted (dashboard tab only). */
-  const startTour = useCallback(() => {
-    setActiveTab("dashboard");
-    setTourRun(true);
-  }, []);
-
-  /** Mark the tour finished locally + reflect the flag in the user record. */
-  const finishTour = useCallback(() => {
-    setTourRun(false);
-    setOnboardingDone(true);
-    if (user) setUser({ ...user, has_completed_onboarding: true });
-  }, [user, setUser]);
 
   // Advanced UX States
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1784,16 +1765,6 @@ export default function Dashboard() {
       setTimeout(() => setToast(null), 300);
     }, 2500);
   }, []);
-
-  // ── Mandatory onboarding tour for first-time users ──────────────────────
-  // Fires once for users who haven't completed onboarding; the 800ms delay
-  // lets the dashboard layout settle so every tour anchor is mounted.
-  useEffect(() => {
-    if (user && !user.has_completed_onboarding && !onboardingDone) {
-      const t = setTimeout(() => startTour(), 800);
-      return () => clearTimeout(t);
-    }
-  }, [user, onboardingDone, startTour]);
 
   // ── Post-checkout: poll until the Stripe webhook flips the plan ─────────
   // The webhook can land 1–3s after the browser redirect, so never trust the
@@ -2699,6 +2670,7 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
 
+
           <a
             href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}
             className={`flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/50 bg-surface-raised px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800 hover:text-white ${sidebarCollapsed ? "px-2" : ""}`}
@@ -2731,16 +2703,6 @@ export default function Dashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            {onboardingDone && (
-              <button
-                onClick={startTour}
-                title="Replay setup tour"
-                aria-label="Replay setup tour"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-amber-400"
-              >
-                <PlayCircle className="h-4 w-4" />
-              </button>
-            )}
             <button onClick={() => setShowSecurityModal(true)} className="p-2 text-zinc-500 hover:text-zinc-200"><Shield className="h-4 w-4" /></button>
             <button onClick={handleLogout} className="p-2 text-slate-500 hover:text-rose-400"><LogOut className="h-4 w-4" /></button>
           </div>
@@ -2774,16 +2736,6 @@ export default function Dashboard() {
         {/* Desktop Header (Top right tools) */}
         <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-end border-b border-slate-800/60 bg-surface/80 px-8 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            {onboardingDone && (
-              <button
-                onClick={startTour}
-                title="Replay setup tour"
-                aria-label="Replay setup tour"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-amber-400"
-              >
-                <PlayCircle className="h-4 w-4" />
-              </button>
-            )}
             <button onClick={() => setShowSecurityModal(true)} title="Security & 2FA Settings" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100">
               <Shield className="h-4 w-4" />
             </button>
@@ -3377,19 +3329,11 @@ export default function Dashboard() {
         onNavigateToPricing={() => setActiveTab("pricing")}
       />
 
-      {/* ── Tier-aware onboarding tour ───────────────────────────────────── */}
-      <OnboardingTour
-        run={tourRun}
-        mandatory={!onboardingDone}
-        onFinish={finishTour}
-      />
-
       {/* ── Post-checkout celebration ────────────────────────────────────── */}
       {showCheckoutModal && (
         <CheckoutSuccessModal
           user={user}
           onClose={() => setShowCheckoutModal(false)}
-          onStartTour={() => { setShowCheckoutModal(false); startTour(); }}
         />
       )}
 
