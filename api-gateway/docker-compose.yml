@@ -9,8 +9,7 @@ services:
       - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
-      # ... rest of your file stays the same
-      POSTGRES_PASSWORD: ${PGPASSWORD:-flow_secure_admin@123}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
       POSTGRES_DB: ${PGDATABASE:-flow_gateway}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -31,7 +30,7 @@ services:
       - "127.0.0.1:6432:6432"
     environment:
       POSTGRESQL_USERNAME: ${PGUSER:-postgres}
-      POSTGRESQL_PASSWORD: ${PGPASSWORD:-flow_secure_admin@123}
+      POSTGRESQL_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
       POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
       POSTGRESQL_HOST: pg-db
       PGBOUNCER_POOL_MODE: transaction

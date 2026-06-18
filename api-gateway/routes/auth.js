@@ -49,7 +49,6 @@ router.post("/2fa/generate", authenticate, otpGenerationLimiter, async (req, res
 
     return res.json({
       success: true,
-      secret: secret.base32,
       qrCodeUrl,
     });
   } catch (err) {
@@ -202,7 +201,7 @@ router.post("/login/verify", otpVerificationLimiter, async (req, res, next) => {
  * - Inserts into guest_sessions.
  * - Returns the session_id, token, and computed lead score.
  */
-router.post("/guest", async (req, res, next) => {
+router.post("/guest", authRateLimiter, async (req, res, next) => {
   try {
     const { first_name, last_name, email } = req.body;
 

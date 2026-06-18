@@ -7,8 +7,8 @@
 import "dotenv/config";
 import express from "express";
 import cookieParser from "cookie-parser";
-import helmet from "helmet";
 import cors from "cors";
+import helmetMiddleware from "./middleware/helmet.js";
 import { requestLogger, authenticate } from "./middleware/index.js";
 import adminRoutes from "./routes/admin.js";
 import webhookRoutes from "./routes/webhooks.js";
@@ -28,16 +28,11 @@ import notificationRoutes from "./routes/notifications.js";
 import routes from "./routes/index.js";
 
 const app = express();
-app.set("trust proxy", true);
+// Trust only the immediate upstream reverse proxy (Nginx / load balancer).
+// Using `true` (trust all) would allow IP spoofing via X-Forwarded-For.
+app.set("trust proxy", 1);
 
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-    },
-  },
-}));
+app.use(helmetMiddleware);
 
 const defaultOrigins = [
   'http://localhost:3000',

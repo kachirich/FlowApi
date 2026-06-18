@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { sendTokenResponse } from '../utils/authUtils.js';
 import { redisClient } from '../middleware/rateLimiter.js';
+
+// TTL for the one-time password-reset proof token stored in Redis (10 minutes).
+const RESET_TOKEN_TTL = 600;
 import { sendEmailVerification } from '../services/email.service.js';
 import jwt from 'jsonwebtoken';
 import { query } from '../db/connection.js';
@@ -72,7 +75,7 @@ export const sendOtp = async (req, res) => {
     return res.status(200).json({ success: true, status: 'pending' });
   } catch (error) {
     console.error('Error sending OTP:', error);
-    return res.status(400).json({ error: error.message });
+    return res.status(500).json({ error: 'Failed to send OTP' });
   }
 };
 
@@ -296,7 +299,10 @@ export const login = async (req, res) => {
   }
 };
 
-// ── Verify Reset OTP (Step 2 — non-destructive check) ─────────────────────
+// ── Verify Reset OTP (Step 2) ──────────────────────────────────────────────
+// Consumes the OTP immediately on success and mints a short-lived Redis proof
+// token. Step 3 (resetPassword) checks this token — not the OTP — so a
+// replayed OTP cannot be used to reset the password a second time.
 export const verifyResetOtp = async (req, res) => {
   try {
     const rawEmail = req.body.email;
@@ -319,8 +325,14 @@ export const verifyResetOtp = async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired reset code' });
     }
 
-    // OTP is valid — do NOT delete it yet. Step 3 will consume it.
-    return res.status(200).json({ success: true, message: 'Code verified' });
+    // Consume the OTP immediately — prevent any replay.
+    await query("DELETE FROM otps WHERE email = $1", [email]);
+
+    // Mint a single-use proof token valid for RESET_TOKEN_TTL seconds.
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    await redisClient.setEx(`pwd_reset:${email}`, RESET_TOKEN_TTL, resetToken);
+
+    return res.status(200).json({ success: true, message: 'Code verified', reset_token: resetToken });
   } catch (error) {
     console.error('Verify reset OTP error:', error);
     return res.status(500).json({ error: 'Failed to verify code' });
@@ -373,12 +385,11 @@ export const forgotPassword = async (req, res) => {
 // ── Reset Password ────────────────────────────────────────────────────────
 export const resetPassword = async (req, res) => {
   try {
-    const { newPassword } = req.body;
-    const code = req.body.code || req.body.otp;
+    const { newPassword, reset_token } = req.body;
     const rawEmail = req.body.email;
 
-    if (!rawEmail || !code || !newPassword) {
-      return res.status(400).json({ error: 'Email, code, and new password are required' });
+    if (!rawEmail || !reset_token || !newPassword) {
+      return res.status(400).json({ error: 'Email, reset_token, and new password are required' });
     }
 
     const email = normalizeEmail(rawEmail);
@@ -391,17 +402,14 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Verify OTP with strict dual-check and expiration
-    const currentTime = new Date();
-    const inputHash = crypto.createHash('sha256').update(code).digest('hex');
-    const otpResult = await query(
-      "SELECT id FROM otps WHERE email = $1 AND code_hash = $2 AND expires_at > $3",
-      [email, inputHash, currentTime]
-    );
-
-    if (otpResult.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid or expired reset code' });
+    // Verify the single-use Redis proof token issued by verifyResetOtp.
+    const storedToken = await redisClient.get(`pwd_reset:${email}`);
+    if (!storedToken || storedToken !== reset_token) {
+      return res.status(401).json({ error: 'Invalid or expired reset session. Please restart the password reset flow.' });
     }
+
+    // Consume the proof token immediately — single-use.
+    await redisClient.del(`pwd_reset:${email}`);
 
     // Hash new password
     const passwordHash = await bcrypt.hash(newPassword, 10);
@@ -412,9 +420,6 @@ export const resetPassword = async (req, res) => {
     if (updateResult.rowCount === 0) {
       return res.status(400).json({ error: 'User not found or password not updated' });
     }
-
-    // Immediately destroy the OTP
-    await query("DELETE FROM otps WHERE email = $1", [email]);
 
     return res.status(200).json({ success: true, message: 'Password reset successfully. You can now sign in.' });
   } catch (error) {

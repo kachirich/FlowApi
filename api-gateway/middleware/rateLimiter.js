@@ -111,7 +111,7 @@ export const authRateLimiter = rateLimit({
     prefix: 'rl_auth_',
   }),
   windowMs: 60 * 60 * 1000,
-  max: 50, // Temporarily increased to 50 for frontend testing
+  max: 10,
   skip: skipRateLimit,
   keyGenerator: globalKeyGenerator,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
@@ -123,8 +123,8 @@ export const stepUpLimiter = rateLimit({
     sendCommand: (...args) => redisClient.sendCommand(args),
     prefix: 'rl_stepup_',
   }),
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Temporarily increased to 50 for frontend testing
+  windowMs: 15 * 60 * 1000,
+  max: 10,
   skip: skipRateLimit,
   validate: { trustProxy: false, xForwardedForHeader: false, default: false },
   keyGenerator: globalKeyGenerator,
