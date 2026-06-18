@@ -150,7 +150,9 @@ export const verifyOtp = async (req, res) => {
     }
 
     // OTP verified successfully, immediately destroy it to prevent reuse
-    await query("DELETE FROM otps WHERE email = $1", [email]);
+    // Delete by id (not by email) to close the race condition where two
+    // concurrent verify requests both pass the SELECT before either DELETEs.
+    await query("DELETE FROM otps WHERE id = $1", [otpResult.rows[0].id]);
 
     // Upsert User
     let userResult = await query("SELECT id, email, first_name, last_name FROM users WHERE email = $1", [email]);

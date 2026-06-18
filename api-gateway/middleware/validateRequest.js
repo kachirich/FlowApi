@@ -72,6 +72,8 @@ export const webhookDestinationSchema = z
         hostname.startsWith("100.124.") || hostname.startsWith("100.125.") ||
         hostname.startsWith("100.126.") || hostname.startsWith("100.127.") ||
         // IPv6 private ranges
+        hostname === "::" ||        // IPv6 unspecified address
+        hostname === "::1" ||       // IPv6 loopback (already caught above but explicit here)
         hostname.startsWith("fd") ||
         hostname.startsWith("fe80") ||
         hostname.startsWith("::ffff:");

@@ -27,7 +27,12 @@ export default async function authenticate(req, _res, next) {
     const decoded = jwt.verify(token, JWT_SECRET);
 
     // ── Blacklist check ────────────────────────────────────────────────
-    const revoked = await redisClient.get('blacklist:' + token);
+    let revoked = null;
+    try {
+      revoked = await redisClient.get('blacklist:' + token);
+    } catch (redisErr) {
+      console.warn('[auth] Redis blacklist unavailable, proceeding without revocation check:', redisErr.message);
+    }
     if (revoked) {
       const error = new Error("Token has been revoked");
       error.name = "Unauthorized";

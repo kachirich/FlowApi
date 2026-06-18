@@ -214,6 +214,15 @@ router.post("/guest", authRateLimiter, async (req, res, next) => {
       });
     }
 
+    const emailFormatRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailFormatRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: "Bad Request",
+        message: "A valid email address is required",
+      });
+    }
+
     // ── Guard: secret not configured ─────────────────────────────────────
     if (!JWT_SECRET) {
       const error = new Error("JWT_SECRET is not configured on the server");
