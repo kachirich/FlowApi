@@ -1,0 +1,84 @@
+services:
+  # ────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL database
+  # ────────────────────────────────────────────────────────────────────────────
+  pg-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
+      POSTGRES_DB: ${PGDATABASE:-flow_gateway}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flow_gateway}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # PgBouncer Connection Pooler
+  # ────────────────────────────────────────────────────────────────────────────
+  pgbouncer:
+    image: bitnami/pgbouncer:1
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6432:6432"
+    environment:
+      POSTGRESQL_USERNAME: ${PGUSER:-postgres}
+      POSTGRESQL_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
+      POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
+      POSTGRESQL_HOST: pg-db
+      PGBOUNCER_POOL_MODE: transaction
+    depends_on:
+      pg-db:
+        condition: service_healthy
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Redis Cache / Rate Limiter
+  # ────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Node.js API Gateway
+  # ────────────────────────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Override .env localhost values with Docker service names
+      PGHOST: pgbouncer
+      PGPORT: 6432
+      REDIS_URL: redis://redis:6379
+      FRONTEND_URL: https://flowgateway.dev
+      BASE_URL: https://flowgateway.dev
+      GOOGLE_CALLBACK_URL: https://flowgateway.dev/api/auth/google/callback
+      CORS_ORIGIN: https://flowgateway.dev
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+    driver: local

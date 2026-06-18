@@ -1,0 +1,64 @@
+import "dotenv/config";
+import app from "./app.js";
+import { migrate } from "./db/migrate.js";
+import { closePool } from "./db/connection.js";
+import { startQueueWorker } from "./utils/queueWorker.js";
+import { startJanitorService } from "./services/janitor.service.js";
+import { connectRedis } from "./utils/redisClient.js";
+import "./services/queue.js";
+import "./services/notification.queue.js";
+
+// Fail fast if critical secrets are missing or still set to placeholder values.
+const PLACEHOLDER = 'CHANGE_ME';
+const requiredSecrets = ['JWT_SECRET', 'PGPASSWORD'];
+for (const key of requiredSecrets) {
+  const val = process.env[key];
+  if (!val || val === PLACEHOLDER || val === 'change_me_to_a_long_random_string') {
+    console.error(`[server] FATAL: ${key} is not configured. Set a real value in .env before starting.`);
+    process.exit(1);
+  }
+}
+
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
+
+// ---------------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------------
+async function start() {
+  try {
+    await migrate();
+    await connectRedis();
+    // startQueueWorker();
+    startJanitorService();
+    app.listen(PORT, HOST, () => {
+      console.log(`[server] API Gateway listening on http://${HOST}:${PORT}`);
+      console.log(`[server] Environment: ${process.env.NODE_ENV || "development"}`);
+    });
+  } catch (err) {
+    console.error("[server] Failed to start:", err.message);
+    process.exit(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+async function shutdown(signal) {
+  console.log(`\n[server] ${signal} received — shutting down gracefully`);
+  await closePool();
+  process.exit(0);
+}
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[server] Unhandled Rejection at:", promise, "reason:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[server] Uncaught Exception:", err);
+});
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+start();

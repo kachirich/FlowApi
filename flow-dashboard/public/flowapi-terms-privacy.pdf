@@ -1,0 +1,182 @@
+html_content = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FlowAPI Legal Infrastructure</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 25mm 20mm;
+            background-color: #ffffff;
+            @bottom-center {
+                content: "FlowAPI \00B7 Legal Infrastructure \00B7 Page " counter(page) " of " counter(pages);
+                font-family: 'Helvetica Neue', Helvetica, sans-serif;
+                font-size: 8pt;
+                color: #718096;
+            }
+        }
+        body {
+            font-family: 'Georgia', serif;
+            font-size: 10.5pt;
+            line-height: 1.6;
+            color: #2d3748;
+            margin: 0;
+            padding: 0;
+        }
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        h1 {
+            font-family: 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 22pt;
+            text-align: center;
+            color: #1a365d;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 5px;
+        }
+        .subtitle {
+            text-align: center;
+            font-family: 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 11pt;
+            color: #4a5568;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        h2 {
+            font-family: 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 16pt;
+            color: #2b6cb0;
+            margin-top: 30px;
+            margin-bottom: 10px;
+            page-break-after: avoid;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 5px;
+        }
+        h3 {
+            font-family: 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 12pt;
+            color: #1a365d;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            page-break-after: avoid;
+        }
+        p {
+            margin-top: 0;
+            margin-bottom: 12px;
+            text-align: justify;
+        }
+        ul {
+            margin-top: 0;
+            margin-bottom: 15px;
+            padding-left: 20px;
+        }
+        li {
+            margin-bottom: 5px;
+        }
+        .clause-title {
+            font-weight: bold;
+            text-transform: uppercase;
+            font-family: 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 10.5pt;
+        }
+        .highlight-box {
+            background-color: #f7fafc;
+            border-left: 4px solid #3182ce;
+            padding: 10px 15px;
+            margin: 15px 0;
+            font-size: 10pt;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>FlowAPI</h1>
+    <div class="subtitle">Terms of Service &amp; Privacy Policy<br>Effective Date: May 25, 2026</div>
+
+    <p>Welcome to FlowAPI. These documents constitute the binding legal infrastructure governing your use of the FlowAPI B2B API Gateway and Dynamic Webhook Dispatcher. By provisioning an account, routing payloads, or utilizing our infrastructure, you agree strictly to the terms outlined herein.</p>
+
+    <h2>Part I: Terms of Service (ToS)</h2>
+
+    <h3>1. Acceptable Use and Account Security</h3>
+    <p>Clients are granted a revocable, non-exclusive license to access the FlowAPI infrastructure for legitimate business-to-business API routing and webhook dispatching. Account security is the sole responsibility of the user.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">3. Abuse & SSRF:</span> FlowAPI strictly monitors for infrastructural abuse. We reserve the explicit right to immediately terminate, without notice and without refund, any account attempting Server-Side Request Forgery (SSRF), internal network scanning, Distributed Denial of Service (DDoS) attacks, or utilizing malicious scripts to bypass our Redis-backed rate limits.</p>
+    </div>
+
+    <h3>2. Data Guidelines & Liability</h3>
+    <p>FlowAPI is designed for high-velocity, structurally agnostic data transport. We do not inspect, moderate, or alter the substantive business logic of your routed data.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">1. Data Conduit Liability:</span> FlowAPI acts strictly as a pass-through entity and structural conduit. We do not read, evaluate, claim ownership of, or assume legal liability for the content of the JSON payloads routed through our system. The user (sender/dispatcher) retains absolute legal liability for all payload contents and their subsequent effects.</p>
+    </div>
+    
+    <div class="highlight-box">
+        <p><span class="clause-title">2. Prohibited Data:</span> Use of FlowAPI to transmit highly regulated or illegal information is strictly banned. Users must not route Protected Health Information (PHI/Health Data), Payment Card Industry data (PCI/Credit Card Numbers), or any data that violates local, national, or international laws.</p>
+    </div>
+
+    <h3>3. Service Continuity & Delivery Guarantees</h3>
+    <p>Our commitment to uptime and delivery varies strictly based on your subscribed tier. Network latency, target server outages, and internet backbone issues are outside our control.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">4. SLA Definitions:</span> Our Free and Basic tiers are provided strictly 'as-is' with no guaranteed uptime Service Level Agreement (SLA). The Pro and Plus tiers are supported by our advanced Exponential Backoff engine, which provides contractual delivery guarantees and automated microservice failover retry mechanisms.</p>
+    </div>
+
+    <h3>4. Dispute Resolution</h3>
+    <p>We believe in efficient, professional resolution of all disputes arising from B2B service agreements.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">5. Jurisdiction & Class Action Waiver:</span> All disputes arising out of or in connection with these Terms shall be resolved exclusively via binding arbitration located in Nairobi, Kenya. Users explicitly waive any right to participate in class-action lawsuits, class-wide arbitrations, or consolidated actions against FlowAPI or its parent entities.</p>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>Part II: Privacy Policy</h2>
+
+    <p>This Privacy Policy delineates how FlowAPI handles data transmitted through our infrastructure. Transparency and data minimization are our foundational principles.</p>
+
+    <h3>1. Data Processing Roles</h3>
+    <p>Because FlowAPI serves as an intermediary routing engine, our relationship to your data is strictly infrastructural.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">6. Data Processor Status:</span> FlowAPI explicitly states that under the General Data Protection Regulation (GDPR) and the California Consumer Privacy Act (CCPA), we act solely in the capacity of a 'Data Processor' (or Service Provider). The user (the agency, developer, or enterprise client) remains the definitive 'Data Controller' and is responsible for obtaining end-user consent for data transit.</p>
+    </div>
+
+    <h3>2. Storage and Retention</h3>
+    <p>We do not hoard your data. Our systems are built to route, not to warehouse.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">7. Transient Storage & Ledger Purge:</span> We only store webhook payload data temporarily within our 'Lead Ledger' exclusively for routing, queueing, and user-debugging purposes. FlowAPI enforces a strict data retention policy: all payload logs, transit records, and temporary database entries are permanently hard-deleted after 7 days.</p>
+    </div>
+
+    <h3>3. Data Subject Rights & Account Termination</h3>
+    <p>We respect the absolute right of our developers and enterprise clients to control their infrastructural footprint.</p>
+
+    <div class="highlight-box">
+        <p><span class="clause-title">8. Right to be Forgotten:</span> We acknowledge and technically enforce that users can delete their accounts at any time via the user dashboard. Initiating an account deletion will immediately cascade and permanently hard-delete all associated webhooks, API keys, Lead Ledger logs, and routing configurations from our primary PostgreSQL databases and Redis caches. No orphaned data will remain.</p>
+    </div>
+
+    <h3>4. Security Measures</h3>
+    <p>FlowAPI secures all transient data using industry-standard TLS encryption during transport. Our internal microservices, including authentication (AuthKit) and the API gateway itself, operate within secure, isolated Docker containers to prevent cross-tenant data leakage.</p>
+
+    <p style="margin-top: 40px; text-align: center; font-style: italic; color: #718096; font-size: 9pt;">
+        By continuing to utilize the FlowAPI service, you acknowledge that you have read, understood, and agreed to be legally bound by both the Terms of Service and Privacy Policy.
+    </p>
+
+</body>
+</html>
+"""
+
+import os
+from weasyprint import HTML
+
+output_pdf_path = "/tmp/FlowAPI_Legal_Infrastructure_v1.pdf"
+HTML(string=html_content).write_pdf(output_pdf_path)
+
+print(f"File generated successfully: {output_pdf_path}")
