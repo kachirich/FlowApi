@@ -8,14 +8,13 @@ services:
     ports:
       - "127.0.0.1:5433:5432"
     environment:
-      POSTGRES_USER: ${PGUSER}
-      # ... rest of your file stays the same
-      POSTGRES_PASSWORD: ${PGPASSWORD}
-      POSTGRES_DB: ${PGDATABASE}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
+      POSTGRES_DB: ${PGDATABASE:-flow_gateway}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER} -d ${PGDATABASE}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flow_gateway}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -30,9 +29,9 @@ services:
     ports:
       - "127.0.0.1:6432:6432"
     environment:
-      POSTGRESQL_USERNAME: ${PGUSER}
-      POSTGRESQL_PASSWORD: ${PGPASSWORD}
-      POSTGRESQL_DATABASE: ${PGDATABASE}
+      POSTGRESQL_USERNAME: ${PGUSER:-postgres}
+      POSTGRESQL_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
+      POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
       POSTGRESQL_HOST: pg-db
       PGBOUNCER_POOL_MODE: transaction
     depends_on:

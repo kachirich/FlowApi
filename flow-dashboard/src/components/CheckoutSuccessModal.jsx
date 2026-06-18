@@ -5,11 +5,10 @@ import { PLAN_PERKS, displayPlan } from '../constants/plans';
  * Post-checkout celebration modal.
  *
  * Distinct from UpgradeModal.jsx (which is the feature-gate paywall prompt).
- * Fires after a successful Stripe checkout once the plan flip has been
- * confirmed, and chains into the onboarding tour.
+ * Fires after a successful Stripe checkout once the plan flip has been confirmed.
  */
 export default function CheckoutSuccessModal({ user, onClose }) {
-  const perks = PLAN_PERKS[user?.plan_type] || [];
+  const perks = PLAN_PERKS[(user?.plan_type || '').toLowerCase()] || [];
   const raw = user?.last_name || user?.first_name || 'there';
   const name = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
   const planLabel = displayPlan(user?.plan_type);

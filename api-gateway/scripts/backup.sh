@@ -10,13 +10,19 @@ BACKUP_DIR="${SCRIPT_DIR}/../backups"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_FILE="${BACKUP_DIR}/flowapi_${TIMESTAMP}.dump"
 
-# Load .env if present and not already set
+# Load specific variables from .env without eval/source to avoid command injection.
 ENV_FILE="${SCRIPT_DIR}/../.env"
 if [[ -f "$ENV_FILE" ]]; then
-  set -o allexport
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +o allexport
+  _parse_env() {
+    local key="$1"
+    grep -m1 "^${key}=" "$ENV_FILE" | cut -d= -f2- | tr -d "'\""
+  }
+  [[ -z "${PGHOST:-}"     ]] && export PGHOST="$(_parse_env PGHOST)"
+  [[ -z "${PGPORT:-}"     ]] && export PGPORT="$(_parse_env PGPORT)"
+  [[ -z "${PGDATABASE:-}" ]] && export PGDATABASE="$(_parse_env PGDATABASE)"
+  [[ -z "${PGUSER:-}"     ]] && export PGUSER="$(_parse_env PGUSER)"
+  [[ -z "${PGPASSWORD:-}" ]] && export PGPASSWORD="$(_parse_env PGPASSWORD)"
+  unset -f _parse_env
 fi
 
 : "${PGHOST:=localhost}"

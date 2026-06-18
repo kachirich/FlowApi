@@ -21,6 +21,14 @@ const adminLimiter = rateLimit({
   store: new RedisStore({ sendCommand: (...args) => redisClient.sendCommand(args) }),
 });
 
+// Gate routes that must only be reachable by platform admins.
+function requireAdmin(req, res, next) {
+  if (!req.user?.is_admin) {
+    return res.status(403).json({ success: false, message: "Forbidden" });
+  }
+  next();
+}
+
 const router = Router();
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -159,19 +167,20 @@ router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimi
 
     // Generate raw API key
     const rawKey = "flow_api_live_" + crypto.randomBytes(16).toString("hex");
-    
+
     // Mask key for display
     const maskedKey = "flow_api_..." + rawKey.slice(-4);
-    
-    // Hash key for DB
+
+    // bcrypt hash stored in api_key (legacy); SHA-256 hash stored in api_key_hash for O(1) lookup
     const hashedKey = await bcrypt.hash(rawKey, 10);
+    const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
 
     // Build the webhook URL using the new dynamic dispatcher format
     const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
     const insertResult = await query(
-      `INSERT INTO webhook_keys (api_key, masked_key, webhook_url, user_id) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [hashedKey, maskedKey, 'pending', req.user.id],
+      `INSERT INTO webhook_keys (api_key, api_key_hash, masked_key, webhook_url, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [hashedKey, keyHash, maskedKey, 'pending', req.user.id],
     );
 
     const webhookId = insertResult.rows[0].id;
@@ -514,11 +523,10 @@ router.delete("/webhooks/:id", authenticate, async (req, res, next) => {
  * Deletes all routing metadata/history for the user (leads, request logs, and spam counters).
  * Protected by JWT.
  */
-router.delete("/logs", authenticate, async (req, res, next) => {
+router.delete("/logs", authenticate, requireAdmin, async (req, res, next) => {
   try {
     await Promise.all([
       query("DELETE FROM ghl_leads WHERE user_id = $1", [req.user.id]),
-      // Scope to the authenticated user — never wipe other tenants' logs
       query("DELETE FROM webhook_logs WHERE user_id = $1", [req.user.id]),
       query("UPDATE gateway_counters SET value = 0 WHERE key = 'bots_blocked'"),
     ]);
@@ -675,7 +683,7 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
  *
  * Protected by JWT.
  */
-router.post("/upgrade-user", authenticate, adminLimiter, async (req, res, next) => {
+router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (req, res, next) => {
   try {
     const { email, newPlan } = req.body;
 

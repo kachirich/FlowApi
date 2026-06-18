@@ -109,26 +109,29 @@ export const handleStripeWebhook = async (req, res) => {
 
       if (userId) {
         try {
+          const planTier = (session.metadata?.plan_type || 'pro').toLowerCase();
+
           await query(
             `UPDATE user_billing
              SET stripe_customer_id = $1, stripe_subscription_id = $2, plan_type = $3, subscription_status = $4
              WHERE user_id = $5`,
-            [customerId, subscriptionId, 'pro', 'active', userId]
+            [customerId, subscriptionId, planTier, 'active', userId]
           );
-          // Invalidate cached plan so the next request reads fresh from Postgres
           redisClient.del(planCacheKey(userId)).catch((e) =>
-            console.error(`[stripe-webhook] Redis cache invalidation error:`, e.message)
+            console.error('[stripe-webhook] Redis cache invalidation error:', e.message)
           );
-          console.log(`[stripe-webhook] ✅ Success: User ${userId} upgraded to Pro`);
+          console.log(`[stripe-webhook] ✅ User ${userId} upgraded to ${planTier}`);
 
-          // Fire feature-announcement email
-          const planTier = session.metadata?.plan_type || 'pro';
+          // Fire-and-forget welcome-to-<plan> email
+          const DISPLAY = { basic: 'Starter', pro: 'Growth', plus: 'Enterprise' };
+          const displayName = DISPLAY[planTier] || planTier;
           enqueueNotification(userId, NOTIFICATION_TYPES.FEATURE_ANNOUNCEMENT, {
-            subject: `Welcome to FlowGateway ${planTier === 'plus' ? 'Enterprise' : 'Growth'} — your new features are live`,
-            headline: `Your ${planTier === 'plus' ? 'Enterprise' : 'Growth'} features are now active`,
+            subject: `Welcome to FlowGateway ${displayName} — your new features are live`,
+            headline: `You're on ${displayName}`,
             plan: planTier,
-            cta_label: 'Open Dashboard',
-          }).catch((e) => console.error('[stripe-webhook] Feature announcement email failed:', e.message));
+          }).catch((e) =>
+            console.error('[stripe-webhook] Feature-announcement enqueue failed:', e.message)
+          );
         } catch (dbErr) {
           console.error(`[stripe-webhook] ❌ Database error updating user ${userId}:`, dbErr.message);
         }
