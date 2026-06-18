@@ -15,7 +15,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
 
-const { Pool } = pg;
+const { Pool, Client } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 
@@ -24,6 +24,37 @@ const pool = new Pool({
   idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 10_000,
 });
+
+/**
+ * Connects to the postgres system database and creates the application
+ * database if it does not exist yet. This handles fresh deployments where
+ * the DB has never been initialised outside of Docker.
+ */
+async function ensureDatabase() {
+  const dbName = process.env.PGDATABASE || "flow_gateway";
+  const sysClient = new Client({
+    database: "postgres",
+    connectionTimeoutMillis: 10_000,
+  });
+  try {
+    await sysClient.connect();
+    const res = await sysClient.query(
+      "SELECT 1 FROM pg_database WHERE datname = $1",
+      [dbName]
+    );
+    if (res.rowCount === 0) {
+      // CREATE DATABASE cannot run inside a transaction, use raw query
+      await sysClient.query(`CREATE DATABASE "${dbName}"`);
+      console.log(`[migrate] Created database "${dbName}"`);
+    }
+  } catch (err) {
+    // If we can't reach the system database, let migrate() fail with its own
+    // error so the message is still meaningful.
+    console.warn(`[migrate] Could not auto-create database: ${err.message}`);
+  } finally {
+    await sysClient.end().catch(() => {});
+  }
+}
 
 async function ensureMigrationsTable(client) {
   await client.query(`
@@ -108,6 +139,7 @@ async function runMigration(client, name, sql, noTransaction) {
 }
 
 export async function migrate() {
+  await ensureDatabase();
   const client = await pool.connect();
   try {
     await ensureMigrationsTable(client);

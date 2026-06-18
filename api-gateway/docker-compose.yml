@@ -37,6 +37,12 @@ services:
     depends_on:
       pg-db:
         condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${PGUSER:-postgres}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   # ────────────────────────────────────────────────────────────────────────────
   # Redis Cache / Rate Limiter
@@ -75,7 +81,7 @@ services:
       CORS_ORIGIN: https://flowgateway.dev
     depends_on:
       pgbouncer:
-        condition: service_started
+        condition: service_healthy
       redis:
         condition: service_healthy
 
