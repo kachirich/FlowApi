@@ -1,16 +1,19 @@
 import { Queue, Worker } from 'bullmq';
+import IORedis from 'ioredis';
 import { URL } from 'url';
 import { sendNotification } from './notification.service.js';
 
 const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
 const parsed = new URL(redisUrl);
-const connection = {
+
+const connection = new IORedis({
   host: parsed.hostname,
   port: parseInt(parsed.port || '6379', 10),
-  username: parsed.username || undefined,
-  password: parsed.password || undefined,
+  ...(parsed.username ? { username: parsed.username } : {}),
+  ...(parsed.password ? { password: parsed.password } : {}),
   maxRetriesPerRequest: null,
-};
+  enableReadyCheck: false,
+});
 
 export const notificationQueue = new Queue('notification-dispatch', { connection });
 

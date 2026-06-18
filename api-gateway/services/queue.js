@@ -1,4 +1,5 @@
 import { Queue, Worker, UnrecoverableError } from "bullmq";
+import IORedis from "ioredis";
 import { URL } from "url";
 import dns from "dns/promises";
 import axios from "axios";
@@ -8,13 +9,19 @@ import { dedupCheck, NOTIFICATION_TYPES } from "./notification.service.js";
 
 const redisUrl = process.env.REDIS_URL || "redis://redis:6379";
 const parsed = new URL(redisUrl);
-const connection = {
+
+// Explicitly create an IORedis (ioredis) connection so BullMQ uses ioredis
+// internals. Passing plain options lets BullMQ auto-detect the client type;
+// when the `redis` (node-redis) package is also present BullMQ 5.x picks that
+// client, which lacks the `defineCommand` API BullMQ still needs internally.
+const connection = new IORedis({
   host: parsed.hostname,
   port: parseInt(parsed.port || "6379", 10),
-  username: parsed.username || undefined,
-  password: parsed.password || undefined,
+  ...(parsed.username ? { username: parsed.username } : {}),
+  ...(parsed.password ? { password: parsed.password } : {}),
   maxRetriesPerRequest: null,
-};
+  enableReadyCheck: false,
+});
 
 // ── Initialize Queue ────────────────────────────────────────────────────────
 export const webhookQueue = new Queue("webhook-dispatch", { connection });

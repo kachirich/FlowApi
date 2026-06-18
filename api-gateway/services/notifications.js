@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
-import redisClient from '../utils/redisClient.js';
+import IORedis from 'ioredis';
+import { URL } from 'url';
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -12,7 +13,17 @@ export const NOTIFICATION_TYPES = {
   USAGE_ALERT: 'usage_alert',
 };
 
-const notificationQueue = new Queue('notifications', { connection: redisClient });
+const _parsed = new URL(process.env.REDIS_URL || 'redis://redis:6379');
+const _conn = new IORedis({
+  host: _parsed.hostname,
+  port: parseInt(_parsed.port || '6379', 10),
+  ...(_parsed.username ? { username: _parsed.username } : {}),
+  ...(_parsed.password ? { password: _parsed.password } : {}),
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
+
+const notificationQueue = new Queue('notifications', { connection: _conn });
 
 export async function enqueueNotification(userId, type, data, opts = {}) {
   await notificationQueue.add(type, { userId, ...data }, {
