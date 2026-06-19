@@ -34,6 +34,7 @@ services:
       POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
       POSTGRESQL_HOST: pg-db
       PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits,statement_timeout
     depends_on:
       pg-db:
         condition: service_healthy
