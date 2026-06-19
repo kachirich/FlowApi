@@ -85,14 +85,21 @@ export const googleCallback = async (req, res) => {
         user.profile_pic = picture;
       }
     } else {
-      // Insert new user with dummy password_hash
+      // Insert new user. is_passwordless lives in user_auth (migration 002 split
+      // it out of users); the fn_create_user_satellites trigger auto-creates the
+      // user_auth row on INSERT, then we flip is_passwordless to TRUE.
       const insertResult = await query(
-        `INSERT INTO users (email, password_hash, first_name, last_name, profile_pic, is_passwordless)
-         VALUES ($1, $2, $3, $4, $5, TRUE)
+        `INSERT INTO users (email, password_hash, first_name, last_name, profile_pic)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id, email, first_name, last_name, profile_pic`,
         [email, "PASSWORDLESS_ACCOUNT", givenName, familyName, picture]
       );
       user = insertResult.rows[0];
+
+      await query(
+        `UPDATE user_auth SET is_passwordless = TRUE WHERE user_id = $1`,
+        [user.id]
+      );
     }
 
     generateAuthCookie(user, res);
