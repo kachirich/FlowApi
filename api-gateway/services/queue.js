@@ -91,7 +91,8 @@ export const worker = new Worker(
         url: targetUrl,
         data: payload,
         headers: mergedHeaders,
-        timeout: 15000,
+        // Cap outbound calls at 8s so a slow downstream cannot hold a worker slot.
+        timeout: 8000,
         validateStatus: () => true, // don't throw axios error on 4xx/5xx to inspect status
       });
 
@@ -159,7 +160,9 @@ export const worker = new Worker(
       throw err;
     }
   },
-  { connection }
+  // Process up to 5 dispatch jobs in parallel instead of strictly serial (the
+  // default of 1), so a single slow downstream doesn't stall the whole queue.
+  { connection, concurrency: 5 }
 );
 
 // ── Worker Final Failure Listener ────────────────────────────────────────────

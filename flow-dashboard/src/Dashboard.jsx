@@ -1256,9 +1256,23 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
    Destination Sandbox & Egress Test Engine
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function EgressTester({ leads }) {
+function EgressTester({ leads, destinations = [] }) {
   const [destinationUrl, setDestinationUrl] = useState("https://services.leadconnectorhq.com/hooks/flow_egress_test");
-  
+  const [method, setMethod] = useState("POST");
+  const [selectedDestId, setSelectedDestId] = useState("");
+  const [schemaOpen, setSchemaOpen] = useState(true);
+
+  // Selecting a saved destination auto-populates URL + method; "" = manual entry.
+  const handleSelectDestination = (id) => {
+    setSelectedDestId(id);
+    if (!id) return;
+    const dest = destinations.find((d) => String(d.id) === String(id));
+    if (dest) {
+      setDestinationUrl(dest.target_url || "");
+      setMethod(dest.http_method || dest.method || "POST");
+    }
+  };
+
   // Initialize mappings dynamically from GHL_STANDARD_SCHEMA on mount
   const [mappings, setMappings] = useState(() => {
     const initialMappings = {};
@@ -1404,6 +1418,7 @@ function EgressTester({ leads }) {
         },
         body: JSON.stringify({
           destinationUrl,
+          method,
           payload: egressPayload,
         }),
       });
@@ -1442,27 +1457,54 @@ function EgressTester({ leads }) {
         Local sandbox executions are secure and bypass CORS restrictions.
       </p>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Column 1: Schema Reference */}
-        <div className="flex flex-col rounded-2xl border border-slate-800 bg-surface-raised overflow-hidden h-fit">
-          <div className="flex items-center gap-2 border-b border-slate-800/60 bg-surface px-5 py-3">
+      <div className="flex flex-col gap-4">
+        {/* Row 1: Schema — full width, collapsible */}
+        <div className="w-full flex flex-col rounded-2xl border border-slate-800 bg-surface-raised overflow-hidden h-fit">
+          <button
+            onClick={() => setSchemaOpen((prev) => !prev)}
+            className="flex items-center gap-2 border-b border-slate-800/60 bg-surface px-5 py-3 transition hover:bg-surface-overlay"
+          >
             <Webhook className="h-4 w-4 text-violet-400" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
               Standard JSON Schema
             </h3>
-          </div>
-          <div className="p-5 overflow-y-auto bg-slate-900/50">
-            <pre className="font-mono text-[10px] text-violet-300 leading-relaxed">
-              {JSON.stringify(GHL_STANDARD_SCHEMA, null, 2)}
-            </pre>
-          </div>
+            <ChevronDown
+              className={`ml-auto h-4 w-4 text-slate-500 transition-transform duration-300 ${schemaOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+          {schemaOpen && (
+            <div className="p-5 overflow-y-auto bg-slate-900/50 max-h-[260px]">
+              <pre className="font-mono text-[10px] text-violet-300 leading-relaxed">
+                {JSON.stringify(GHL_STANDARD_SCHEMA, null, 2)}
+              </pre>
+            </div>
+          )}
         </div>
 
-        {/* Column 2: Destination Configuration */}
+        {/* Row 2: Two equal columns */}
+        <div className="grid grid-cols-2 gap-4">
+        {/* Left: Destination selector + URL + method + pass-through + key mapper */}
         <div className="flex flex-col space-y-5 rounded-2xl border border-slate-800 bg-surface-raised p-5 shadow-xl">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">
             Downstream Integration Setup
           </h3>
+
+          {/* Saved Destination Selector */}
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Saved Destination
+            </label>
+            <select
+              value={selectedDestId}
+              onChange={(e) => handleSelectDestination(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-slate-200 focus:outline-none focus:border-amber-500 transition"
+            >
+              <option value="">-- Manual Entry --</option>
+              {destinations.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Destination URL Field */}
           <div className="space-y-2">
@@ -1479,6 +1521,22 @@ function EgressTester({ leads }) {
             {urlError && (
               <p className="text-[10px] text-rose-500 font-medium animate-fade-in">{urlError}</p>
             )}
+          </div>
+
+          {/* HTTP Method Field */}
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              HTTP Method
+            </label>
+            <select
+              value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 font-mono text-xs text-slate-200 focus:outline-none focus:border-amber-500 transition"
+            >
+              <option value="POST">POST</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+            </select>
           </div>
 
           {/* Pass-Through Toggle */}
@@ -1544,7 +1602,7 @@ function EgressTester({ leads }) {
           </button>
         </div>
 
-        {/* Column 3: Outgoing Payload and Egress Logs */}
+        {/* Right: Outgoing Payload Preview + Egress Response Log */}
         <div className="flex flex-col gap-5">
           {/* Payload Preview Card */}
           <div className="rounded-2xl border border-slate-800 bg-surface-raised overflow-hidden">
@@ -1629,6 +1687,7 @@ function EgressTester({ leads }) {
               )}
             </div>
           </div>
+        </div>
         </div>
       </div>
 
@@ -1719,6 +1778,7 @@ export default function Dashboard() {
   const [leads, setLeads] = useState([]);
   const [webhooks, setWebhooks] = useState([]);
   const [flows, setFlows] = useState([]);
+  const [destinations, setDestinations] = useState([]);
   const [creditSummary, setCreditSummary] = useState(null);
   const [showSecretModal, setShowSecretModal] = useState(false);
 
@@ -2251,6 +2311,15 @@ export default function Dashboard() {
     } catch { /* retry silently */ }
   }, []);
 
+  const fetchDestinations = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/api/destinations');
+      if (res.data?.success) {
+        setDestinations(res.data.destinations || []);
+      }
+    } catch { /* retry silently */ }
+  }, []);
+
   const handleAssignFlow = useCallback(async (keyId, flowId) => {
     // Optimistic update so the select reflects the choice immediately
     const previous = webhooks;
@@ -2272,13 +2341,15 @@ export default function Dashboard() {
     fetchLeads();
     fetchWebhooks();
     fetchFlows();
+    fetchDestinations();
     const interval = setInterval(() => {
       fetchLeads();
       fetchWebhooks();
       fetchFlows();
+      fetchDestinations();
     }, STATS_POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [fetchLeads, fetchWebhooks, fetchFlows]);
+  }, [fetchLeads, fetchWebhooks, fetchFlows, fetchDestinations]);
 
   // Lead-credit summary (Growth/Enterprise tiers only)
   useEffect(() => {
@@ -2775,6 +2846,31 @@ export default function Dashboard() {
                 </button>
               </div>
 
+              {/* Destination health warning banners */}
+              {destinations.length === 0 ? (
+                <button
+                  onClick={() => setActiveTab("destinations")}
+                  className="flex w-full items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-5 py-3.5 text-left transition hover:bg-rose-500/20"
+                >
+                  <ShieldAlert className="h-5 w-5 shrink-0 text-rose-400" />
+                  <span className="text-sm font-semibold text-rose-300">
+                    No destinations configured — incoming leads will be lost.
+                  </span>
+                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-rose-400" />
+                </button>
+              ) : destinations.every((d) => !d.is_active) ? (
+                <button
+                  onClick={() => setActiveTab("destinations")}
+                  className="flex w-full items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3.5 text-left transition hover:bg-amber-500/20"
+                >
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
+                  <span className="text-sm font-semibold text-amber-300">
+                    All destinations are inactive — incoming leads will not be delivered.
+                  </span>
+                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-amber-400" />
+                </button>
+              ) : null}
+
               {/* Dashboard Top Actions & Stats */}
               <DashboardTopActions
                 leads={leads}
@@ -2820,7 +2916,7 @@ export default function Dashboard() {
               />
             </>
           ) : activeTab === "sandbox" ? (
-            <EgressTester leads={leads} />
+            <EgressTester leads={leads} destinations={destinations} />
           ) : activeTab === "destinations" ? (
             <DestinationManager setActiveTab={setActiveTab} />
           ) : activeTab === "flows" ? (

@@ -59,17 +59,38 @@ export const googleCallback = async (req, res) => {
 
     const email = payload.email;
 
+    const givenName  = payload.given_name  || null;
+    const familyName = payload.family_name || null;
+    const picture    = payload.picture     || null;
+
     // Upsert User
-    let userResult = await query("SELECT id, email FROM users WHERE email = $1", [email]);
+    let userResult = await query(
+      "SELECT id, email, first_name, last_name, profile_pic FROM users WHERE email = $1",
+      [email]
+    );
     let user;
 
     if (userResult.rows.length > 0) {
       user = userResult.rows[0];
+
+      // Backfill name/picture for accounts created before these fields existed.
+      if (user.first_name === null) {
+        await query(
+          `UPDATE users SET first_name = $2, last_name = $3, profile_pic = $4
+           WHERE id = $1 AND first_name IS NULL`,
+          [user.id, givenName, familyName, picture]
+        );
+        user.first_name = givenName;
+        user.last_name = familyName;
+        user.profile_pic = picture;
+      }
     } else {
       // Insert new user with dummy password_hash
       const insertResult = await query(
-        "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email",
-        [email, "PASSWORDLESS_ACCOUNT"]
+        `INSERT INTO users (email, password_hash, first_name, last_name, profile_pic, is_passwordless)
+         VALUES ($1, $2, $3, $4, $5, TRUE)
+         RETURNING id, email, first_name, last_name, profile_pic`,
+        [email, "PASSWORDLESS_ACCOUNT", givenName, familyName, picture]
       );
       user = insertResult.rows[0];
     }

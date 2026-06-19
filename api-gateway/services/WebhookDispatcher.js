@@ -48,6 +48,32 @@ async function isPausedNoCredits(metering, wh, userId, payload, isTest, cap, red
   return true;
 }
 
+// Max simultaneous outbound HTTP calls per broadcast event. Bounds socket and
+// downstream pressure when a single lead fans out to many destinations.
+const BROADCAST_CONCURRENCY = 5;
+
+/**
+ * Run `fn` over `items` with at most `limit` invocations in flight at once.
+ * Results are returned in input order. Rejections propagate, so callers that
+ * need per-item isolation must catch inside `fn` (the broadcast path does).
+ */
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i], i);
+    }
+  };
+  const pool = [];
+  const size = Math.min(limit, items.length);
+  for (let w = 0; w < size; w++) pool.push(worker());
+  await Promise.all(pool);
+  return results;
+}
+
 // Atomic Lua script to check daily lead cap and increment in Redis
 const CHECK_CAP_LUA = `
   local key = KEYS[1]
@@ -126,6 +152,18 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
   }
 
   if (destinations.length === 0) {
+    await query(
+      `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+       VALUES ($1, NULL, 'POST', 0, $2, 'NO_DESTINATIONS_CONFIGURED', $3)`,
+      [userId, JSON.stringify(payload), isTest]
+    ).catch((e) => console.error("[Dispatcher] Failed to write no-destinations log:", e.message));
+
+    await query(
+      `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'No active destinations'
+       WHERE contact_id = $1`,
+      [contactId]
+    ).catch(() => {});
+
     return { success: false, error: "NO_DESTINATIONS", message: "No active destinations configured." };
   }
 
@@ -211,15 +249,30 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
       }
     }
 
+    await query(
+      `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+       VALUES ($1, NULL, 'POST', 0, $2, 'ALL_CAPS_REACHED', $3)`,
+      [userId, JSON.stringify(payload), isTest]
+    ).catch((e) => console.error("[Dispatcher] Failed to write caps-reached log:", e.message));
+
+    await query(
+      `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'No active destinations'
+       WHERE contact_id = $1`,
+      [contactId]
+    ).catch(() => {});
+
     return {
       success: false,
       error: "NO_AVAILABLE_DESTINATIONS",
       message: "All buyer caps have been reached or deliveries failed.",
     };
   } else {
-    // Broadcast: Deliver to ALL destinations under cap
-    let deliveredCount = 0;
-    for (const wh of destinations) {
+    // Broadcast: deliver to ALL destinations under cap, but cap simultaneous
+    // outbound calls at BROADCAST_CONCURRENCY so a fan-out to many destinations
+    // cannot open an unbounded number of sockets at once. Each destination is
+    // isolated in its own try/catch, so one failure never aborts the others.
+    // Each task returns the count it contributes (0 or 1) toward deliveredCount.
+    const deliverToDestination = async (wh) => {
       const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
 
@@ -231,50 +284,54 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
         });
       }
 
-      if (isUnderCap === 1) {
-        // Metering: daily cap → metering check → dispatch → debit on success.
-        const metering = await getMeteringState(wh.id);
-        if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
-          continue; // out of credits + pause: skip this buyer, not a failure
-        }
+      if (isUnderCap !== 1) return 0;
 
-        try {
-          const success = await attemptHttpRequest(wh, payload, planType);
-          if (success) {
-            deliveredCount++;
-            await query(
-              `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
-               VALUES ($1, $2, $3, 200, $4, $5)`,
-              [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), isTest]
-            ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
-
-            if (metering.is_metered) {
-              await debitDestination(wh.id, userId, leadId);
-            }
-          } else {
-            throw new Error("HTTP request failed with non-2xx status code");
-          }
-        } catch (err) {
-          if (cap > 0) {
-            await redisClient.decr(redisKey).catch(() => {});
-          }
-
-          if (tier === 'sandbox') {
-            await query(
-              `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
-               VALUES ($1, $2, $3, 500, $4, $5, $6)`,
-              [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
-            ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
-          } else if (tier === 'growth') {
-            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
-            deliveredCount++;
-          } else if (tier === 'enterprise') {
-            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 100, backoff: { type: 'exponential', delay: 5000 } });
-            deliveredCount++;
-          }
-        }
+      // Metering: daily cap → metering check → dispatch → debit on success.
+      const metering = await getMeteringState(wh.id);
+      if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
+        return 0; // out of credits + pause: skip this buyer, not a failure
       }
-    }
+
+      try {
+        const success = await attemptHttpRequest(wh, payload, planType);
+        if (success) {
+          await query(
+            `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
+             VALUES ($1, $2, $3, 200, $4, $5)`,
+            [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), isTest]
+          ).catch((e) => console.error("[Dispatcher] Failed to write success log:", e.message));
+
+          if (metering.is_metered) {
+            await debitDestination(wh.id, userId, leadId);
+          }
+          return 1;
+        }
+        throw new Error("HTTP request failed with non-2xx status code");
+      } catch (err) {
+        if (cap > 0) {
+          await redisClient.decr(redisKey).catch(() => {});
+        }
+
+        if (tier === 'sandbox') {
+          await query(
+            `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+             VALUES ($1, $2, $3, 500, $4, $5, $6)`,
+            [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
+          ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
+          return 0;
+        } else if (tier === 'growth') {
+          await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
+          return 1;
+        } else if (tier === 'enterprise') {
+          await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 100, backoff: { type: 'exponential', delay: 5000 } });
+          return 1;
+        }
+        return 0;
+      }
+    };
+
+    const counts = await mapWithConcurrency(destinations, BROADCAST_CONCURRENCY, deliverToDestination);
+    const deliveredCount = counts.reduce((sum, n) => sum + (n || 0), 0);
 
     if (deliveredCount > 0) {
       await query(
@@ -286,6 +343,18 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
       return { success: true, strategy: "broadcast", deliveredCount };
     }
+
+    await query(
+      `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
+       VALUES ($1, NULL, 'POST', 0, $2, 'ALL_CAPS_REACHED', $3)`,
+      [userId, JSON.stringify(payload), isTest]
+    ).catch((e) => console.error("[Dispatcher] Failed to write caps-reached log:", e.message));
+
+    await query(
+      `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'No active destinations'
+       WHERE contact_id = $1`,
+      [contactId]
+    ).catch(() => {});
 
     return {
       success: false,
@@ -336,7 +405,8 @@ async function attemptHttpRequest(webhook, payload, planType) {
     url: targetUrl,
     data: payload,
     headers: mergedHeaders,
-    timeout: 15000,
+    // Cap outbound calls at 8s so a slow downstream cannot hold a worker slot.
+    timeout: 8000,
   });
 
   return response.status >= 200 && response.status < 300;

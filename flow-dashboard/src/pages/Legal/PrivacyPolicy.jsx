@@ -26,6 +26,12 @@ export default function PrivacyPolicy() {
             <li><strong>Payload Inspection:</strong> Temporary transit storage of JSON request bodies required to perform filtering, rate-limiting, and delivery checks.</li>
           </ul>
 
+          <h3>Lead Delivery Events</h3>
+          <p>
+            We log delivery attempt outcomes, including failed deliveries caused by inactive or missing destinations. These logs are
+            retained per your plan tier (7 days free, 30 days pro, unlimited plus) and are accessible in your dashboard.
+          </p>
+
           <h2>2. Data Compliance (GDPR, CCPA & TCPA)</h2>
           <p>
             As a data processor, FlowAPI routes payloads at the direction of our users (the data controllers). You are solely responsible 
