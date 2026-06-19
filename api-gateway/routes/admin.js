@@ -681,7 +681,7 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
  * - Updates the user's plan_type in Postgres.
  * - Fires sendTierUpgradeEmail() with the resolved user name.
  *
- * Protected by JWT.
+ * Protected by JWT and admin check.
  */
 router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (req, res, next) => {
   try {
@@ -694,7 +694,7 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
       });
     }
 
-    const allowedPlans = ['basic', 'pro', 'plus'];
+    const allowedPlans = ['free', 'basic', 'pro', 'plus'];
     if (!allowedPlans.includes(newPlan)) {
       return res.status(400).json({
         success: false,
@@ -704,11 +704,10 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
 
     // Update the user's plan in the database
     const result = await query(
-      `UPDATE user_billing ub
+      `UPDATE users
        SET plan_type = $1
-       FROM users u
-       WHERE ub.user_id = u.id AND u.email = $2
-       RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
+       WHERE email = $2
+       RETURNING id, email, first_name, last_name, plan_type`,
       [newPlan, email.trim().toLowerCase()]
     );
 
@@ -745,6 +744,92 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
         email: user.email,
         plan_type: user.plan_type,
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/upgrade-users-batch
+ *
+ * Batch upgrade multiple users to a plan. Accepts { newPlan, emails: [email1, email2, ...] }
+ *
+ * Protected by JWT and admin check.
+ */
+router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, async (req, res, next) => {
+  try {
+    const { newPlan, emails } = req.body;
+
+    if (!newPlan || !emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: newPlan (string), emails (non-empty array)",
+      });
+    }
+
+    const allowedPlans = ['free', 'basic', 'pro', 'plus'];
+    if (!allowedPlans.includes(newPlan)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid plan. Must be one of: ${allowedPlans.join(', ')}`,
+      });
+    }
+
+    const normalizedEmails = emails.map((e) => e.trim().toLowerCase());
+
+    // Update all matching users
+    const result = await query(
+      `UPDATE users
+       SET plan_type = $1
+       WHERE email = ANY($2::text[])
+       RETURNING id, email, first_name, last_name, plan_type`,
+      [newPlan, normalizedEmails]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No users found with the provided email addresses",
+      });
+    }
+
+    // Invalidate Redis plan cache for all updated users
+    await Promise.all(
+      result.rows.map((user) =>
+        redisClient.del(planCacheKey(user.id)).catch((err) =>
+          console.error('[admin] Failed to invalidate plan cache for', user.id, ':', err.message)
+        )
+      )
+    );
+
+    // Send upgrade emails (non-blocking)
+    result.rows.forEach((user) => {
+      const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email.split('@')[0];
+      sendTierUpgradeEmail(user.email, userName, newPlan).catch((err) =>
+        console.error('[admin] Failed to send upgrade email to', user.email, ':', err)
+      );
+    });
+
+    const notFound = normalizedEmails.filter(
+      (email) => !result.rows.some((r) => r.email === email)
+    );
+
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`⬆️  BATCH UPGRADE: ${result.rows.length} user(s) → ${newPlan}`);
+    result.rows.forEach((user) => {
+      console.log(`   • ${user.email}`);
+    });
+    if (notFound.length > 0) {
+      console.log(`⚠️  Not found: ${notFound.join(', ')}`);
+    }
+    console.log(`${'═'.repeat(60)}\n`);
+
+    return res.json({
+      success: true,
+      message: `Upgraded ${result.rows.length} user(s) to ${newPlan}`,
+      upgraded: result.rows.map((u) => ({ id: u.id, email: u.email, plan_type: u.plan_type })),
+      notFound,
     });
   } catch (err) {
     next(err);
