@@ -124,7 +124,6 @@ CREATE TABLE IF NOT EXISTS ghl_leads (
   created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS is_test          BOOLEAN DEFAULT FALSE;
-ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS destination_id   UUID REFERENCES destinations(id) ON DELETE SET NULL;
 
 -- 7. Gateway counters
 CREATE TABLE IF NOT EXISTS gateway_counters (
@@ -149,7 +148,6 @@ CREATE TABLE IF NOT EXISTS webhook_logs (
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_user_id    ON webhook_logs (user_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_webhook_id ON webhook_logs (webhook_id);
 ALTER TABLE webhook_logs ADD COLUMN IF NOT EXISTS is_test        BOOLEAN DEFAULT FALSE;
-ALTER TABLE webhook_logs ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE;
 
 -- 9. Lead counters (daily cap tracking)
 CREATE TABLE IF NOT EXISTS lead_counters (
@@ -170,6 +168,10 @@ CREATE TABLE IF NOT EXISTS destinations (
   created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_destinations_user_id ON destinations (user_id);
+
+-- FK columns referencing destinations (must come after the parent table above)
+ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS destination_id   UUID REFERENCES destinations(id) ON DELETE SET NULL;
+ALTER TABLE webhook_logs ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE;
 
 -- 11. Flows
 CREATE TABLE IF NOT EXISTS flows (
