@@ -6,6 +6,18 @@ import { query } from "../db/connection.js";
 // Create a Redis client. Uses REDIS_URL from the environment.
 export const redisClient = createClient({
   url: process.env.REDIS_URL || "redis://127.0.0.1:6379",
+  socket: {
+    // Fail a connection attempt after 5s instead of hanging indefinitely.
+    connectTimeout: 5000,
+    // Exponential backoff capped at 10s; give up after 10 attempts so a Redis
+    // outage doesn't wedge the rate limiters with an unbounded retry loop.
+    reconnectStrategy: (retries) => {
+      if (retries > 10) {
+        return new Error("[Redis] Max reconnection attempts reached");
+      }
+      return Math.min(retries * 200, 10000);
+    },
+  },
 });
 
 // Add error listener to prevent unhandled promise rejections / app crashes
@@ -133,6 +145,46 @@ export const stepUpLimiter = rateLimit({
     console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${globalKeyGenerator(req)}`);
     res.status(options.statusCode).json(options.message);
   }
+});
+
+/**
+ * Per-API-key burst limiter.
+ *
+ * Short-window throughput guard for the ingestion endpoints: 100 requests per
+ * minute keyed on the API key (x-api-key header) or, on the dynamic dispatcher,
+ * the :webhook_id URL param. Complements webhookIngressLimiter (a 24h daily
+ * cap) by stopping a single key from flooding the gateway in bursts.
+ * Responds 429 with a Retry-After header.
+ */
+const perKeyKeyGenerator = (req) => {
+  const apiKey = req.headers["x-api-key"];
+  if (apiKey) return `key:${apiKey}`;
+  if (req.params && req.params.webhook_id) return `wh:${req.params.webhook_id}`;
+  return getClientIp(req);
+};
+
+export const perKeyBurstLimiter = rateLimit({
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+    prefix: 'rl_perkey_burst_',
+  }),
+  windowMs: 60 * 1000, // 1 minute
+  max: 100,            // 100 requests per minute per key
+  skip: skipRateLimit,
+  keyGenerator: perKeyKeyGenerator,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false, default: false },
+  handler: (req, res) => {
+    const retryAfterSec = Math.max(1, Math.ceil((req.rateLimit.resetTime - Date.now()) / 1000));
+    res.set("Retry-After", String(retryAfterSec));
+    res.status(429).json({
+      success: false,
+      error: "Too Many Requests",
+      message: "Per-key rate limit exceeded (100 requests/minute). Slow down and retry.",
+      retryAfter: retryAfterSec,
+    });
+  },
 });
 
 export const webhookIngressLimiter = rateLimit({

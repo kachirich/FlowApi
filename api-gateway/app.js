@@ -6,6 +6,10 @@
  */
 import "dotenv/config";
 import express from "express";
+// Patches Express so async route handlers that throw/reject are forwarded to
+// the centralised error handler instead of hanging the request socket.
+// Must be imported before any routers are created.
+import "express-async-errors";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmetMiddleware from "./middleware/helmet.js";

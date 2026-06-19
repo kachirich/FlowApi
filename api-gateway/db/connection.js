@@ -10,9 +10,15 @@ const { Pool } = pg;
  * dotenv in the application entry point.
  */
 const pool = new Pool({
-  max: 20,
+  // pgbouncer sits in front of Postgres, so keep the app-side pool small to
+  // avoid multiplying connection pressure across app instances.
+  max: 10,
   idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
+  connectionTimeoutMillis: 3_000,
+  // Server-side cap: any single statement exceeding 10s is aborted so a slow
+  // or lock-blocked query (e.g. the lead_counters SELECT … FOR UPDATE under
+  // contention) cannot pin a pooled connection indefinitely.
+  statement_timeout: 10_000,
 });
 
 pool.on("error", (err) => {

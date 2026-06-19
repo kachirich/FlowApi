@@ -58,7 +58,14 @@ export default function TermsOfService() {
             It is your sole responsibility to configure client-side retries and fallback endpoints to safeguard mission-critical integrations.
           </p>
 
-          <h2>4. Data Deletion Protocol</h2>
+          <h2>4. Destination Configuration Responsibility</h2>
+          <p>
+            You are solely responsible for configuring and maintaining active delivery destinations. FlowAPI is not liable for leads lost
+            due to missing, inactive, or misconfigured destinations. Leads that cannot be delivered are logged in your Webhook Logs
+            dashboard for auditing.
+          </p>
+
+          <h2>5. Data Deletion Protocol</h2>
           <p>
             <strong>Irreversible Destruction:</strong> When you initiate the deletion of your account through the Control Panel, FlowAPI permanently, 
             completely, and irreversibly destroys all associated data from our active production PostgreSQL databases. This includes:

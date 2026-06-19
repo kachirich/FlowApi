@@ -12,11 +12,12 @@ import { Router } from "express";
 import { apiKeyAuth } from "../../middleware/apiKeyAuth.js";
 import { verifySignature } from "../../middleware/verifySignature.js";
 import meteredLimiter from "../../middleware/meteredLimiter.js";
+import { perKeyBurstLimiter } from "../../middleware/rateLimiter.js";
 import { ingestLead } from "../../services/leadIngest.js";
 
 const router = Router();
 
-router.post("/", apiKeyAuth, verifySignature, async (req, res, next) => {
+router.post("/", perKeyBurstLimiter, apiKeyAuth, verifySignature, async (req, res, next) => {
   try {
     // meteredLimiter reads the owning user from req.webhookKey (same as the
     // catch path), so bridge req.user -> req.webhookKey here.
