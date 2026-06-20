@@ -21,7 +21,7 @@ router.get("/logs", authenticate, requirePlan("basic", "pro", "plus"), async (re
   try {
     const result = await query(
       `SELECT id, user_id, webhook_id, destination_id, method, status_code,
-              response_error, is_test, created_at
+              request_payload, response_error, is_test, created_at
        FROM webhook_logs
        WHERE user_id = $1
        ORDER BY created_at DESC
