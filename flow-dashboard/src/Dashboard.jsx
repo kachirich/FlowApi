@@ -1748,6 +1748,9 @@ function greetName(user) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user, setUser, refreshUser } = useAuth();
+  // Stable ref so fetchStats (memoized with []) can always call the latest refreshUser.
+  const refreshUserRef = useRef(refreshUser);
+  useEffect(() => { refreshUserRef.current = refreshUser; }, [refreshUser]);
   const token = "session_cookie";
 
 
@@ -1929,10 +1932,16 @@ export default function Dashboard() {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
-        setStats((prev) => ({
-          ...data,
-          hasCompletedOnboarding: prev?.hasCompletedOnboarding === false ? false : data.hasCompletedOnboarding,
-        }));
+        setStats((prev) => {
+          if (data.planType && prev.planType && data.planType !== prev.planType) {
+            // Plan changed in the DB — refresh AuthContext so user.plan_type is in sync.
+            setTimeout(() => refreshUserRef.current?.(), 0);
+          }
+          return {
+            ...data,
+            hasCompletedOnboarding: prev?.hasCompletedOnboarding === false ? false : data.hasCompletedOnboarding,
+          };
+        });
       }
     } catch { /* retry silently */ }
   }, []);
@@ -2741,6 +2750,15 @@ export default function Dashboard() {
 
         <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
 
+
+          <button
+            type="button"
+            onClick={async () => { await refreshUser(); await fetchStats(); }}
+            className={`flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/50 bg-surface-raised px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800 hover:text-white ${sidebarCollapsed ? "px-2" : ""}`}
+            title="Refresh plan status"
+          >
+            <RefreshCw className="h-4 w-4 text-emerald-400" /> {!sidebarCollapsed && "Refresh plan status"}
+          </button>
 
           <a
             href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}

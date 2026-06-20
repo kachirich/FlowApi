@@ -24,7 +24,7 @@ export default function Login() {
   const otpRefs = useRef([]);
   const [resetOtp, setResetOtp] = useState(["", "", "", "", "", ""]);
   const resetOtpRefs = useRef([]);
-  const [resetToken, setResetToken] = useState("");
+  const [resetToken, setResetToken] = useState(() => sessionStorage.getItem("flowapi.pwdResetToken") || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [confirmNewPasswordTouched, setConfirmNewPasswordTouched] = useState(false);
@@ -32,6 +32,17 @@ export default function Login() {
   const [emailTouched, setEmailTouched] = useState(false);
   const [confirmPasswordTouched, setConfirmPasswordTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // ── On mount: handle redirect error params ────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "google_oauth_not_configured") {
+      toast.error("Google sign-in is not configured on this server. Please use email and password.");
+      params.delete("error");
+      const newSearch = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (newSearch ? "?" + newSearch : ""));
+    }
+  }, []);
 
   // ── Validation ────────────────────────────────────────────────────────
   const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -280,6 +291,7 @@ export default function Login() {
       if (!res.ok) throw new Error(data.error || "Invalid code");
       toast.success("Code verified! Set your new password.");
       setResetToken(data.reset_token);
+      sessionStorage.setItem("flowapi.pwdResetToken", data.reset_token);
       setStep("FORGOT_NEWPASS");
     } catch (err) {
       toast.error(err.message);
@@ -292,6 +304,13 @@ export default function Login() {
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
+    if (!resetToken) {
+      toast.error("Your reset session expired. Please request a new code.");
+      sessionStorage.removeItem("flowapi.pwdResetToken");
+      setResetToken("");
+      setStep("FORGOT_EMAIL");
+      return;
+    }
     if (!isNewPasswordStrong || !isNewPasswordsMatch) return;
     setLoading(true);
     try {
@@ -302,8 +321,18 @@ export default function Login() {
         body: JSON.stringify({ email, reset_token: resetToken, newPassword }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Reset failed");
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error("Your reset session expired. Please request a new code.");
+          sessionStorage.removeItem("flowapi.pwdResetToken");
+          setResetToken("");
+          setStep("FORGOT_EMAIL");
+          return;
+        }
+        throw new Error(data.error || "Reset failed");
+      }
       toast.success("Password reset successfully! Sign in with your new password.");
+      sessionStorage.removeItem("flowapi.pwdResetToken");
       setPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
@@ -823,13 +852,13 @@ export default function Login() {
                   <p className="text-[11px] text-rose-400">Passwords do not match</p>
                 )}
               </div>
-              <button type="submit" disabled={loading || !isNewPasswordStrong || !isNewPasswordsMatch} className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="submit" disabled={loading || !resetToken || !isNewPasswordStrong || !isNewPasswordsMatch} className="flex w-full items-center justify-center gap-2 rounded-md bg-white py-2 text-sm font-medium text-black transition-colors hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50">
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 Reset Password
               </button>
             </form>
             <div className="mt-6 text-center">
-              <button type="button" onClick={() => setStep("LOGIN")} className="flex items-center justify-center gap-1 mx-auto text-xs text-zinc-400 hover:text-white transition-colors">
+              <button type="button" onClick={() => { sessionStorage.removeItem("flowapi.pwdResetToken"); setResetToken(""); setStep("LOGIN"); }} className="flex items-center justify-center gap-1 mx-auto text-xs text-zinc-400 hover:text-white transition-colors">
                 <ArrowLeft className="h-3 w-3" /> Back to sign in
               </button>
             </div>

@@ -20,6 +20,17 @@ for (const key of requiredSecrets) {
   }
 }
 
+// Warn (not fatal) if Google OAuth vars are missing — server still starts so
+// email/password auth and all other features remain available.
+const GOOGLE_OAUTH_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_CALLBACK_URL'];
+const missingGoogleVars = GOOGLE_OAUTH_VARS.filter((k) => {
+  const v = process.env[k];
+  return !v || v === PLACEHOLDER || v === 'change_me';
+});
+if (missingGoogleVars.length > 0) {
+  console.warn(`[server] WARNING: Google OAuth is not configured — the following vars are missing or still set to placeholder values: ${missingGoogleVars.join(', ')}. Google sign-in will be disabled until these are set.`);
+}
+
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
