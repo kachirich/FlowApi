@@ -781,12 +781,14 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
 
     const normalizedEmails = emails.map((e) => e.trim().toLowerCase());
 
-    // Update all matching users
+    // plan_type is authoritative in user_billing (users.plan_type is a legacy
+    // dead column re-added by connection.js but never read by application code).
     const result = await query(
-      `UPDATE users
+      `UPDATE user_billing ub
        SET plan_type = $1
-       WHERE email = ANY($2::text[])
-       RETURNING id, email, first_name, last_name, plan_type`,
+       FROM users u
+       WHERE ub.user_id = u.id AND u.email = ANY($2::text[])
+       RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
       [newPlan, normalizedEmails]
     );
 
