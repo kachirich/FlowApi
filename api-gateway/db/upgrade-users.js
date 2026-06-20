@@ -18,12 +18,22 @@ async function invalidatePlanCache(userIds) {
     url: process.env.REDIS_URL || "redis://redis:6379",
     socket: { connectTimeout: 5000 },
   });
-  client.on("error", () => {}); // swallow — handled below
+  let connectError = null;
+  client.on("error", (err) => { connectError = err; });
   try {
     await client.connect();
     await Promise.all(userIds.map((id) => client.del(planCacheKey(id))));
+    console.log(`[upgrade-users] ✔ Redis plan cache invalidated for ${userIds.length} user(s).`);
   } catch (err) {
-    console.warn(`[upgrade-users] ⚠ Could not invalidate plan cache (will expire via TTL): ${err.message}`);
+    const msg = connectError?.message || err.message;
+    console.error(`\n[upgrade-users] ✘ ERROR: Could not reach Redis to invalidate plan cache: ${msg}`);
+    console.error(`[upgrade-users]   The database was updated successfully, but the 15-minute Redis`);
+    console.error(`[upgrade-users]   cache will keep serving the OLD plan until it expires or you`);
+    console.error(`[upgrade-users]   manually delete the keys. Run these commands to force-expire now:\n`);
+    userIds.forEach((id) => {
+      console.error(`    redis-cli DEL ${planCacheKey(id)}`);
+    });
+    console.error('');
   } finally {
     try { await client.quit(); } catch { /* already closed */ }
   }

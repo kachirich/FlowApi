@@ -839,4 +839,38 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
   }
 });
 
+/**
+ * POST /api/admin/invalidate-plan-cache
+ *
+ * Force-expires the Redis plan cache for a user so requirePlan picks up a
+ * manual DB upgrade immediately instead of waiting up to 15 minutes.
+ *
+ * Body: { email } or { user_id }
+ * Protected by JWT and admin check.
+ */
+router.post("/invalidate-plan-cache", authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const { email, user_id } = req.body;
+
+    if (!email && !user_id) {
+      return res.status(400).json({ success: false, message: "Provide email or user_id" });
+    }
+
+    let userId = user_id;
+    if (!userId) {
+      const result = await query("SELECT id FROM users WHERE email = $1", [email.trim().toLowerCase()]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "No user found with that email" });
+      }
+      userId = result.rows[0].id;
+    }
+
+    await redisClient.del(planCacheKey(userId));
+
+    return res.json({ success: true, message: `Plan cache cleared for user ${userId}` });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
