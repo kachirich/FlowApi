@@ -6,6 +6,7 @@ const { Pool } = pg;
 
 // Mirrors middleware/requirePlan.js:planCacheKey — keep formats in sync.
 const planCacheKey = (userId) => `user:${userId}:plan`;
+// plan_type lives in user_billing — never UPDATE users.plan_type directly.
 
 /**
  * Best-effort invalidation of the Redis plan cache for the given user ids.
