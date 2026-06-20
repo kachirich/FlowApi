@@ -340,4 +340,4 @@ PRs welcome. The repo's commit style is conventional-ish — feel free to mirror
 
 ## License
 
-© 2026 FlowAPI. All rights reserved.
+Released under the [MIT License](LICENSE). © 2026 FlowAPI.
