@@ -8,6 +8,25 @@ FlowAPI is the enterprise-grade webhook routing engine built for lead brokers an
 
 ---
 
+## Screenshots
+
+### Live Dashboard
+Real-time view of inbound activity, vaulted leads, lead scoring, and delivery status — plus the Tax Avoided and Spam Shield counters showing dollar value saved.
+
+![FlowGateway Live Dashboard](docs/images/dashboard.png)
+
+### API Keys & Routing Flows
+Generate scoped API keys, bind each one to a routing flow, and revoke in one click. Keys are SHA-256 hashed at rest and shown exactly once.
+
+![API Key & Flow Management](docs/images/api-keys.png)
+
+### Webhook Traffic Analytics
+Every inbound and outbound request is timestamped, status-coded, and inspectable. Click a row to view the raw JSON payload.
+
+![Webhook Traffic Analytics](docs/images/analytics.png)
+
+---
+
 ## The Problem We Solve
 
 Lead brokers spend hours every day doing work that should be instantaneous. A lead comes in from a form, an affiliate, or a CRM — and someone has to manually route it to the right buyer before it goes cold. By the time it lands, it's stale. By the time the buyer works it, the prospect has moved on.
@@ -19,8 +38,17 @@ FlowAPI eliminates that gap entirely. Your leads move from capture to your buyer
 ## How It Works
 
 ```
-Lead Source  →  FlowAPI Routing Engine  →  Buyer CRM / Webhook
-(Any CRM)        (Cap · Score · Queue)      (GHL, Salesforce, etc.)
+                 ┌──────────────────────────────────────────┐
+Lead Source ───▶ │  FlowAPI Gateway (Express + BullMQ)      │ ───▶ Buyer CRM
+ (Tally,         │  ┌──────────┐  ┌─────────┐  ┌──────────┐ │      (GHL,
+  Typeform,      │  │  Score & │─▶│  Queue  │─▶│ Dispatch │ │       Salesforce,
+  GHL, n8n,      │  │  Vault   │  │ (Redis) │  │  (HTTP)  │ │       custom)
+  Facebook)      │  └────┬─────┘  └────┬────┘  └────┬─────┘ │
+                 │       │             │            │       │
+                 │       ▼             ▼            ▼       │
+                 │   Postgres        BullMQ      DNS+SSRF   │
+                 │  (ghl_leads)    (retries)      checks    │
+                 └──────────────────────────────────────────┘
 ```
 
 **1. Inbound Capture** — Push any JSON payload to your unique webhook endpoint using your API key. FlowAPI accepts data from any source — GoHighLevel, web forms, affiliate networks, or custom integrations.
@@ -36,11 +64,11 @@ Lead Source  →  FlowAPI Routing Engine  →  Buyer CRM / Webhook
 ### Smart Lead Routing
 - **Round-Robin** — Distribute leads sequentially across your buyer network, respecting each buyer's daily cap
 - **Broadcast** — Deliver the same lead to all active destinations simultaneously
-- **Daily Caps per Buyer** — Never oversell a campaign. Set per-destination limits and let the engine manage the math automatically
+- **Daily Caps per Buyer** — Never oversell a campaign. Per-destination limits are enforced atomically by a Redis Lua script — there is no race window in which a buyer can be sold a lead over cap
 
 ### Reliability at Every Tier
 - **Automatic Retries** — Growth accounts get 3 retry attempts; Enterprise accounts get up to 100 with exponential backoff, so no lead is lost to a momentary downstream outage
-- **Delivery Status Tracking** — Every lead carries a live status: `PENDING → DELIVERED / RETRYING / FAILED`
+- **Delivery Status Tracking** — Every lead carries a live status: `PENDING → DELIVERED / RETRYING / FAILED / CANCELED`
 - **Webhook Audit Logs** — Full delivery history with request payloads and response codes, retained based on your plan
 
 ### Enterprise-Grade Security
@@ -76,6 +104,26 @@ Lead Source  →  FlowAPI Routing Engine  →  Buyer CRM / Webhook
 
 ---
 
+## Repository Layout
+
+```
+flowapi/
+├── api-gateway/       # Node.js + Express backend (the main service)
+│   ├── routes/        # Express route handlers
+│   ├── services/      # WebhookDispatcher, queue, janitor
+│   ├── middleware/    # auth, requirePlan, validateRequest, rate limiters
+│   ├── db/            # connection.js (auto-migrates schema on boot)
+│   └── tests/         # vitest integration tests
+├── flow-dashboard/    # React + Vite control panel
+│   └── src/
+│       ├── pages/     # LandingPage, Dashboard, docs, Legal
+│       └── components/
+├── authkit-service/   # Minimal separate auth microservice (secondary)
+└── docs/              # Screenshots and additional docs
+```
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -94,6 +142,8 @@ Lead Source  →  FlowAPI Routing Engine  →  Buyer CRM / Webhook
 ---
 
 ## Self-Hosting
+
+FlowAPI is fully self-hostable. The repo ships with a Docker Compose file that brings up Postgres, PgBouncer, Redis, and the API gateway in one command.
 
 ### Prerequisites
 - Node.js ≥ 18
@@ -117,54 +167,174 @@ cd api-gateway
 docker compose up -d
 
 # 4. Start the frontend dashboard (separate terminal)
-cd flow-dashboard
+cd ../flow-dashboard
 npm install
 npm run dev
 ```
 
 The API gateway runs on `http://localhost:3000`. The dashboard dev server runs on `http://localhost:5173`.
 
-Database schema is applied automatically on first startup — no manual migration steps required.
+The database schema is applied automatically on first startup via `db/connection.js:initializeDatabase()` — no manual migrations required. The same function runs idempotent `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN IF NOT EXISTS` statements, so it is safe to re-run on every boot.
 
 ### Environment Variables
 
 See [`api-gateway/.env.example`](api-gateway/.env.example) for the full list. The minimum required to boot:
 
-```
-JWT_SECRET=<long-random-string>
+```env
+# Database
 PGHOST=localhost
-PGPORT=6432
+PGPORT=6432            # PgBouncer port; use 5432 to bypass
 PGDATABASE=flow_gateway
 PGUSER=postgres
 PGPASSWORD=<your-password>
+
+# Cache / queue
 REDIS_URL=redis://127.0.0.1:6379
-CORS_ORIGIN=http://localhost:5173
+
+# Security
+JWT_SECRET=<long-random-string-at-least-32-chars>
+CORS_ORIGIN=http://localhost:5173,https://yourdomain.com
+
+# Optional — required only for the features below
+STRIPE_SECRET_KEY=sk_live_...            # billing
+STRIPE_WEBHOOK_SECRET=whsec_...          # billing webhooks
+RESEND_API_KEY=re_...                    # email OTPs / notifications
+EMAIL_FROM=no-reply@yourdomain.com
 ```
+
+The frontend reads `VITE_API_BASE_URL` (defaults to `http://localhost:3000`).
+
+### Running Without Docker
+
+If you'd rather run the stack natively:
+
+```bash
+# Postgres + Redis must be available locally
+cd api-gateway
+npm install
+npm run dev        # auto-restarts on file changes
+
+# in another terminal
+cd flow-dashboard
+npm install
+npm run dev
+```
+
+### Production Deployment Notes
+
+- Put the API gateway behind a TLS terminator (Caddy, nginx, or your cloud load balancer). The app does not terminate TLS itself.
+- Set `NODE_ENV=production`. This re-enables all rate limiters (they are auto-skipped in development) and turns off verbose error responses.
+- Provision Redis with `maxmemory-policy noeviction` so rate-limit and cap state never disappears under memory pressure.
+- The Janitor service runs nightly at midnight UTC and purges `webhook_logs` per the plan-gated retention policy. Make sure your container is not killed before midnight if you operate at low scale.
+- Use PgBouncer in transaction pooling mode (the bundled compose file does this) to handle bursty webhook traffic without exhausting Postgres connections.
 
 ---
 
-## Routing Your First Lead
+## API Reference (essentials)
 
-Once the gateway is running:
+All routes return `{ success: boolean, message?: string, error?: string, data?: object }`.
 
-**1. Generate an API key** from the dashboard or via `POST /api/keys`.
+### Authentication
+Two methods are supported. Pick one per request:
 
-**2. Configure a destination** — the buyer's webhook URL — via `POST /api/destinations`.
+- **JWT cookie** — `Cookie: jwt=<token>` (issued by `POST /api/auth/login`, HttpOnly, SameSite=Strict)
+- **API key** — `x-api-key: flow_live_xxx` (created from the dashboard or `POST /api/keys`)
 
-**3. Send a lead** to your webhook endpoint:
+### Core endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/catch/:webhook_id` | **Inbound lead ingress.** Public endpoint identified by the webhook UUID. |
+| `POST` | `/api/leads/inbound` | Alternate ingress that authenticates with `x-api-key`. |
+| `GET`  | `/api/leads` | List vaulted leads for the authenticated account. |
+| `POST` | `/api/destinations` | Create a new downstream buyer destination. |
+| `GET`  | `/api/destinations` | List destinations. |
+| `POST` | `/api/keys` | Generate a new API key (requires step-up OTP). |
+| `DELETE` | `/api/keys/:id` | Revoke an API key. |
+| `GET`  | `/api/logs` | Webhook delivery audit log. |
+| `POST` | `/api/auth/login` | Login with email + password; sets the JWT cookie. |
+| `GET`  | `/api/auth/me` | Rehydrate the session from the cookie. |
+
+### Routing your first lead
 
 ```bash
+# 1. Send a lead at your unique webhook URL
 curl -X POST https://flowgateway.dev/api/catch/<your-webhook-id> \
   -H "Content-Type: application/json" \
   -d '{
     "first_name": "Jane",
-    "last_name": "Smith",
-    "email": "jane@acmecorp.com",
-    "phone": "+1-555-0100"
+    "last_name":  "Smith",
+    "email":      "jane@acmecorp.com",
+    "phone":      "+1-555-0100",
+    "company":    "Acme Corp"
   }'
+
+# Response — returned the instant the job is queued
+# {"success":true,"lead_id":"…","delivery_status":"PENDING"}
 ```
 
 FlowAPI scores, stores, and dispatches the lead — and returns `200` before the buyer even knows it's coming.
+
+---
+
+## Development
+
+```bash
+# Backend tests (require running Postgres + Redis)
+cd api-gateway
+npm test                  # all tests
+npm run test:watch        # watch mode
+npx vitest run tests/integration.test.js --reporter verbose   # single file
+
+# Frontend
+cd flow-dashboard
+npm run dev               # Vite dev server
+npm run build             # production bundle
+npm run lint              # ESLint
+```
+
+### Architecture cheatsheet
+
+- `app.js` exports the Express app **without** calling `listen()` so Supertest can mount it.
+- All rate limiters use `RedisStore` and are skipped in development. They prefer `req.user.id` over IP via `globalKeyGenerator`.
+- `WebhookDispatcher.dispatchLead()` is the heart of outbound delivery. It branches on `round_robin` vs `broadcast` and enforces caps with the `CHECK_CAP_LUA` Redis script.
+- The Janitor (`services/janitor.service.js`) cron-purges `webhook_logs` at midnight.
+- Sensitive endpoints require **step-up OTP**, which mints a 72h trusted-device JWT stored in the `x-trusted-device-token` header.
+
+See [`CLAUDE.md`](CLAUDE.md) for the full internal architecture notes.
+
+---
+
+## Troubleshooting
+
+**Schema didn't apply / tables missing on first boot**
+The schema runs from `db/connection.js:initializeDatabase()` on every startup. Check the container logs for the connection error — usually it's a wrong `PGHOST` or `PGPASSWORD` or PgBouncer pointing at the wrong upstream.
+
+**Rate limiter blocking everything in dev**
+You're probably setting `NODE_ENV=production` locally. Limiters auto-skip when `NODE_ENV !== 'production'` AND the request comes from localhost.
+
+**`ECONNREFUSED 127.0.0.1:6379` (Redis)**
+Set `REDIS_URL` in `.env`. The Janitor, BullMQ, and rate limiters all need Redis — the gateway will exit on boot if it can't reach it.
+
+**Dispatches all returning `BLOCKED_INTERNAL_HOSTNAME`**
+The DNS rebinding check is doing its job: the destination URL resolved to a private IP. For local testing against `localhost` buyers, include `flow_api_test: true` in the payload to bypass the check.
+
+**`PERMISSION_DENIED` from `requirePlan`**
+The authenticated user's `plan_type` is below the route's required tier. Inspect `users.plan_type` in Postgres or clear the cached value: `DEL user:<id>:plan` in Redis.
+
+**Emails not sending in dev**
+OTP and notification emails are no-ops without `RESEND_API_KEY` (or your SMTP config). For local testing the OTP code is logged to stdout — grep the gateway logs for the 6-digit code.
+
+---
+
+## Contributing
+
+PRs welcome. The repo's commit style is conventional-ish — feel free to mirror what's on `main`. Please:
+
+1. Open an issue first for anything larger than a bugfix
+2. Make sure `npm test` passes in `api-gateway/` against a real Postgres + Redis
+3. Run `npm run lint` in `flow-dashboard/`
+4. Don't introduce schema changes outside `db/connection.js` — that file owns the entire schema
 
 ---
 

@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Inbox, Workflow, Gauge, ArrowRight, Check } from 'lucide-react';
+import { Inbox, Workflow, Gauge, ArrowRight, Check, Plus, Minus, Zap, ShieldCheck, BarChart3 } from 'lucide-react';
 
 const INTAKE_SOURCES = ['GHL', 'Tally', 'Typeform', 'Jotform', 'Zapier', 'n8n', 'Webflow', 'Make'];
 
@@ -25,6 +26,83 @@ const STEPS = [
   { n: '01', title: 'INTAKE', body: 'Connect GHL, Tally, or anything that fires a webhook.' },
   { n: '02', title: 'ROUTE', body: 'Build flows that send leads to the right buyer or CRM.' },
   { n: '03', title: 'DISPATCH', body: 'Every lead delivered, logged, and counted in real time.' },
+];
+
+const VALUE_PROPS = [
+  {
+    icon: Zap,
+    metric: '< 50ms',
+    title: 'Capture to dispatch',
+    body: 'From inbound webhook to outbound delivery in the same TCP heartbeat. Your buyers get fresh leads, not yesterday’s.',
+  },
+  {
+    icon: ShieldCheck,
+    metric: '100%',
+    title: 'Audited deliveries',
+    body: 'Every dispatch is logged with payload, response code, and latency. Disputes get settled in seconds, not screenshots.',
+  },
+  {
+    icon: BarChart3,
+    metric: '0 leaks',
+    title: 'Caps enforced atomically',
+    body: 'Redis-backed Lua scripts guarantee a buyer never gets a single lead over their daily cap — even at 10k req/s.',
+  },
+];
+
+const FAQ = [
+  {
+    q: 'How is FlowGateway different from Zapier or Make?',
+    a: 'Zapier and Make are general-purpose automation tools — they’re great at chaining steps but slow, expensive per task, and not designed for lead-broker economics. FlowGateway is purpose-built for lead routing: per-buyer daily caps, round-robin distribution, lead scoring, audit logs, and tiered retries. You pay a flat monthly rate, not per zap.',
+  },
+  {
+    q: 'Can I self-host FlowGateway?',
+    a: 'Yes. The entire stack — API gateway, dashboard, Postgres, Redis — ships with a single docker compose up. The source is on GitHub. Read the self-host guide in the docs for the full walkthrough.',
+  },
+  {
+    q: 'Which platforms can send leads in?',
+    a: 'Anything that can fire a webhook. We have first-class support for GoHighLevel, Tally, Typeform, Jotform, Webflow, Zapier, n8n, Make, and Facebook Lead Ads. The smart extractor handles arbitrarily nested JSON, so custom shapes work without any field mapping.',
+  },
+  {
+    q: 'What happens if my buyer’s endpoint is down?',
+    a: 'The job is retried automatically. Sandbox is one shot, Growth retries 3× with fixed backoff, Enterprise retries up to 100× with exponential backoff. Every attempt is logged. If all attempts fail, the lead is marked FAILED in the ledger so you can replay it manually.',
+  },
+  {
+    q: 'How do you protect against SSRF and abusive destinations?',
+    a: 'Two layers. Destination URLs are validated with Zod at save time — we reject HTTP, private ranges, .local, and cloud metadata IPs. Then at dispatch time we re-resolve the hostname and block any answer pointing to an internal IP. DNS rebinding cannot leak through.',
+  },
+  {
+    q: 'Do you store the leads?',
+    a: 'Yes — in your Lead Vault, with a quality score, source, and delivery status. You can purge it any time, and on account deletion every lead, log, and webhook is cascade-deleted (GDPR right to erasure).',
+  },
+  {
+    q: 'How is billing handled?',
+    a: 'Stripe. Plans are monthly, no contracts. You can upgrade or downgrade from the dashboard and the new quota takes effect immediately. Failed payments grace for 7 days before the plan downgrades to Sandbox.',
+  },
+  {
+    q: 'Is there an API for everything in the dashboard?',
+    a: 'Yes. Every button in the dashboard is a documented REST endpoint. Auth is either an HttpOnly JWT cookie (browser sessions) or an x-api-key header (server-to-server).',
+  },
+];
+
+const SHOWCASE = [
+  {
+    title: 'Live Dashboard',
+    body: 'A real-time view of inbound activity, vaulted leads, lead scores, and delivery status. Spam Shield and Tax Avoided counters show the dollar value FlowGateway is saving you in real time.',
+    src: '/screenshots/dashboard.png',
+    alt: 'FlowGateway live dashboard with recent inbound activity, lead ledger and active API keys',
+  },
+  {
+    title: 'API Key & Flow Management',
+    body: 'Generate scoped API keys, bind them to a routing flow, and revoke them in one click. Keys are SHA-256 hashed at rest — they’re shown once at creation and never again.',
+    src: '/screenshots/api-keys.png',
+    alt: 'Generate API key panel with active keys table and routing flow selector',
+  },
+  {
+    title: 'Webhook Traffic Analytics',
+    body: 'Every inbound and outbound request is timestamped, status-coded, and inspectable. Click any row to see the full JSON payload that came in or went out.',
+    src: '/screenshots/analytics.png',
+    alt: 'Webhook traffic analytics table with timestamps, methods, status codes and View JSON buttons',
+  },
 ];
 
 const BROKER_SPECS = [
@@ -62,6 +140,29 @@ const TIERS = [
   },
 ];
 
+function FaqItem({ q, a }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border-b border-zinc-900">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-4 py-5 text-left"
+      >
+        <span className="text-sm font-medium text-zinc-100">{q}</span>
+        {open ? (
+          <Minus className="h-4 w-4 shrink-0 text-zinc-500" />
+        ) : (
+          <Plus className="h-4 w-4 shrink-0 text-zinc-500" />
+        )}
+      </button>
+      {open && (
+        <p className="pb-5 pr-8 text-sm leading-relaxed text-zinc-400">{a}</p>
+      )}
+    </div>
+  );
+}
+
 function Wordmark() {
   return (
     <div className="flex items-center gap-2">
@@ -85,8 +186,9 @@ export default function LandingPage() {
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
           <Link to="/"><Wordmark /></Link>
           <div className="hidden items-center gap-7 md:flex">
+            <a href="#features" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Features</a>
             <a href="#pricing" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Pricing</a>
-            <Link to="/docs" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Integrations</Link>
+            <a href="#faq" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">FAQ</a>
             <Link to="/docs" className="text-sm text-zinc-400 transition-colors hover:text-zinc-100">Docs</Link>
           </div>
           <div className="flex items-center gap-2">
@@ -145,6 +247,66 @@ export default function LandingPage() {
                 <span className="text-zinc-500">{s}</span>
               </span>
             ))}
+          </div>
+        </section>
+
+        {/* ── Product showcase ────────────────────────────────────────── */}
+        <section id="product" className="mx-auto max-w-6xl px-6 py-24">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-3 text-xs font-medium uppercase tracking-widest text-indigo-300">The dashboard</p>
+            <h2 className="text-3xl font-medium tracking-tight text-zinc-50">
+              Every lead, every dispatch, in one screen.
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-zinc-400">
+              No more cross-referencing CRMs and Zapier task histories. FlowGateway gives you a
+              single pane of glass over every inbound webhook, every routing decision, and every
+              outbound delivery — with the receipts to prove it.
+            </p>
+          </div>
+          <div className="space-y-20">
+            {SHOWCASE.map((s, i) => (
+              <div
+                key={s.title}
+                className={`grid grid-cols-1 items-center gap-10 lg:grid-cols-2 ${
+                  i % 2 === 1 ? 'lg:[&>*:first-child]:order-2' : ''
+                }`}
+              >
+                <div>
+                  <h3 className="text-xl font-medium tracking-tight text-zinc-50">{s.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-zinc-400">{s.body}</p>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900 shadow-2xl shadow-indigo-500/5">
+                  <img src={s.src} alt={s.alt} className="block h-auto w-full" loading="lazy" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Value props (metrics) ───────────────────────────────────── */}
+        <section className="border-t border-zinc-900 py-24">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="mb-12 max-w-2xl">
+              <h2 className="text-2xl font-medium tracking-tight text-zinc-50">
+                Numbers your buyers actually trust.
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+                Lead brokering is a trust business. FlowGateway gives you the operational
+                guarantees you need to charge premium per-lead rates without losing sleep.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+              {VALUE_PROPS.map((v) => (
+                <div key={v.title} className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+                  <div className="mb-4 flex h-9 w-9 items-center justify-center rounded-md bg-indigo-500/10">
+                    <v.icon className="h-5 w-5 text-indigo-400" />
+                  </div>
+                  <div className="font-mono text-3xl font-medium text-zinc-50">{v.metric}</div>
+                  <h3 className="mt-2 text-sm font-medium uppercase tracking-wider text-zinc-300">{v.title}</h3>
+                  <p className="mt-3 text-sm leading-relaxed text-zinc-400">{v.body}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -244,12 +406,39 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* ── FAQ ─────────────────────────────────────────────────────── */}
+        <section id="faq" className="border-t border-zinc-900 py-24">
+          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-12 px-6 md:grid-cols-3">
+            <div className="md:col-span-1">
+              <h2 className="text-2xl font-medium tracking-tight text-zinc-50">
+                Frequently asked questions
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+                Can&apos;t find what you&apos;re looking for? Reach out at{' '}
+                <a href="mailto:support@flowgateway.dev" className="text-indigo-400 hover:text-indigo-300">
+                  support@flowgateway.dev
+                </a>
+                .
+              </p>
+            </div>
+            <div className="md:col-span-2">
+              {FAQ.map((item) => (
+                <FaqItem key={item.q} q={item.q} a={item.a} />
+              ))}
+            </div>
+          </div>
+        </section>
+
         {/* ── Final CTA ───────────────────────────────────────────────── */}
         <section className="border-t border-zinc-900 py-24">
           <div className="mx-auto max-w-3xl px-6 text-center">
             <h2 className="text-3xl font-medium tracking-tight text-zinc-50">
               Stop losing leads to bad routing.
             </h2>
+            <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-zinc-400">
+              Set up takes ten minutes. Your first 500 leads are free. No credit card required, no
+              sales call, no &quot;book a demo&quot; gauntlet — just an API key and a dashboard.
+            </p>
             <button
               onClick={goToLogin}
               className="mt-8 inline-flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-400"
