@@ -145,9 +145,27 @@ export default function WebhookLogs({ planType, setUpgradeModal }) {
             </div>
             
             <div className="overflow-y-auto flex-1 rounded border border-slate-700/50 bg-slate-900 p-4 custom-scrollbar">
-              <pre className="font-mono text-[11px] leading-relaxed text-emerald-300">
-                {JSON.stringify(activePayload.request_payload, null, 2)}
-              </pre>
+              {activePayload.request_payload ? (
+                <pre className="font-mono text-[11px] leading-relaxed text-emerald-300">
+                  {JSON.stringify(activePayload.request_payload, null, 2)}
+                </pre>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-[11px] font-semibold text-amber-400">
+                    No request payload was captured for this log entry.
+                  </p>
+                  <pre className="font-mono text-[11px] leading-relaxed text-slate-400">
+                    {JSON.stringify({
+                      method: activePayload.method,
+                      status_code: activePayload.status_code,
+                      destination_id: activePayload.destination_id,
+                      webhook_id: activePayload.webhook_id,
+                      is_test: activePayload.is_test,
+                      created_at: activePayload.created_at,
+                    }, null, 2)}
+                  </pre>
+                </div>
+              )}
               {activePayload.response_error && (
                 <div className="mt-4 border-t border-rose-500/20 pt-4">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mb-2">Error Trace</div>
