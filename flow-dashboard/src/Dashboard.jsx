@@ -700,7 +700,7 @@ function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook
   const handleCopyWebhook = async () => {
     if (!generatedWebhook) return;
     try {
-      await navigator.clipboard.writeText(generatedWebhook.apiKey);
+      await navigator.clipboard.writeText(`Bearer ${generatedWebhook.apiKey}`);
       setWebhookCopied(true);
       setTimeout(() => setWebhookCopied(false), 2000);
     } catch { /* noop */ }
@@ -764,11 +764,11 @@ function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook
                   </div>
                   <div>
                     <div className="flex justify-between items-center mb-1 text-[10px] uppercase text-slate-500 font-semibold tracking-widest">
-                      <span>Raw API Key</span>
+                      <span>Authorization Header Value</span>
                       <button onClick={handleCopyWebhook} className="hover:text-cyan-400 flex items-center gap-1">{webhookCopied ? <ClipboardCheck className="h-3 w-3 text-emerald-400"/> : <Copy className="h-3 w-3"/>}</button>
                     </div>
                     <code className="block w-full rounded border border-slate-700/50 bg-slate-900 p-2 font-mono text-[10px] text-slate-300 break-all">
-                      {generatedWebhook.apiKey}
+                      {`Bearer ${generatedWebhook.apiKey}`}
                     </code>
                   </div>
                 </div>
