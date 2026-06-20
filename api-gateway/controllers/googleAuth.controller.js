@@ -19,8 +19,19 @@ const createOAuth2Client = () =>
     process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/auth/google/callback'
   );
 
+const isGoogleOAuthConfigured = () => {
+  const PLACEHOLDER = 'CHANGE_ME';
+  return ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_CALLBACK_URL'].every((k) => {
+    const v = process.env[k];
+    return v && v !== PLACEHOLDER && v !== 'change_me';
+  });
+};
 
 export const googleLogin = async (req, res) => {
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+  if (!isGoogleOAuthConfigured()) {
+    return res.redirect(`${FRONTEND_URL}/login?error=google_oauth_not_configured`);
+  }
   try {
     const oAuth2Client = createOAuth2Client();
     const authorizeUrl = oAuth2Client.generateAuthUrl({
@@ -35,6 +46,10 @@ export const googleLogin = async (req, res) => {
 };
 
 export const googleCallback = async (req, res) => {
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+  if (!isGoogleOAuthConfigured()) {
+    return res.redirect(`${FRONTEND_URL}/login?error=google_oauth_not_configured`);
+  }
   try {
     const code = req.query.code;
     if (!code) {
@@ -104,8 +119,6 @@ export const googleCallback = async (req, res) => {
 
     generateAuthCookie(user, res);
 
-    // Redirect back to frontend
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
     return res.redirect(`${FRONTEND_URL}/dashboard`);
   } catch (error) {
     console.error('Google callback error:', error);
