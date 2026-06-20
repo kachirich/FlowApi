@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Loader2, Mail, ArrowLeft, Zap, Database, Route, TestTube, Code } from "lucide-react";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
@@ -24,7 +24,7 @@ export default function Login() {
   const otpRefs = useRef([]);
   const [resetOtp, setResetOtp] = useState(["", "", "", "", "", ""]);
   const resetOtpRefs = useRef([]);
-  const [verifiedResetOtp, setVerifiedResetOtp] = useState("");
+  const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [confirmNewPasswordTouched, setConfirmNewPasswordTouched] = useState(false);
@@ -279,7 +279,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid code");
       toast.success("Code verified! Set your new password.");
-      setVerifiedResetOtp(otp);
+      setResetToken(data.reset_token);
       setStep("FORGOT_NEWPASS");
     } catch (err) {
       toast.error(err.message);
@@ -299,7 +299,7 @@ export default function Login() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, otp: verifiedResetOtp, newPassword }),
+        body: JSON.stringify({ email, reset_token: resetToken, newPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Reset failed");
@@ -308,7 +308,7 @@ export default function Login() {
       setNewPassword("");
       setConfirmNewPassword("");
       setResetOtp(["", "", "", "", "", ""]);
-      setVerifiedResetOtp("");
+      setResetToken("");
       setStep("LOGIN");
     } catch (err) {
       toast.error(err.message);
@@ -330,20 +330,6 @@ export default function Login() {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div className="relative flex min-h-screen flex-col lg:flex-row items-center lg:justify-center bg-zinc-950 px-4 lg:px-20 font-sans text-zinc-100 gap-12 lg:gap-24 py-12 overflow-y-auto">
-      <Toaster
-        position="top-center"
-        toastOptions={{
-          style: {
-            background: "#18181b",
-            color: "#fafafa",
-            border: "1px solid #27272a",
-            fontSize: "13px",
-          },
-          success: { iconTheme: { primary: "#10b981", secondary: "#18181b" } },
-          error: { iconTheme: { primary: "#ef4444", secondary: "#18181b" } },
-        }}
-      />
-
       {/* Left-hand column (logo, headline, and sub-headline) */}
       <div className="flex w-full max-w-2xl flex-col mt-24 lg:mt-0 pt-8 lg:pt-24 justify-center">
         {/* Brand Logo */}

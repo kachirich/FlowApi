@@ -702,12 +702,15 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
       });
     }
 
-    // Update the user's plan in the database
+    // Update the user's plan in the database.
+    // plan_type lives in user_billing (split out of users in migration 002),
+    // so we update there — that's the column requirePlan and /me actually read.
     const result = await query(
-      `UPDATE users
+      `UPDATE user_billing ub
        SET plan_type = $1
-       WHERE email = $2
-       RETURNING id, email, first_name, last_name, plan_type`,
+       FROM users u
+       WHERE ub.user_id = u.id AND u.email = $2
+       RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
       [newPlan, email.trim().toLowerCase()]
     );
 

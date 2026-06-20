@@ -1,7 +1,33 @@
 import "dotenv/config";
 import pg from "pg";
+import { createClient } from "redis";
 
 const { Pool } = pg;
+
+// Mirrors middleware/requirePlan.js:planCacheKey — keep formats in sync.
+const planCacheKey = (userId) => `user:${userId}:plan`;
+
+/**
+ * Best-effort invalidation of the Redis plan cache for the given user ids.
+ * Never throws — a Redis hiccup must not fail an otherwise-successful upgrade;
+ * the worst case is the cached value expires on its own 15-minute TTL.
+ */
+async function invalidatePlanCache(userIds) {
+  if (!userIds.length) return;
+  const client = createClient({
+    url: process.env.REDIS_URL || "redis://redis:6379",
+    socket: { connectTimeout: 5000 },
+  });
+  client.on("error", () => {}); // swallow — handled below
+  try {
+    await client.connect();
+    await Promise.all(userIds.map((id) => client.del(planCacheKey(id))));
+  } catch (err) {
+    console.warn(`[upgrade-users] ⚠ Could not invalidate plan cache (will expire via TTL): ${err.message}`);
+  } finally {
+    try { await client.quit(); } catch { /* already closed */ }
+  }
+}
 
 /**
  * Usage: node db/upgrade-users.js <plan> <email1> [<email2> ...]
@@ -33,11 +59,14 @@ async function upgradeUsers() {
   try {
     console.log(`\n[upgrade-users] Upgrading ${emails.length} user(s) to "${plan}"...`);
 
+    // plan_type lives in user_billing (split out of users in migration 002),
+    // so we update there — that's the column requirePlan and /me actually read.
     const result = await pool.query(
-      `UPDATE users
+      `UPDATE user_billing ub
        SET plan_type = $1
-       WHERE email = ANY($2::text[])
-       RETURNING id, email, plan_type`,
+       FROM users u
+       WHERE ub.user_id = u.id AND u.email = ANY($2::text[])
+       RETURNING u.id, u.email, ub.plan_type`,
       [plan, emails]
     );
 
@@ -45,6 +74,10 @@ async function upgradeUsers() {
       console.error(`[upgrade-users] ✘ No users found with the provided emails`);
       process.exit(1);
     }
+
+    // Invalidate the Redis plan cache so requirePlan/getPlanType see the new
+    // tier immediately instead of serving the stale 15-minute cached value.
+    await invalidatePlanCache(result.rows.map((u) => u.id));
 
     console.log(`\n[upgrade-users] ✔ Successfully upgraded ${result.rows.length} user(s):`);
     result.rows.forEach((user) => {

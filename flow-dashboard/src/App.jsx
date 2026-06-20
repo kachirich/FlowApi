@@ -18,15 +18,18 @@ import Zapier from "./pages/docs/integrations/Zapier";
 function App() {
   return (
     <ErrorBoundary>
-      <Toaster 
-        position="top-right" 
+      <Toaster
+        position="top-center"
         toastOptions={{
           style: {
-            background: '#0f172a',
-            color: '#f8fafc',
-            border: '1px solid rgba(51, 65, 85, 0.5)',
-          }
-        }} 
+            background: '#18181b',
+            color: '#fafafa',
+            border: '1px solid #27272a',
+            fontSize: '13px',
+          },
+          success: { iconTheme: { primary: '#10b981', secondary: '#18181b' } },
+          error: { iconTheme: { primary: '#ef4444', secondary: '#18181b' } },
+        }}
       />
       <Routes>
         <Route path="/terms" element={<TermsOfService />} />
