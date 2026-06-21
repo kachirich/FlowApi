@@ -7,6 +7,7 @@
  */
 import { query } from "../db/connection.js";
 import redisClient from "../utils/redisClient.js";
+import { PLAN_MONTHLY_GRANTS } from "../constants/creditPacks.js";
 
 const CACHE_TTL_SECONDS = 120;
 
@@ -49,6 +50,48 @@ export async function getMeteringState(destinationId) {
   }
 
   return state;
+}
+
+/**
+ * Grant monthly credits to a destination based on the user's plan_type.
+ * Idempotent: skips if a grant has already been issued for the current month
+ * (grant_expires_at > NOW()). Safe to call on destination create and plan upgrade.
+ *
+ * @param {string} destinationId
+ * @param {string} userId
+ * @param {string} planType  e.g. 'free', 'pro', 'plus'
+ */
+export async function grantMonthlyCredits(destinationId, userId, planType) {
+  const amount = PLAN_MONTHLY_GRANTS[planType] ?? PLAN_MONTHLY_GRANTS.free;
+
+  // Check if a grant was already issued for the current calendar month
+  const existing = await query(
+    "SELECT grant_expires_at FROM destination_balances WHERE destination_id = $1",
+    [destinationId]
+  );
+  if (existing.rows[0]?.grant_expires_at && new Date(existing.rows[0].grant_expires_at) > new Date()) {
+    return; // already granted this month
+  }
+
+  // Upsert balance row: increment balance + set grant metadata
+  await query(
+    `INSERT INTO destination_balances (destination_id, user_id, balance, monthly_grant, grant_expires_at)
+     VALUES ($1, $2, $3, $3, date_trunc('month', NOW()) + INTERVAL '1 month')
+     ON CONFLICT (destination_id) DO UPDATE SET
+       balance          = destination_balances.balance + $3,
+       monthly_grant    = $3,
+       grant_expires_at = date_trunc('month', NOW()) + INTERVAL '1 month',
+       updated_at       = NOW()`,
+    [destinationId, userId, amount]
+  );
+
+  await query(
+    `INSERT INTO balance_transactions (destination_id, user_id, type, amount, pack_name, note)
+     VALUES ($1, $2, 'credit', $3, 'monthly_grant', $4)`,
+    [destinationId, userId, amount, `Monthly grant — ${planType} plan`]
+  );
+
+  await invalidateMeteringCache(destinationId);
 }
 
 /** Delete the cached metering state for a destination. */

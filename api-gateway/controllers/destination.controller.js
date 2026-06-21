@@ -1,5 +1,6 @@
 import { query } from '../db/connection.js';
 import { validateWebhookUrl } from '../utils/security.js';
+import { grantMonthlyCredits } from '../services/destinationMetering.js';
 
 const sanitizeName = (str) => {
   if (typeof str !== 'string') return '';
@@ -69,6 +70,13 @@ export const createDestination = async (req, res, next) => {
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, name, target_url, daily_cap, is_active, created_at`,
       [userId, sanitizedName, target_url, cap, active]
+    );
+
+    // Issue the first monthly credit grant for this destination (fire-and-forget)
+    const billingRow = await query("SELECT plan_type FROM user_billing WHERE user_id = $1", [userId]);
+    const planType = billingRow.rows[0]?.plan_type || 'free';
+    grantMonthlyCredits(result.rows[0].id, userId, planType).catch((err) =>
+      console.error("[destination] Monthly grant failed:", err.message)
     );
 
     return res.status(201).json({

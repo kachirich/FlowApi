@@ -7,3 +7,14 @@ export const CREDIT_PACKS = {
   growth:  { credits: 2000,  label: 'Growth',  description: 'Most popular' },
   pro:     { credits: 10000, label: 'Pro',     description: 'High volume' },
 };
+
+/**
+ * Monthly credit grant per destination, keyed by plan_type.
+ * free/basic → 50  |  pro (Growth tier) → 1 000  |  plus (Enterprise) → 10 000
+ */
+export const PLAN_MONTHLY_GRANTS = {
+  free:  50,
+  basic: 50,
+  pro:   1000,
+  plus:  10000,
+};
