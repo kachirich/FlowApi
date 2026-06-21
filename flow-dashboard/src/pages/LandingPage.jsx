@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Inbox, Workflow, Gauge, ArrowRight, Check, Plus, Minus, Zap, ShieldCheck, BarChart3 } from 'lucide-react';
 
-const INTAKE_SOURCES = ['GHL', 'Tally', 'Typeform', 'Jotform', 'Zapier', 'n8n', 'Webflow', 'Make'];
+const INTAKE_SOURCES = ['GHL', 'Tally', 'Typeform', 'Jotform', 'Zapier', 'n8n', 'Webflow', 'Make', 'FB Ads'];
 
 const FEATURES = [
   {
@@ -60,7 +60,7 @@ const FAQ = [
   },
   {
     q: 'Which platforms can send leads in?',
-    a: 'Anything that can fire a webhook. We have first-class support for GoHighLevel, Tally, Typeform, Jotform, Webflow, Zapier, n8n, Make, and Facebook Lead Ads. The smart extractor handles arbitrarily nested JSON, so custom shapes work without any field mapping.',
+    a: 'Anything that can fire a webhook. We have step-by-step guides for GoHighLevel, Tally, Typeform, Jotform, Webflow, Zapier, n8n, Make, and Facebook Lead Ads (via GHL, Zapier, or Make). The smart extractor handles arbitrarily nested JSON, so custom shapes work without any field mapping.',
   },
   {
     q: 'What happens if my buyer’s endpoint is down?',
