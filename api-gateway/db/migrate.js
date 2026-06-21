@@ -26,14 +26,23 @@ const pool = new Pool({
 });
 
 /**
- * Connects to the postgres system database and creates the application
- * database if it does not exist yet. This handles fresh deployments where
- * the DB has never been initialised outside of Docker.
+ * Connects directly to the PostgreSQL server (bypassing pgbouncer) and
+ * creates the application database if it does not exist yet.
+ *
+ * PgBouncer only proxies the application database, so we must reach Postgres
+ * directly to run `CREATE DATABASE`. Two env vars allow callers to override
+ * the host/port for this system-level connection:
+ *   PG_DIRECT_HOST  — defaults to PGHOST  (direct pg-db hostname in Docker)
+ *   PG_DIRECT_PORT  — defaults to 5432    (direct Postgres port, not bouncer)
  */
 async function ensureDatabase() {
   const dbName = process.env.PGDATABASE || "flow_gateway";
   const sysClient = new Client({
+    host: process.env.PG_DIRECT_HOST || process.env.PGHOST || "localhost",
+    port: parseInt(process.env.PG_DIRECT_PORT || "5432", 10),
     database: "postgres",
+    user: process.env.PGUSER || "postgres",
+    password: process.env.PGPASSWORD,
     connectionTimeoutMillis: 10_000,
   });
   try {
@@ -43,13 +52,13 @@ async function ensureDatabase() {
       [dbName]
     );
     if (res.rowCount === 0) {
-      // CREATE DATABASE cannot run inside a transaction, use raw query
+      // CREATE DATABASE cannot run inside a transaction
       await sysClient.query(`CREATE DATABASE "${dbName}"`);
       console.log(`[migrate] Created database "${dbName}"`);
     }
   } catch (err) {
-    // If we can't reach the system database, let migrate() fail with its own
-    // error so the message is still meaningful.
+    // Log a clear warning but let migrate() run — it will produce its own
+    // meaningful error if the database genuinely doesn't exist.
     console.warn(`[migrate] Could not auto-create database: ${err.message}`);
   } finally {
     await sysClient.end().catch(() => {});
