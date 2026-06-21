@@ -41,7 +41,7 @@ apiClient.interceptors.response.use(
         if (!error.config?.url?.includes('/api/auth/me') && window.location.pathname !== '/login') {
           window.location.href = '/login';
         }
-      } else {
+      } else if (!error.config?.skipToast) {
         // Extract standardized error message from backend
         const errorMessage = data?.message || data?.error || error.message || 'An error occurred';
         toast.error(errorMessage);

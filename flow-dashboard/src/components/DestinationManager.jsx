@@ -44,7 +44,7 @@ export default function DestinationManager({ setActiveTab }) {
     const entries = await Promise.all(
       dests.map(async (d) => {
         try {
-          const r = await apiClient.get(`/api/destinations/${d.id}/balance`);
+          const r = await apiClient.get(`/api/destinations/${d.id}/balance`, { skipToast: true });
           return [d.id, r.data];
         } catch {
           return [d.id, null];
@@ -76,9 +76,9 @@ export default function DestinationManager({ setActiveTab }) {
 
   const refetchBalance = async (destId) => {
     try {
-      const r = await apiClient.get(`/api/destinations/${destId}/balance`);
+      const r = await apiClient.get(`/api/destinations/${destId}/balance`, { skipToast: true });
       setBalances((prev) => ({ ...prev, [destId]: r.data }));
-    } catch { /* interceptor handles toast */ }
+    } catch { /* silent — balance display gracefully absent if fetch fails */ }
   };
 
   const handleSubmit = async (e) => {
