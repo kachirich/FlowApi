@@ -14,6 +14,7 @@ import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
+import { webhookQueue } from "../services/queue.js";
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -639,33 +640,45 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
 router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
   try {
     const { id } = req.params;
-    
-    // Check if the lead exists
-    const leadResult = await query("SELECT * FROM ghl_leads WHERE id = $1 AND user_id = $2", [id, req.user.id]);
+
+    const leadResult = await query(
+      `SELECT gl.*, ub.plan_type, ub.tier
+       FROM ghl_leads gl
+       JOIN user_billing ub ON ub.user_id = gl.user_id
+       WHERE gl.id = $1 AND gl.user_id = $2`,
+      [id, req.user.id]
+    );
     if (leadResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Lead not found"
-      });
+      return res.status(404).json({ success: false, message: "Lead not found" });
     }
 
-    // Reset status to PENDING and retry count to 0
-    await query(`
-      UPDATE ghl_leads
-      SET delivery_status = 'PENDING',
-          retry_count = 0,
-          last_delivery_error = NULL
-      WHERE id = $1 AND user_id = $2
-    `, [id, req.user.id]);
+    const lead = leadResult.rows[0];
 
-    // Import and trigger queue worker instantly in background
-    const { processQueue } = await import("../utils/queueWorker.js");
-    processQueue();
+    await query(
+      `UPDATE ghl_leads
+       SET delivery_status = 'PENDING', retry_count = 0, last_delivery_error = NULL
+       WHERE id = $1 AND user_id = $2`,
+      [id, req.user.id]
+    );
 
-    return res.json({
-      success: true,
-      message: "Lead manually re-queued for delivery"
-    });
+    // Re-enqueue through the BullMQ dispatcher so delivery is logged
+    // with request_payload in webhook_logs (the legacy processQueue path did not).
+    await webhookQueue.add(
+      "dispatch",
+      {
+        userId: lead.user_id,
+        payload: lead.raw_payload ?? {},
+        contactId: lead.contact_id,
+        leadId: lead.id,
+        isTest: lead.is_test ?? false,
+        source: "refire",
+        flow_id: lead.flow_id ?? null,
+        plan_type: lead.plan_type ?? "free",
+      },
+      { attempts: 1, removeOnComplete: true, removeOnFail: false }
+    );
+
+    return res.json({ success: true, message: "Lead re-queued for delivery" });
   } catch (err) {
     next(err);
   }

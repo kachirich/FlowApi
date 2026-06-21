@@ -2,7 +2,6 @@ import "dotenv/config";
 import app from "./app.js";
 import { migrate } from "./db/migrate.js";
 import { closePool } from "./db/connection.js";
-import { startQueueWorker } from "./utils/queueWorker.js";
 import { startJanitorService } from "./services/janitor.service.js";
 import redisClient, { connectRedis } from "./utils/redisClient.js";
 import { redisClient as limiterRedisClient } from "./middleware/rateLimiter.js";
@@ -43,7 +42,6 @@ async function start() {
   try {
     await migrate();
     await connectRedis();
-    // startQueueWorker();
     startJanitorService();
     server = app.listen(PORT, HOST, () => {
       console.log(`[server] API Gateway listening on http://${HOST}:${PORT}`);

@@ -44,6 +44,18 @@ const INTEGRATIONS = [
     description: "Use Webhooks by Zapier or Make's HTTP module to connect any app.",
     steps: ['Create a new Zap/Scenario', 'Choose Webhooks / HTTP module', 'POST to the URL above', 'Add x-api-key as a request header'],
   },
+  {
+    name: 'Webflow',
+    tag: 'WF',
+    description: 'Forward Webflow form submissions to FlowGateway via Logic or a webhook integration.',
+    steps: ['Open your Webflow project', 'Go to Logic → Form submission trigger', 'Add an HTTP Request action', 'POST to the URL above with x-api-key header'],
+  },
+  {
+    name: 'Facebook Lead Ads',
+    tag: 'FB',
+    description: 'Route Facebook Lead Ads into FlowGateway via GoHighLevel, Zapier, or Make — no extra setup required.',
+    steps: ['Connect Facebook Lead Ads to GHL (or Zapier/Make)', 'Use the GHL Workflow webhook action (or Zapier HTTP step)', 'POST to the URL above', 'Add x-api-key as a request header'],
+  },
 ];
 
 function CopyButton({ value, label = 'Copy', iconOnly = false }) {
