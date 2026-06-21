@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import apiClient from '../utils/api';
-import { Plus, Trash2, Loader2, Shuffle, X, Lock, History, CreditCard } from 'lucide-react';
+import { Plus, Trash2, Loader2, Shuffle, X, History, CreditCard } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,12 +16,15 @@ const fmtDate = (s) =>
 
 export default function DestinationManager({ setActiveTab }) {
   const { user } = useAuth();
-  const isMeteringTier = user?.tier === 'growth' || user?.tier === 'enterprise';
+  const isAdmin = !!user?.is_admin;
 
   const [destinations, setDestinations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+
+  // Collapsible add form
+  const [addFormOpen, setAddFormOpen] = useState(false);
 
   // Form
   const [name, setName] = useState('');
@@ -37,7 +40,7 @@ export default function DestinationManager({ setActiveTab }) {
   const [requesting, setRequesting] = useState(false);
 
   const fetchBalances = async (dests) => {
-    if (!isMeteringTier || dests.length === 0) return;
+    if (dests.length === 0) return;
     const entries = await Promise.all(
       dests.map(async (d) => {
         try {
@@ -226,37 +229,48 @@ export default function DestinationManager({ setActiveTab }) {
         </p>
       </div>
 
-      {/* Create form */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-        <h3 className="text-lg font-medium text-zinc-100 mb-4 flex items-center gap-2">
-          <Plus className="h-4 w-4 text-indigo-400" />
-          Add routing destination
-        </h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Destination name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. KCB Bank, Pesapal" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Target URL</label>
-              <input type="url" value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://your-buyer.com/webhook" className={`${inputCls} font-mono`} />
-            </div>
+      {/* Create form — collapsible */}
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAddFormOpen((o) => !o)}
+          className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-zinc-800/50 transition-colors duration-150"
+        >
+          <span className="text-base font-medium text-zinc-100 flex items-center gap-2">
+            <Plus className="h-4 w-4 text-indigo-400" />
+            Add routing destination
+          </span>
+          <span className={`text-zinc-500 transition-transform duration-150 ${addFormOpen ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+        {addFormOpen && (
+          <div className="px-6 pb-6 border-t border-zinc-800 pt-4">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Destination name</label>
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. KCB Bank, Pesapal" className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Target URL</label>
+                  <input type="url" value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://your-buyer.com/webhook" className={`${inputCls} font-mono`} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div>
+                  <label className={labelCls}>Daily lead cap (0 = unlimited)</label>
+                  <input type="number" min="0" value={dailyCap} onChange={(e) => setDailyCap(e.target.value)} className={inputCls} />
+                </div>
+                <button
+                  type="submit"
+                  disabled={submitting || !name || !targetUrl}
+                  className="flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed h-9 w-full"
+                >
+                  {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</> : <><Plus className="h-4 w-4" /> Add destination</>}
+                </button>
+              </div>
+            </form>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-            <div>
-              <label className={labelCls}>Daily lead cap (0 = unlimited)</label>
-              <input type="number" min="0" value={dailyCap} onChange={(e) => setDailyCap(e.target.value)} className={inputCls} />
-            </div>
-            <button
-              type="submit"
-              disabled={submitting || !name || !targetUrl}
-              className="flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed h-9 w-full"
-            >
-              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</> : <><Plus className="h-4 w-4" /> Add destination</>}
-            </button>
-          </div>
-        </form>
+        )}
       </div>
 
       {/* Destination cards */}
@@ -309,107 +323,103 @@ export default function DestinationManager({ setActiveTab }) {
 
                 {/* Lead Metering section */}
                 <div className="mt-4 border-t border-zinc-800 pt-4">
-                  {!isMeteringTier ? (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm text-zinc-500">
-                        <Lock className="h-3.5 w-3.5" />
-                        Lead Metering — Growth plan required
-                      </div>
-                      <button
-                        onClick={() => setActiveTab && setActiveTab('pricing')}
-                        className="text-xs font-medium text-indigo-400 hover:text-indigo-300"
-                      >
-                        Upgrade →
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          {/* Toggle switch */}
-                          <button
-                            role="switch"
-                            aria-checked={metered}
-                            onClick={() => handleToggleMetering(dest)}
-                            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-150 ${metered ? 'bg-indigo-500' : 'bg-zinc-700'}`}
-                          >
-                            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all duration-150 ${metered ? 'left-[18px]' : 'left-0.5'}`} />
-                          </button>
-                          <div>
-                            <p className="text-sm font-medium text-zinc-200">Lead metering</p>
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        {/* Toggle switch */}
+                        <button
+                          role="switch"
+                          aria-checked={metered}
+                          onClick={() => handleToggleMetering(dest)}
+                          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors duration-150 ${metered ? 'bg-indigo-500' : 'bg-zinc-700'}`}
+                        >
+                          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all duration-150 ${metered ? 'left-[18px]' : 'left-0.5'}`} />
+                        </button>
+                        <div>
+                          <p className="text-sm font-medium text-zinc-200">Lead metering</p>
+                          {b?.monthly_grant > 0 ? (
+                            <p className="text-xs text-zinc-500">
+                              {fmtNum(b.monthly_grant)} credits/month
+                              {b.grant_expires_at ? ` · resets ${new Date(b.grant_expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}
+                            </p>
+                          ) : (
                             <p className="text-xs text-zinc-500">Track leads delivered to this buyer</p>
+                          )}
+                        </div>
+                      </div>
+                      {metered && balanceChip(b)}
+                    </div>
+
+                    {metered && (
+                      <div className="mt-4 space-y-4">
+                        {/* When credits run out */}
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-1.5">When credits run out</p>
+                          <div className="grid grid-cols-2 gap-2 max-w-xs">
+                            {['pause', 'continue'].map((action) => {
+                              const active = b.exhausted_action === action;
+                              return (
+                                <button
+                                  key={action}
+                                  onClick={() => handleSetAction(dest, action)}
+                                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
+                                    active ? 'bg-zinc-800 border-indigo-500 text-zinc-50' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                  }`}
+                                >
+                                  {action === 'pause' ? 'Pause delivery' : 'Keep delivering'}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-                        {metered && balanceChip(b)}
-                      </div>
 
-                      {metered && (
-                        <div className="mt-4 space-y-4">
-                          {/* When credits run out */}
-                          <div>
-                            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-1.5">When credits run out</p>
-                            <div className="grid grid-cols-2 gap-2 max-w-xs">
-                              {['pause', 'continue'].map((action) => {
-                                const active = b.exhausted_action === action;
-                                return (
-                                  <button
-                                    key={action}
-                                    onClick={() => handleSetAction(dest, action)}
-                                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
-                                      active ? 'bg-zinc-800 border-indigo-500 text-zinc-50' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600'
-                                    }`}
-                                  >
-                                    {action === 'pause' ? 'Pause delivery' : 'Keep delivering'}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-4">
+                          {isAdmin && (
                             <button
                               onClick={() => openTopUp(dest)}
                               className="flex items-center gap-1.5 rounded-md bg-zinc-800 border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-100 hover:bg-zinc-700 transition-colors duration-150"
                             >
                               <Plus className="h-3.5 w-3.5" /> Add Credits
                             </button>
-                            <button onClick={() => toggleHistory(dest.id)} className="flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300">
-                              <History className="h-3.5 w-3.5" /> {historyOpen[dest.id] ? 'Hide history' : 'View history'}
-                            </button>
-                          </div>
-
-                          {/* History */}
-                          {historyOpen[dest.id] && (
-                            <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
-                              {!txByDest[dest.id] ? (
-                                <div className="flex items-center gap-2 text-xs text-zinc-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading...</div>
-                              ) : txByDest[dest.id].length === 0 ? (
-                                <p className="text-xs text-zinc-500 italic">No transactions yet.</p>
-                              ) : (
-                                <ul className="space-y-1.5 font-mono text-xs">
-                                  {txByDest[dest.id].map((tx) => {
-                                    const pending = (tx.note || '').includes('PENDING');
-                                    const isCredit = tx.type === 'credit';
-                                    return (
-                                      <li key={tx.id} className="flex items-center justify-between gap-3">
-                                        <span className="text-zinc-600 shrink-0">[{fmtDate(tx.created_at)}]</span>
-                                        <span className={`flex-1 ${isCredit ? 'text-success' : 'text-zinc-500'} ${pending ? 'text-warning italic' : ''}`}>
-                                          {isCredit ? '✓ Credit' : '↓ Debit'}{' '}
-                                          {isCredit ? '+' : '-'}{fmtNum(tx.amount)}
-                                          {tx.pack_name ? ` · ${tx.pack_name} pack` : ''}
-                                          {pending ? ' · PENDING' : tx.note ? ` · ${tx.note}` : ''}
-                                        </span>
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                              )}
-                            </div>
                           )}
+                          <button onClick={() => toggleHistory(dest.id)} className="flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300">
+                            <History className="h-3.5 w-3.5" /> {historyOpen[dest.id] ? 'Hide history' : 'View history'}
+                          </button>
                         </div>
-                      )}
-                    </>
-                  )}
+
+                        {/* History */}
+                        {historyOpen[dest.id] && (
+                          <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3">
+                            {!txByDest[dest.id] ? (
+                              <div className="flex items-center gap-2 text-xs text-zinc-500"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading...</div>
+                            ) : txByDest[dest.id].length === 0 ? (
+                              <p className="text-xs text-zinc-500 italic">No transactions yet.</p>
+                            ) : (
+                              <ul className="space-y-1.5 font-mono text-xs">
+                                {txByDest[dest.id].map((tx) => {
+                                  const pending = (tx.note || '').includes('PENDING');
+                                  const isGrant = tx.pack_name === 'monthly_grant';
+                                  const isExpiry = tx.note === 'credit_expiry';
+                                  const isCredit = tx.type === 'credit';
+                                  return (
+                                    <li key={tx.id} className="flex items-center justify-between gap-3">
+                                      <span className="text-zinc-600 shrink-0">[{fmtDate(tx.created_at)}]</span>
+                                      <span className={`flex-1 ${isCredit ? 'text-success' : 'text-zinc-500'} ${pending ? 'text-warning italic' : ''}`}>
+                                        {isGrant ? '↻ Grant' : isExpiry ? '✕ Expired' : isCredit ? '✓ Credit' : '↓ Debit'}{' '}
+                                        {isCredit ? '+' : '-'}{fmtNum(tx.amount)}
+                                        {isGrant ? ' · monthly grant' : tx.pack_name ? ` · ${tx.pack_name} pack` : ''}
+                                        {pending ? ' · PENDING' : (!isGrant && !isExpiry && tx.note) ? ` · ${tx.note}` : ''}
+                                      </span>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 </div>
               </div>
             );

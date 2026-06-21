@@ -2,9 +2,10 @@
  * routes/destinationBalance.js — per-destination lead metering & credit balances.
  *
  * Mounted at BOTH /api/destinations (for /:id/balance/*) and /api/balance (for
- * /summary). JWT-authenticated. Metering features are gated to the Growth and
- * Enterprise *tiers* (users.tier) — note we gate on tier, not plan_type, because
- * "growth"/"enterprise" are tier values (plan_type is free/basic/pro/plus).
+ * /summary). JWT-authenticated. Metering is available on all plan types;
+ * monthly credit grants are sized by plan_type (free→50, pro→1k, plus→10k).
+ * Credit balances are admin-only immutable — users can toggle metering on/off
+ * but cannot self-issue credits.
  */
 import { Router } from "express";
 import authenticate from "../middleware/auth.js";
@@ -23,25 +24,6 @@ const router = Router();
 router.use(authenticate);
 
 /* ── Guards ─────────────────────────────────────────────────────────────── */
-
-// Gate metering features to Growth / Enterprise tiers (Sandbox is excluded).
-async function requireMeteringTier(req, res, next) {
-  try {
-    const r = await query("SELECT tier FROM user_billing WHERE user_id = $1", [req.user.id]);
-    const tier = r.rows[0]?.tier || "sandbox";
-    req.user.tier = tier;
-    if (tier !== "growth" && tier !== "enterprise") {
-      return res.status(403).json({
-        success: false,
-        error: "Upgrade required",
-        message: "Lead metering requires the Growth or Enterprise plan.",
-      });
-    }
-    next();
-  } catch (err) {
-    next(err);
-  }
-}
 
 // Verify the destination exists AND belongs to the requesting user.
 async function verifyOwnership(req, res, next) {
@@ -73,7 +55,7 @@ async function requireAdmin(req, res, next) {
 }
 
 /* ── GET /api/balance/summary ───────────────────────────────────────────── */
-router.get("/summary", requireMeteringTier, async (req, res, next) => {
+router.get("/summary", async (req, res, next) => {
   try {
     const r = await query(
       `SELECT
@@ -97,7 +79,7 @@ router.get("/summary", requireMeteringTier, async (req, res, next) => {
 });
 
 /* ── GET /api/destinations/:id/balance ──────────────────────────────────── */
-router.get("/:id/balance", requireMeteringTier, verifyOwnership, async (req, res, next) => {
+router.get("/:id/balance", verifyOwnership, async (req, res, next) => {
   try {
     const r = await query(
       "SELECT * FROM destination_balances WHERE destination_id = $1",
@@ -109,6 +91,8 @@ router.get("/:id/balance", requireMeteringTier, verifyOwnership, async (req, res
         is_metered: false,
         exhausted_action: "continue",
         balance: 0,
+        monthly_grant: 0,
+        grant_expires_at: null,
         total_purchased: 0,
         total_consumed: 0,
         low_balance: false,
@@ -117,13 +101,15 @@ router.get("/:id/balance", requireMeteringTier, verifyOwnership, async (req, res
     }
 
     const b = r.rows[0];
-    const low_balance = b.balance > 0 && b.balance < Math.ceil(b.total_purchased * 0.1);
+    const low_balance = b.balance > 0 && b.balance < Math.ceil(b.monthly_grant * 0.1);
     const paused = b.is_metered && b.exhausted_action === "pause" && b.balance === 0;
 
     return res.status(200).json({
       is_metered: b.is_metered,
       exhausted_action: b.exhausted_action,
       balance: b.balance,
+      monthly_grant: b.monthly_grant,
+      grant_expires_at: b.grant_expires_at,
       total_purchased: b.total_purchased,
       total_consumed: b.total_consumed,
       low_balance,
@@ -137,20 +123,11 @@ router.get("/:id/balance", requireMeteringTier, verifyOwnership, async (req, res
 /* ── PUT /api/destinations/:id/balance/settings ─────────────────────────── */
 router.put(
   "/:id/balance/settings",
-  requireMeteringTier,
   verifyOwnership,
   validateRequest(balanceSettingsSchema),
   async (req, res, next) => {
     try {
       const { is_metered, exhausted_action } = req.body;
-
-      // requireMeteringTier already blocks Sandbox; this is defence-in-depth.
-      if (is_metered === true && req.user.tier !== "growth" && req.user.tier !== "enterprise") {
-        return res.status(403).json({
-          success: false,
-          message: "Lead metering requires the Growth or Enterprise plan.",
-        });
-      }
 
       const r = await query(
         `INSERT INTO destination_balances (destination_id, user_id, is_metered, exhausted_action)
@@ -176,6 +153,8 @@ router.put(
         is_metered: b.is_metered,
         exhausted_action: b.exhausted_action,
         balance: b.balance,
+        monthly_grant: b.monthly_grant,
+        grant_expires_at: b.grant_expires_at,
         total_purchased: b.total_purchased,
         total_consumed: b.total_consumed,
       });
@@ -188,7 +167,6 @@ router.put(
 /* ── GET /api/destinations/:id/balance/transactions ─────────────────────── */
 router.get(
   "/:id/balance/transactions",
-  requireMeteringTier,
   verifyOwnership,
   async (req, res, next) => {
     try {
@@ -212,10 +190,11 @@ router.get(
 );
 
 /* ── POST /api/destinations/:id/balance/top-up-request ──────────────────── */
+// Admin-only: credit balances are immutable to regular users.
 router.post(
   "/:id/balance/top-up-request",
-  requireMeteringTier,
   verifyOwnership,
+  requireAdmin,
   validateRequest(topUpRequestSchema),
   async (req, res, next) => {
     // TODO: Replace this handler with a Stripe checkout session once
@@ -280,6 +259,8 @@ router.post(
         is_metered: b.is_metered,
         exhausted_action: b.exhausted_action,
         balance: b.balance,
+        monthly_grant: b.monthly_grant,
+        grant_expires_at: b.grant_expires_at,
         total_purchased: b.total_purchased,
         total_consumed: b.total_consumed,
       });

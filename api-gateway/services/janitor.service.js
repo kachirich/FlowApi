@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { query } from "../db/connection.js";
 import { enqueueNotification, notificationQueue } from "./notification.queue.js";
 import { NOTIFICATION_TYPES } from "./notification.service.js";
+import { grantMonthlyCredits } from "./destinationMetering.js";
 
 /**
  * Janitor Service — Log Retention Enforcer + Nightly Housekeeping
@@ -48,6 +49,42 @@ async function purgeExpiredLogs() {
     console.log(`[janitor]   Expired OTPs:       ${otpResult.rowCount || 0} removed`);
   } catch (err) {
     console.error("[janitor] Error during log retention sweep:", err.message);
+  }
+}
+
+async function expireAndRenewMonthlyGrants() {
+  console.log("[janitor] Running monthly credit grant expiry + renewal...");
+  try {
+    // Find metered destinations whose grant has expired
+    const expired = await query(`
+      SELECT db.destination_id, db.user_id, db.balance, ub.plan_type
+      FROM destination_balances db
+      JOIN user_billing ub ON ub.user_id = db.user_id
+      WHERE db.grant_expires_at <= NOW()
+        AND db.monthly_grant > 0
+    `);
+
+    let expired_count = 0;
+    for (const row of expired.rows) {
+      // Zero out remaining balance (unused credits don't roll over)
+      if (row.balance > 0) {
+        await query(
+          `UPDATE destination_balances SET balance = 0, updated_at = NOW() WHERE destination_id = $1`,
+          [row.destination_id]
+        );
+        await query(
+          `INSERT INTO balance_transactions (destination_id, user_id, type, amount, note)
+           VALUES ($1, $2, 'debit', $3, 'credit_expiry')`,
+          [row.destination_id, row.user_id, row.balance]
+        );
+      }
+      // Issue the new month's grant
+      await grantMonthlyCredits(row.destination_id, row.user_id, row.plan_type || 'free');
+      expired_count++;
+    }
+    console.log(`[janitor] Monthly grant renewal complete — ${expired_count} destinations refreshed`);
+  } catch (err) {
+    console.error("[janitor] Error during monthly grant expiry:", err.message);
   }
 }
 
@@ -106,10 +143,15 @@ export function startJanitorService() {
     purgeExpiredLogs();
   });
 
+  // Monthly grant expiry + renewal — 1st of each month at 00:01 UTC
+  cron.schedule("1 0 1 * *", () => {
+    expireAndRenewMonthlyGrants();
+  });
+
   // Weekly digest — every Monday at 09:00 UTC
   cron.schedule("0 9 * * 1", () => {
     sendWeeklyDigests();
   });
 
-  return { purgeExpiredLogs, sendWeeklyDigests };
+  return { purgeExpiredLogs, sendWeeklyDigests, expireAndRenewMonthlyGrants };
 }

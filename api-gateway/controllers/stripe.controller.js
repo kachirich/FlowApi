@@ -3,6 +3,7 @@ import { query } from '../db/connection.js';
 import { redisClient } from '../middleware/rateLimiter.js';
 import { planCacheKey } from '../middleware/requirePlan.js';
 import { enqueueNotification, NOTIFICATION_TYPES } from '../services/notifications.js';
+import { grantMonthlyCredits } from '../services/destinationMetering.js';
 
 // Lazy load Stripe instance to avoid ES module hoisting traps
 let stripe;
@@ -121,6 +122,13 @@ export const handleStripeWebhook = async (req, res) => {
             console.error('[stripe-webhook] Redis cache invalidation error:', e.message)
           );
           console.log(`[stripe-webhook] ✅ User ${userId} upgraded to ${planTier}`);
+
+          // Re-grant monthly credits to all existing destinations for the new plan
+          query("SELECT id FROM destinations WHERE user_id = $1 AND is_active = TRUE", [userId])
+            .then(({ rows }) =>
+              Promise.all(rows.map((d) => grantMonthlyCredits(d.id, userId, planTier)))
+            )
+            .catch((e) => console.error('[stripe-webhook] Monthly grant error:', e.message));
 
           // Fire-and-forget welcome-to-<plan> email
           const DISPLAY = { basic: 'Starter', pro: 'Growth', plus: 'Enterprise' };

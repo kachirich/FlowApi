@@ -270,6 +270,10 @@ export async function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS idx_balance_tx_dest
         ON balance_transactions(destination_id, created_at DESC);
 
+      -- Monthly credit grants per destination (plan-based, expire end-of-month)
+      ALTER TABLE destination_balances ADD COLUMN IF NOT EXISTS monthly_grant INT NOT NULL DEFAULT 0;
+      ALTER TABLE destination_balances ADD COLUMN IF NOT EXISTS grant_expires_at TIMESTAMPTZ;
+
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin
         BOOLEAN NOT NULL DEFAULT FALSE;
 
