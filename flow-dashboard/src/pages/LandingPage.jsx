@@ -92,10 +92,10 @@ const SHOWCASE = [
     alt: 'FlowGateway live dashboard with recent inbound activity, lead ledger and active API keys',
   },
   {
-    title: 'API Key & Flow Management',
-    body: 'Generate scoped API keys, bind them to a routing flow, and revoke them in one click. Keys are SHA-256 hashed at rest — they’re shown once at creation and never again.',
+    title: 'API Keys, Flows & the Lead Vault',
+    body: 'Bind each scoped API key to a routing flow and revoke it in one click — keys are SHA-256 hashed at rest and shown once at creation, never again. The Lead Vault below logs every captured lead with its score and delivery status, and lets you re-fire any failed delivery on demand.',
     src: '/screenshots/api-keys.png',
-    alt: 'Generate API key panel with active keys table and routing flow selector',
+    alt: 'Active API keys table with routing flow selector above a lead vault showing scored leads and a re-fire action on a failed delivery',
   },
   {
     title: 'Webhook Traffic Analytics',
