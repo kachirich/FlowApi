@@ -10,11 +10,11 @@ services:
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
-      POSTGRES_DB: ${PGDATABASE:-flow_gateway}
+      POSTGRES_DB: ${PGDATABASE:-flowapi_gateway}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flow_gateway}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flowapi_gateway}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,14 +24,14 @@ services:
   # PgBouncer Connection Pooler
   # ────────────────────────────────────────────────────────────────────────────
   pgbouncer:
-    image: bitnami/pgbouncer:latest
+    image: bitnamilegacy/pgbouncer:latest
     restart: unless-stopped
     ports:
       - "127.0.0.1:6432:6432"
     environment:
       POSTGRESQL_USERNAME: ${PGUSER:-postgres}
       POSTGRESQL_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
-      POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
+      POSTGRESQL_DATABASE: ${PGDATABASE:-flowapi_gateway}
       POSTGRESQL_HOST: pg-db
       PGBOUNCER_POOL_MODE: transaction
       PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits,statement_timeout
@@ -39,11 +39,11 @@ services:
       pg-db:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${PGUSER:-postgres}" ]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6432' 2>/dev/null && exit 0 || exit 1"]
       interval: 5s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 5
+      start_period: 30s
 
   # ────────────────────────────────────────────────────────────────────────────
   # Redis Cache / Rate Limiter
@@ -76,10 +76,10 @@ services:
       PGHOST: pgbouncer
       PGPORT: 6432
       REDIS_URL: redis://redis:6379
-      FRONTEND_URL: https://flowgateway.dev
-      BASE_URL: https://flowgateway.dev
-      GOOGLE_CALLBACK_URL: https://flowgateway.dev/api/auth/google/callback
-      CORS_ORIGIN: https://flowgateway.dev
+      FRONTEND_URL: http://localhost:5173
+      BASE_URL: http://localhost:3000
+      GOOGLE_CALLBACK_URL: http://localhost:3000/api/auth/google/callback
+      CORS_ORIGIN: http://localhost:5173
     depends_on:
       pgbouncer:
         condition: service_healthy
