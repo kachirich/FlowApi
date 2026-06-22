@@ -15,10 +15,10 @@ Real-time view of inbound activity, vaulted leads, lead scoring, and delivery st
 
 ![FlowGateway Live Dashboard](docs/images/dashboard.png)
 
-### API Keys & Routing Flows
-Generate scoped API keys, bind each one to a routing flow, and revoke in one click. Keys are SHA-256 hashed at rest and shown exactly once.
+### API Keys, Routing Flows & the Lead Vault
+Bind each scoped API key to a routing flow and revoke it in one click — keys are SHA-256 hashed at rest and shown exactly once. Below it, the Lead Vault records every captured lead with its score and delivery status, and lets you re-fire any failed delivery on demand.
 
-![API Key & Flow Management](docs/images/api-keys.png)
+![API keys, routing flows and the lead vault with re-fire](docs/images/api-keys.png)
 
 ### Webhook Traffic Analytics
 Every inbound and outbound request is timestamped, status-coded, and inspectable. Click a row to view the raw JSON payload.
