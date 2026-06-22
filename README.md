@@ -37,18 +37,21 @@ FlowAPI eliminates that gap entirely. Your leads move from capture to your buyer
 
 ## How It Works
 
-```
-                 ┌──────────────────────────────────────────┐
-Lead Source ───▶ │  FlowAPI Gateway (Express + BullMQ)      │ ───▶ Buyer CRM
- (Tally,         │  ┌──────────┐  ┌─────────┐  ┌──────────┐ │      (GHL,
-  Typeform,      │  │  Score & │─▶│  Queue  │─▶│ Dispatch │ │       Salesforce,
-  GHL, n8n,      │  │  Vault   │  │ (Redis) │  │  (HTTP)  │ │       custom)
-  Facebook)      │  └────┬─────┘  └────┬────┘  └────┬─────┘ │
-                 │       │             │            │       │
-                 │       ▼             ▼            ▼       │
-                 │   Postgres        BullMQ      DNS+SSRF   │
-                 │  (ghl_leads)    (retries)      checks    │
-                 └──────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    Src["Lead Source<br/>Tally · Typeform · GHL · n8n · Facebook"]
+
+    subgraph Gateway["FlowAPI Gateway — Express + BullMQ"]
+        direction LR
+        Score["Score &amp; Vault"] --> Queue["Queue · Redis"] --> Dispatch["Dispatch · HTTP"]
+    end
+
+    Src --> Score
+    Dispatch --> CRM["Buyer CRM<br/>GHL · Salesforce · custom"]
+
+    Score -.-> PG[("Postgres<br/>ghl_leads")]
+    Queue -.-> BMQ[("BullMQ<br/>retries")]
+    Dispatch -.-> SSRF{{"DNS + SSRF<br/>checks"}}
 ```
 
 **1. Inbound Capture** — Push any JSON payload to your unique webhook endpoint using your API key. FlowAPI accepts data from any source — GoHighLevel, web forms, affiliate networks, or custom integrations.
@@ -90,6 +93,8 @@ Lead Source ───▶ │  FlowAPI Gateway (Express + BullMQ)      │ ──
 ---
 
 ## Pricing
+
+![FlowGateway pricing tiers](docs/images/pricing.png)
 
 | | **Sandbox** | **Growth** | **Enterprise** |
 |---|---|---|---|
