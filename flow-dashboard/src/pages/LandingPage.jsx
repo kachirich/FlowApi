@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Inbox, Workflow, Gauge, ArrowRight, Check, Plus, Minus, Zap, ShieldCheck, BarChart3 } from 'lucide-react';
+import { Inbox, Workflow, Gauge, Send, ArrowRight, Check, Plus, Minus, Zap, ShieldCheck, BarChart3 } from 'lucide-react';
 
 const INTAKE_SOURCES = ['GHL', 'Tally', 'Typeform', 'Jotform', 'Zapier', 'n8n', 'Webflow', 'Make', 'FB Ads'];
 
@@ -23,9 +23,9 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { n: '01', title: 'INTAKE', body: 'Connect GHL, Tally, or anything that fires a webhook.' },
-  { n: '02', title: 'ROUTE', body: 'Build flows that send leads to the right buyer or CRM.' },
-  { n: '03', title: 'DISPATCH', body: 'Every lead delivered, logged, and counted in real time.' },
+  { n: '01', icon: Inbox, title: 'INTAKE', body: 'Connect GHL, Tally, or anything that fires a webhook.' },
+  { n: '02', icon: Workflow, title: 'ROUTE', body: 'Build flows that send leads to the right buyer or CRM.' },
+  { n: '03', icon: Send, title: 'DISPATCH', body: 'Every lead delivered, logged, and counted in real time.' },
 ];
 
 const VALUE_PROPS = [
@@ -328,13 +328,29 @@ export default function LandingPage() {
         {/* ── How it works ────────────────────────────────────────────── */}
         <section className="border-t border-zinc-900 py-24">
           <div className="mx-auto max-w-6xl px-6">
-            <div className="grid grid-cols-1 gap-10 md:grid-cols-3">
-              {STEPS.map((s) => (
-                <div key={s.n}>
-                  <div className="font-mono text-4xl font-light text-zinc-700">{s.n}</div>
-                  <h3 className="mt-4 text-sm font-medium uppercase tracking-wider text-zinc-50">{s.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{s.body}</p>
-                </div>
+            <div className="mb-14 max-w-2xl">
+              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-indigo-300">How it works</p>
+              <h2 className="text-3xl font-medium tracking-tight text-zinc-50">
+                Three steps from webhook to buyer.
+              </h2>
+            </div>
+            <div className="flex flex-col items-stretch gap-6 md:flex-row md:items-center">
+              {STEPS.map((s, i) => (
+                <Fragment key={s.n}>
+                  <div className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-md border border-zinc-800 bg-zinc-950 text-indigo-400">
+                        <s.icon className="h-5 w-5" />
+                      </div>
+                      <span className="font-mono text-sm text-zinc-600">{s.n}</span>
+                    </div>
+                    <h3 className="mt-4 text-sm font-medium uppercase tracking-wider text-zinc-50">{s.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-zinc-400">{s.body}</p>
+                  </div>
+                  {i < STEPS.length - 1 && (
+                    <ArrowRight className="mx-auto h-5 w-5 shrink-0 rotate-90 text-zinc-700 md:rotate-0" aria-hidden="true" />
+                  )}
+                </Fragment>
               ))}
             </div>
           </div>
