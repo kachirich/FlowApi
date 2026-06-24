@@ -73,18 +73,19 @@ export const worker = new Worker(
 
     try {
       const parsedUrl = new URL(targetUrl);
-      const resolved = await dns.lookup(parsedUrl.hostname);
-      const ip = resolved.address;
-      
-      if (
-        ip.startsWith("127.") ||
-        ip.startsWith("10.") ||
-        ip.startsWith("192.168.") ||
-        ip.startsWith("169.254.") ||
-        ip === "0.0.0.0"
-      ) {
-        throw new UnrecoverableError("DNS Rebinding Blocked: Target URL resolves to an internal address.");
-      }
+      // DNS Rebinding protection — temporarily disabled for http-allowed branch.
+      // const resolved = await dns.lookup(parsedUrl.hostname);
+      // const ip = resolved.address;
+      //
+      // if (
+      //   ip.startsWith("127.") ||
+      //   ip.startsWith("10.") ||
+      //   ip.startsWith("192.168.") ||
+      //   ip.startsWith("169.254.") ||
+      //   ip === "0.0.0.0"
+      // ) {
+      //   throw new UnrecoverableError("DNS Rebinding Blocked: Target URL resolves to an internal address.");
+      // }
 
       const forwardResponse = await axios({
         method: (method || "POST").toLowerCase(),

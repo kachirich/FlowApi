@@ -229,7 +229,7 @@ export default function DestinationManager({ setActiveTab }) {
                 </div>
                 <div>
                   <label className={labelCls}>Target URL</label>
-                  <input type="url" value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://your-buyer.com/webhook" className={`${inputCls} font-mono`} />
+                  <input type="text" value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder="https://your-buyer.com/webhook" className={`${inputCls} font-mono`} />
                 </div>
               </div>
               <div>

@@ -40,9 +40,9 @@ export default function WebhookConfig({
         <div className="space-y-4">
           <div>
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Target URL</label>
-            <input 
-              type="url" 
-              value={targetUrl} 
+            <input
+              type="text"
+              value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)} 
               placeholder="https://your-destination.com/webhook" 
               className="w-full rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 font-mono text-xs text-slate-200 outline-none transition focus:border-cyan-500/40 placeholder:text-slate-600" 
