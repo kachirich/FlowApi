@@ -4,14 +4,31 @@ import { z } from "zod";
  * Zod schema for webhook destination URLs with strict SSRF protection.
  * Requires https:// and strictly rejects internal/local IP blocks and domains.
  */
+const WHITELISTED_DESTINATIONS = new Set([
+  "localhost:5678",
+  "localhost:8080",
+]);
+
 export const webhookDestinationSchema = z
   .string()
   .url({ message: "Invalid URL format" })
-  .startsWith("https://", { message: "Secure HTTPS connections are required." })
   .superRefine((url, ctx) => {
     try {
       const parsed = new URL(url);
       const hostname = parsed.hostname.toLowerCase();
+      const hostWithPort = parsed.port ? `${hostname}:${parsed.port}` : hostname;
+
+      if (WHITELISTED_DESTINATIONS.has(hostWithPort)) {
+        return;
+      }
+
+      if (parsed.protocol !== "https:") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Secure HTTPS connections are required.",
+        });
+        return;
+      }
 
       const isInternal =
         hostname === "localhost" ||

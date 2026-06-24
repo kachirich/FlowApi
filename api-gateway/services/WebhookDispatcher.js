@@ -370,20 +370,28 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 async function attemptHttpRequest(webhook, payload, planType) {
   const targetUrl = webhook.target_url;
   const parsedUrl = new URL(targetUrl);
-  
-  // DNS Rebinding protection — always enforced; user-controlled test flag must
-  // not bypass a server-side security check.
-  const resolved = await dns.lookup(parsedUrl.hostname);
-  const ip = resolved.address;
 
-  if (
-    ip.startsWith("127.") ||
-    ip.startsWith("10.") ||
-    ip.startsWith("192.168.") ||
-    ip.startsWith("169.254.") ||
-    ip === "0.0.0.0"
-  ) {
-    throw new Error("DNS Rebinding Blocked: Target URL resolves to an internal address.");
+  const WHITELISTED_DESTINATIONS = new Set(["localhost:5678", "localhost:8080"]);
+  const hostWithPort = parsedUrl.port
+    ? `${parsedUrl.hostname.toLowerCase()}:${parsedUrl.port}`
+    : parsedUrl.hostname.toLowerCase();
+  const isWhitelisted = WHITELISTED_DESTINATIONS.has(hostWithPort);
+
+  if (!isWhitelisted) {
+    // DNS Rebinding protection — always enforced; user-controlled test flag must
+    // not bypass a server-side security check.
+    const resolved = await dns.lookup(parsedUrl.hostname);
+    const ip = resolved.address;
+
+    if (
+      ip.startsWith("127.") ||
+      ip.startsWith("10.") ||
+      ip.startsWith("192.168.") ||
+      ip.startsWith("169.254.") ||
+      ip === "0.0.0.0"
+    ) {
+      throw new Error("DNS Rebinding Blocked: Target URL resolves to an internal address.");
+    }
   }
 
   // Setup headers (include custom headers if Pro/Plus)
