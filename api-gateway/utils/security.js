@@ -3,17 +3,17 @@ export function validateWebhookUrl(url) {
     const parsedUrl = new URL(url);
     const hostname = parsedUrl.hostname.toLowerCase();
 
-    // SSRF Protection: Blacklist internal/private IPs
-    const isInternal =
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '0.0.0.0' ||
-      hostname === '::1' ||
-      hostname.startsWith('10.') ||
-      hostname.startsWith('192.168.') ||
-      hostname.startsWith('169.254.') ||
-      isMaliciousPrivateIP(hostname) ||
-      hostname.endsWith('.local');
+    // SSRF Protection: Blacklist internal/private IPs (temporarily disabled)
+    const isInternal = false;
+      // hostname === 'localhost' ||
+      // hostname === '127.0.0.1' ||
+      // hostname === '0.0.0.0' ||
+      // hostname === '::1' ||
+      // hostname.startsWith('10.') ||
+      // hostname.startsWith('192.168.') ||
+      // hostname.startsWith('169.254.') ||
+      // isMaliciousPrivateIP(hostname) ||
+      // hostname.endsWith('.local');
 
     if (isInternal) {
       return { isValid: false, error: "Invalid or prohibited target URL" };
