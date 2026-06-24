@@ -1,8 +1,12 @@
 import { z } from "zod";
 
-export const webhookDestinationSchema = z
-  .string()
-  .url({ message: "Invalid URL format" });
+export const webhookDestinationSchema = z.string().superRefine((val, ctx) => {
+  try {
+    new URL(val);
+  } catch {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid URL format" });
+  }
+});
 
 /**
  * Zod schema for JSON mapping keys/values.
