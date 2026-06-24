@@ -11,10 +11,15 @@ const WHITELISTED_DESTINATIONS = new Set([
 
 export const webhookDestinationSchema = z
   .string()
-  .url({ message: "Invalid URL format" })
   .superRefine((url, ctx) => {
+    let parsed;
     try {
-      const parsed = new URL(url);
+      parsed = new URL(url);
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid URL format" });
+      return;
+    }
+    try {
       const hostname = parsed.hostname.toLowerCase();
       const hostWithPort = parsed.port ? `${hostname}:${parsed.port}` : hostname;
 
@@ -102,10 +107,7 @@ export const webhookDestinationSchema = z
         });
       }
     } catch {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Malformed URL.",
-      });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Malformed URL." });
     }
   });
 
