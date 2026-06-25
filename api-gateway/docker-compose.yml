@@ -3,18 +3,18 @@ services:
   # PostgreSQL database
   # ────────────────────────────────────────────────────────────────────────────
   pg-db:
-    image: postgres:16.4-alpine@sha256:d1c73d20aa46fced7032b9ce0a0b90f9fbae9f4f95fa0d58f1d0e5797c48aeb5
+    image: postgres:16.4-alpine
     restart: unless-stopped
     ports:
       - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_USER: ${PGUSER:-postgres}
       POSTGRES_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
-      POSTGRES_DB: ${PGDATABASE:-flow_gateway}
+      POSTGRES_DB: ${PGDATABASE:-flowapi_gateway}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flow_gateway}" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-flowapi_gateway}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,14 +24,14 @@ services:
   # PgBouncer Connection Pooler (using edoburu/pgbouncer — actively maintained)
   # ────────────────────────────────────────────────────────────────────────────
   pgbouncer:
-    image: edoburu/pgbouncer:1.23.1@sha256:39b76c7f3f67f5e1f6a5b2c1f8a9d3e2c1f6a5b2c1f8a9d3e2c1f6a5b2c1f8a
+    image: bitnami/pgbouncer:1.23.1
     restart: unless-stopped
     ports:
       - "127.0.0.1:6432:6432"
     environment:
       POSTGRESQL_USERNAME: ${PGUSER:-postgres}
       POSTGRESQL_PASSWORD: ${PGPASSWORD:?PGPASSWORD must be set in .env}
-      POSTGRESQL_DATABASE: ${PGDATABASE:-flow_gateway}
+      POSTGRESQL_DATABASE: ${PGDATABASE:-flowapi_gateway}
       POSTGRESQL_HOST: pg-db
       PGBOUNCER_POOL_MODE: transaction
       PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits,statement_timeout
@@ -50,7 +50,7 @@ services:
   # Persistence: append-only file (AOF) prevents data loss on crash
   # ────────────────────────────────────────────────────────────────────────────
   redis:
-    image: redis:7.4-alpine@sha256:a9e8aa4a8a46742e4dd19e6aa50b6ab88e5d0903ad6af86a57c3c7a0b1e3f7c9
+    image: redis:7.4-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     ports:
