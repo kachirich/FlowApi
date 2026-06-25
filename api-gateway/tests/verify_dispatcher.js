@@ -2,7 +2,8 @@ import 'dotenv/config';
 import request from 'supertest';
 import express from 'express';
 import app from '../app.js';
-import { query, initializeDatabase } from '../db/connection.js';
+import { query } from '../db/connection.js';
+import { migrate } from '../db/migrate.js';
 import redisClient, { connectRedis } from '../utils/redisClient.js';
 
 async function run() {
@@ -28,7 +29,7 @@ async function run() {
   const server2 = receiverApp2.listen(4502);
 
   try {
-    await initializeDatabase();
+    await migrate();
     await connectRedis();
 
     // 1. Setup Test Broker User

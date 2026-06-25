@@ -120,7 +120,7 @@ export async function dedupCheck(key, ttlSeconds) {
   try {
     const exists = await redisClient.get(key);
     if (exists) return true;
-    await redisClient.set(key, '1', { EX: ttlSeconds });
+    await redisClient.set(key, '1', 'EX', ttlSeconds);
     return false;
   } catch {
     return false; // on Redis error, allow the send

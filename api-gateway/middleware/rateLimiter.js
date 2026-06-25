@@ -1,38 +1,13 @@
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import rateLimit from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
-import { createClient } from "redis";
+import redisClient from "../utils/redisClient.js";
+import logger from "../utils/logger.js";
 import { query } from "../db/connection.js";
 
-// Create a Redis client. Uses REDIS_URL from the environment.
-export const redisClient = createClient({
-  url: process.env.REDIS_URL || "redis://127.0.0.1:6379",
-  socket: {
-    // Fail a connection attempt after 5s instead of hanging indefinitely.
-    connectTimeout: 5000,
-    // Exponential backoff capped at 10s; give up after 10 attempts so a Redis
-    // outage doesn't wedge the rate limiters with an unbounded retry loop.
-    reconnectStrategy: (retries) => {
-      if (retries > 10) {
-        return new Error("[Redis] Max reconnection attempts reached");
-      }
-      return Math.min(retries * 200, 10000);
-    },
-  },
-});
-
-// Add error listener to prevent unhandled promise rejections / app crashes
-redisClient.on("error", (err) => {
-  console.error("[Redis] Client error:", err.message);
-});
-
-// Connect to Redis. In production, you would handle connection errors robustly.
-try {
-  if (!redisClient.isOpen) {
-    await redisClient.connect();
-  }
-} catch (err) {
-  console.error("[Redis] Failed to connect on startup:", err.message);
-}
+// Re-export the shared ioredis singleton so existing importers that pull
+// `redisClient` from this module (routes, controllers, requirePlan) keep
+// working after the node-redis → ioredis consolidation.
+export { redisClient };
 
 // Helper to extract the true client IP from Nginx headers, bypassing Docker Gateway masking
 export const getClientIp = (req) => {
@@ -68,7 +43,7 @@ const skipRateLimit = (req) => {
 
 export const otpVerificationLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_otp_verify_',
   }),
   windowMs: 10 * 60 * 1000,
@@ -81,7 +56,7 @@ export const otpVerificationLimiter = rateLimit({
 
 export const otpGenerationLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_otp_gen_',
   }),
   windowMs: 10 * 60 * 1000,
@@ -99,7 +74,7 @@ export const otpGenerationLimiter = rateLimit({
  */
 export const sandboxEgressLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_sandbox_egress_',
   }),
   windowMs: 60 * 1000, // 1 minute window
@@ -119,7 +94,7 @@ export const sandboxEgressLimiter = rateLimit({
 
 export const authRateLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_auth_',
   }),
   windowMs: 60 * 60 * 1000,
@@ -132,7 +107,7 @@ export const authRateLimiter = rateLimit({
 
 export const stepUpLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_stepup_',
   }),
   windowMs: 15 * 60 * 1000,
@@ -142,7 +117,7 @@ export const stepUpLimiter = rateLimit({
   keyGenerator: globalKeyGenerator,
   message: { error: 'Too many failed verification attempts. Please try again in 15 minutes.' },
   handler: (req, res, next, options) => {
-    console.warn(`[rate-limiter] 🚨 THREAT: Brute-force blocked on Step-Up 2FA. User/IP: ${globalKeyGenerator(req)}`);
+    logger.warn(`Brute-force blocked on Step-Up 2FA. User/IP: ${globalKeyGenerator(req)}`);
     res.status(options.statusCode).json(options.message);
   }
 });
@@ -165,7 +140,7 @@ const perKeyKeyGenerator = (req) => {
 
 export const perKeyBurstLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_perkey_burst_',
   }),
   windowMs: 60 * 1000, // 1 minute
@@ -189,7 +164,7 @@ export const perKeyBurstLimiter = rateLimit({
 
 export const webhookIngressLimiter = rateLimit({
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: 'rl_webhook_ingress_',
   }),
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
@@ -212,12 +187,12 @@ export const webhookIngressLimiter = rateLimit({
           SET value = value + 1, updated_at = NOW()
         WHERE key = 'bots_blocked'`,
     ).catch((err) => {
-      console.error("[rate-limiter] Failed to increment bots_blocked:", err.message);
+      logger.error({ err }, "Failed to increment bots_blocked");
     });
 
     const identifier = globalKeyGenerator(req);
-    console.log("[rate-limiter] ⛔ 429 BLOCKED — Daily Cap Reached");
-    console.warn(`[rate-limiter] 🚨 CAP REACHED: ${identifier}`);
+    logger.info("Daily cap reached (429 response)");
+    logger.warn(`Cap reached for: ${identifier}`);
     res.status(429).json(options.message);
   }
 });

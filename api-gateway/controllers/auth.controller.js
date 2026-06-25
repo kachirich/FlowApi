@@ -290,7 +290,7 @@ export const login = async (req, res) => {
     // 2FA challenge — do not issue JWT yet
     if (user.two_factor_enabled) {
       const challengeToken = crypto.randomUUID();
-      await redisClient.setEx(`2fa_challenge:${challengeToken}`, 300, user.id);
+      await redisClient.setex(`2fa_challenge:${challengeToken}`, 300, user.id);
       return res.status(200).json({ requires_2fa: true, challenge_token: challengeToken });
     }
 
@@ -332,7 +332,7 @@ export const verifyResetOtp = async (req, res) => {
 
     // Mint a single-use proof token valid for RESET_TOKEN_TTL seconds.
     const resetToken = crypto.randomBytes(32).toString('hex');
-    await redisClient.setEx(`pwd_reset:${email}`, RESET_TOKEN_TTL, resetToken);
+    await redisClient.setex(`pwd_reset:${email}`, RESET_TOKEN_TTL, resetToken);
 
     return res.status(200).json({ success: true, message: 'Code verified', reset_token: resetToken });
   } catch (error) {

@@ -114,7 +114,7 @@ export const apiKeyAuth = async (req, res, next) => {
 
     // 3. Save to Redis for subsequent requests (1 hour expiration)
     try {
-      await redisClient.setEx(cacheKey, 3600, JSON.stringify(cachePayload));
+      await redisClient.setex(cacheKey, 3600, JSON.stringify(cachePayload));
     } catch (redisErr) {
       console.error('Failed to cache API key payload to Redis:', redisErr);
     }

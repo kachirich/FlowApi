@@ -14,6 +14,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
+import logger from "../utils/logger.js";
 
 const { Pool, Client } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,12 +46,12 @@ async function ensureDatabase() {
     if (res.rowCount === 0) {
       // CREATE DATABASE cannot run inside a transaction, use raw query
       await sysClient.query(`CREATE DATABASE "${dbName}"`);
-      console.log(`[migrate] Created database "${dbName}"`);
+      logger.info(`Created database "${dbName}"`);
     }
   } catch (err) {
     // If we can't reach the system database, let migrate() fail with its own
     // error so the message is still meaningful.
-    console.warn(`[migrate] Could not auto-create database: ${err.message}`);
+    logger.warn(`Could not auto-create database: ${err.message}`);
   } finally {
     await sysClient.end().catch(() => {});
   }
@@ -141,7 +142,13 @@ async function runMigration(client, name, sql, noTransaction) {
 export async function migrate() {
   await ensureDatabase();
   const client = await pool.connect();
+  // Advisory lock to prevent concurrent migration runs from multiple instances
+  const MIGRATION_LOCK_ID = 12345; // constant for this project
   try {
+    // Acquire exclusive advisory lock with 30s timeout
+    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_ID]);
+    logger.info("Acquired migration lock");
+
     await ensureMigrationsTable(client);
     const applied = await appliedMigrations(client);
 
@@ -152,7 +159,7 @@ export async function migrate() {
 
     for (const file of files) {
       if (applied.has(file)) {
-        console.log(`[migrate] ✔ skip  ${file}`);
+        logger.info(`✔ skip  ${file}`);
         continue;
       }
 
@@ -160,13 +167,15 @@ export async function migrate() {
       const sql = fs.readFileSync(filePath, "utf8");
       const noTransaction = /^--\s*NO TRANSACTION/i.test(sql.trim());
 
-      console.log(`[migrate] ▶ apply ${file}${noTransaction ? " (no-tx)" : ""}`);
+      logger.info(`▶ apply ${file}${noTransaction ? " (no-tx)" : ""}`);
       await runMigration(client, file, sql, noTransaction);
-      console.log(`[migrate] ✔ done  ${file}`);
+      logger.info(`✔ done  ${file}`);
     }
 
-    console.log("[migrate] All migrations applied.");
+    logger.info("All migrations applied.");
   } finally {
+    // Release advisory lock
+    await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_ID]).catch(() => {});
     client.release();
     await pool.end();
   }
@@ -175,7 +184,7 @@ export async function migrate() {
 // Allow direct execution: `node db/migrate.js`
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   migrate().catch((err) => {
-    console.error("[migrate] Fatal:", err.message);
+    logger.error({ err }, "Fatal error during migration");
     process.exit(1);
   });
 }

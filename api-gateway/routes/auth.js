@@ -42,7 +42,7 @@ router.post("/2fa/generate", authenticate, otpGenerationLimiter, async (req, res
     });
 
     // Save temporary secret to Redis for 10 minutes (do not persist in DB yet)
-    await redisClient.setEx(`2fa_setup:${userId}`, 600, secret.base32);
+    await redisClient.setex(`2fa_setup:${userId}`, 600, secret.base32);
 
     // Generate QR Code URL
     const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url);
@@ -358,7 +358,7 @@ router.get("/google/callback", googleCallback);
 router.post("/logout", (req, res) => {
   const token = req.cookies?.jwt;
   if (token) {
-    redisClient.setEx(`blacklist:${token}`, 86400, 'revoked').catch(() => {});
+    redisClient.setex(`blacklist:${token}`, 86400, 'revoked').catch(() => {});
   }
   res.clearCookie('jwt', {
     httpOnly: true,

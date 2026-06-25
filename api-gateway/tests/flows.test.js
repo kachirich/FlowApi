@@ -26,7 +26,8 @@ vi.mock("axios", () => ({
 }));
 
 import app from "../app.js";
-import { query, closePool, initializeDatabase } from "../db/connection.js";
+import { query, closePool } from "../db/connection.js";
+import { migrate } from "../db/migrate.js";
 import { dispatchLead } from "../services/WebhookDispatcher.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -42,7 +43,7 @@ const EMAIL_A = `flows_a_${Date.now()}@flowapi-test.dev`;
 const EMAIL_B = `flows_b_${Date.now()}@flowapi-test.dev`;
 
 beforeAll(async () => {
-  await initializeDatabase();
+  await migrate();
 
   const a = await query(
     `INSERT INTO users (email, password_hash, plan_type, tier, routing_strategy)

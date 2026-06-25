@@ -15,7 +15,7 @@ import request from "supertest";
 import jwt from "jsonwebtoken";
 import app from "../app.js";
 import { query, closePool } from "../db/connection.js";
-import { initializeDatabase } from "../db/connection.js";
+import { migrate } from "../db/migrate.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -30,7 +30,7 @@ const TEST_PASSWORD_HASH = "$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVW
 /* ─── Setup & Teardown ──────────────────────────────────────────────────── */
 
 beforeAll(async () => {
-  await initializeDatabase();
+  await migrate();
 
   // Create a disposable test user
   const userResult = await query(

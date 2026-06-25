@@ -1,6 +1,6 @@
 import "dotenv/config";
 import pg from "pg";
-import { createClient } from "redis";
+import IORedis from "ioredis";
 
 const { Pool } = pg;
 
@@ -15,9 +15,10 @@ const planCacheKey = (userId) => `user:${userId}:plan`;
  */
 async function invalidatePlanCache(userIds) {
   if (!userIds.length) return;
-  const client = createClient({
-    url: process.env.REDIS_URL || "redis://redis:6379",
-    socket: { connectTimeout: 5000 },
+  const client = new IORedis(process.env.REDIS_URL || "redis://redis:6379", {
+    connectTimeout: 5000,
+    lazyConnect: true,
+    maxRetriesPerRequest: 1,
   });
   let connectError = null;
   client.on("error", (err) => { connectError = err; });

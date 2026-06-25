@@ -19,7 +19,7 @@ import { webhookQueue } from "../services/queue.js";
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  store: new RedisStore({ sendCommand: (...args) => redisClient.sendCommand(args) }),
+  store: new RedisStore({ sendCommand: (...args) => redisClient.call(...args) }),
 });
 
 // Gate routes that must only be reachable by platform admins.
