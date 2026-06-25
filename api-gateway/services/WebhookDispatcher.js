@@ -5,6 +5,7 @@ import { query } from "../db/connection.js";
 import redisClient from "../utils/redisClient.js";
 import { webhookQueue } from "../services/queue.js";
 import { getMeteringState, invalidateMeteringCache } from "./destinationMetering.js";
+import { isWhitelistedFor } from "../utils/destinationWhitelist.js";
 
 /**
  * Debit one credit from a metered destination after a CONFIRMED 2xx delivery.
@@ -134,18 +135,22 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     routingStrategy = flowRes.rows[0].routing_strategy || "round_robin";
 
     const flowDestRes = await query(
-      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap,
+              '{}'::jsonb AS custom_headers, u.email AS owner_email
        FROM flow_destinations fd
        JOIN destinations d ON d.id = fd.destination_id
+       JOIN users u ON u.id = d.user_id
        WHERE fd.flow_id = $1 AND d.is_active = TRUE`,
       [flowId]
     );
     destinations = flowDestRes.rows;
   } else {
     const destinationsRes = await query(
-      `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
-       FROM destinations
-       WHERE user_id = $1 AND is_active = TRUE`,
+      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap,
+              '{}'::jsonb AS custom_headers, u.email AS owner_email
+       FROM destinations d
+       JOIN users u ON u.id = d.user_id
+       WHERE d.user_id = $1 AND d.is_active = TRUE`,
       [userId]
     );
     destinations = destinationsRes.rows;
@@ -371,11 +376,10 @@ async function attemptHttpRequest(webhook, payload, planType) {
   const targetUrl = webhook.target_url;
   const parsedUrl = new URL(targetUrl);
 
-  const WHITELISTED_DESTINATIONS = new Set(["localhost:5678", "localhost:8080"]);
-  const hostWithPort = parsedUrl.port
-    ? `${parsedUrl.hostname.toLowerCase()}:${parsedUrl.port}`
-    : parsedUrl.hostname.toLowerCase();
-  const isWhitelisted = WHITELISTED_DESTINATIONS.has(hostWithPort);
+  // Bypass DNS rebinding check ONLY when both the destination owner and the
+  // target host:port are on the env-configured allow-list. Without owner_email
+  // on the webhook record (legacy paths), the bypass cannot apply.
+  const isWhitelisted = isWhitelistedFor(targetUrl, webhook.owner_email);
 
   if (!isWhitelisted) {
     // DNS Rebinding protection — always enforced; user-controlled test flag must

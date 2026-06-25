@@ -316,7 +316,7 @@ router.put("/destination", authenticate, async (req, res, next) => {
     }
 
     // Validate URL format and SSRF protection
-    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    const { isValid, error } = validateWebhookUrl(destinationUrl, { userEmail: req.user?.email });
     if (!isValid) {
       return res.status(400).json({
         success: false,
@@ -558,7 +558,7 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
     // ════════════════════════════════════════════════════════════════════════
     // GUARD 1: SSRF Blacklist Protection
     // ════════════════════════════════════════════════════════════════════════
-    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    const { isValid, error } = validateWebhookUrl(destinationUrl, { userEmail: req.user?.email });
     if (!isValid) {
       return res.status(400).json({
         success: false,
