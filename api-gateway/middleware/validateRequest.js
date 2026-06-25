@@ -1,13 +1,23 @@
 import { z } from "zod";
+import { getHostWithPort } from "../utils/destinationWhitelist.js";
 
 /**
  * Zod schema for webhook destination URLs with strict SSRF protection.
  * Requires https:// and strictly rejects internal/local IP blocks and domains.
+ *
+ * Operator-controlled bypass: hosts listed in env LOCALHOST_WHITELIST_HOSTS
+ * pass through this schema regardless of protocol/internal-IP checks. This is
+ * the OPERATOR gate — it determines which hosts can ever be reached. The
+ * USER gate (which user is allowed to deliver to those hosts) is enforced
+ * separately by validateWebhookUrl({ userEmail }) at the controller layer
+ * and by the dispatcher's owner_email check.
  */
-const WHITELISTED_DESTINATIONS = new Set([
-  "localhost:5678",
-  "localhost:8080",
-]);
+const ALLOWED_LOCAL_HOSTS = new Set(
+  (process.env.LOCALHOST_WHITELIST_HOSTS || "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+);
 
 export const webhookDestinationSchema = z
   .string()
@@ -21,9 +31,9 @@ export const webhookDestinationSchema = z
     }
     try {
       const hostname = parsed.hostname.toLowerCase();
-      const hostWithPort = parsed.port ? `${hostname}:${parsed.port}` : hostname;
+      const hostWithPort = getHostWithPort(url);
 
-      if (WHITELISTED_DESTINATIONS.has(hostWithPort)) {
+      if (hostWithPort && ALLOWED_LOCAL_HOSTS.has(hostWithPort)) {
         return;
       }
 

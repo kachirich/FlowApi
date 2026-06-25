@@ -1,7 +1,20 @@
-export function validateWebhookUrl(url) {
+import { isWhitelistedFor } from "./destinationWhitelist.js";
+
+export function validateWebhookUrl(url, { userEmail } = {}) {
   try {
     const parsedUrl = new URL(url);
     const hostname = parsedUrl.hostname.toLowerCase();
+
+    if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+      return { isValid: false, error: "Invalid URL protocol" };
+    }
+
+    // Narrow bypass: an allow-listed user delivering to an allow-listed
+    // host:port (configured via LOCALHOST_WHITELIST_* env vars). Used for
+    // self-hosted integrations co-located with the gateway.
+    if (isWhitelistedFor(url, userEmail)) {
+      return { isValid: true };
+    }
 
     // SSRF Protection: Blacklist internal/private IPs
     const isInternal =
@@ -19,10 +32,6 @@ export function validateWebhookUrl(url) {
       return { isValid: false, error: "Invalid or prohibited target URL" };
     }
 
-    if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
-      return { isValid: false, error: "Invalid URL protocol" };
-    }
-
     return { isValid: true };
   } catch (err) {
     return { isValid: false, error: "Invalid URL format" };
@@ -37,7 +46,7 @@ function isMaliciousPrivateIP(hostname) {
   // Match 172.16.x.x through 172.31.x.x
   const match = hostname.match(/^172\.(\d+)\..+/);
   if (!match) return false;
-  
+
   const secondOctet = parseInt(match[1], 10);
   return secondOctet >= 16 && secondOctet <= 31;
 }

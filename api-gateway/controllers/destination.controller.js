@@ -22,7 +22,7 @@ export const createDestination = async (req, res, next) => {
       return next(error);
     }
 
-    const { isValid } = validateWebhookUrl(target_url);
+    const { isValid } = validateWebhookUrl(target_url, { userEmail: req.user?.email });
     if (!isValid) {
       const error = new Error('Invalid or restricted Destination URL.');
       error.name = 'ValidationError';
@@ -149,7 +149,7 @@ export const updateDestination = async (req, res, next) => {
     }
 
     if (target_url !== undefined) {
-      const { isValid } = validateWebhookUrl(target_url);
+      const { isValid } = validateWebhookUrl(target_url, { userEmail: req.user?.email });
       if (!isValid) {
         const error = new Error('Invalid or restricted Destination URL.');
         error.name = 'ValidationError';
