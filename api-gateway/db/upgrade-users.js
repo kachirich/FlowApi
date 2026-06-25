@@ -1,6 +1,7 @@
 import "dotenv/config";
 import pg from "pg";
 import IORedis from "ioredis";
+import { tierFromPlan } from "../utils/tierFromPlan.js";
 
 const { Pool } = pg;
 
@@ -75,11 +76,11 @@ async function upgradeUsers() {
     // so we update there — that's the column requirePlan and /me actually read.
     const result = await pool.query(
       `UPDATE user_billing ub
-       SET plan_type = $1
+       SET plan_type = $1, tier = $2
        FROM users u
-       WHERE ub.user_id = u.id AND u.email = ANY($2::text[])
+       WHERE ub.user_id = u.id AND u.email = ANY($3::text[])
        RETURNING u.id, u.email, ub.plan_type`,
-      [plan, emails]
+      [plan, tierFromPlan(plan), emails]
     );
 
     if (result.rows.length === 0) {

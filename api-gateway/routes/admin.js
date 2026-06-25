@@ -16,6 +16,7 @@ import { planCacheKey } from "../middleware/requirePlan.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 import { webhookQueue } from "../services/queue.js";
 import { decrypt } from "../utils/encryption.js";
+import { tierFromPlan } from "../utils/tierFromPlan.js";
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -753,11 +754,11 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
     // so we update there — that's the column requirePlan and /me actually read.
     const result = await query(
       `UPDATE user_billing ub
-       SET plan_type = $1
+       SET plan_type = $1, tier = $2
        FROM users u
-       WHERE ub.user_id = u.id AND u.email = $2
+       WHERE ub.user_id = u.id AND u.email = $3
        RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
-      [newPlan, email.trim().toLowerCase()]
+      [newPlan, tierFromPlan(newPlan), email.trim().toLowerCase()]
     );
 
     if (result.rows.length === 0) {
@@ -831,11 +832,11 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
     // dead column re-added by connection.js but never read by application code).
     const result = await query(
       `UPDATE user_billing ub
-       SET plan_type = $1
+       SET plan_type = $1, tier = $2
        FROM users u
-       WHERE ub.user_id = u.id AND u.email = ANY($2::text[])
+       WHERE ub.user_id = u.id AND u.email = ANY($3::text[])
        RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
-      [newPlan, normalizedEmails]
+      [newPlan, tierFromPlan(newPlan), normalizedEmails]
     );
 
     if (result.rows.length === 0) {

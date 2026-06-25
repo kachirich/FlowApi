@@ -4,6 +4,7 @@ import { query } from "../db/connection.js";
 import lemonSqueezyAuth from "../middleware/lemonSqueezyAuth.js";
 import { redisClient } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
+import { tierFromPlan } from "../utils/tierFromPlan.js";
 
 const router = Router();
 
@@ -34,8 +35,12 @@ router.post("/webhook", express.raw({ type: 'application/json' }), lemonSqueezyA
           else if (productName.includes('plus')) planType = 'plus';
         }
 
-        // 5. Database Update
-        await query("UPDATE user_billing SET plan_type = $1 WHERE user_id = $2", [planType, userId]);
+        // 5. Database Update — set tier alongside plan_type so the daily lead
+        //    cap (rateLimiter) and downstream gating reflect the paid plan.
+        await query(
+          "UPDATE user_billing SET plan_type = $1, tier = $2 WHERE user_id = $3",
+          [planType, tierFromPlan(planType), userId]
+        );
 
         // 6. Invalidate cached plan so downstream middleware sees the new tier immediately
         redisClient.del(planCacheKey(userId)).catch((err) =>

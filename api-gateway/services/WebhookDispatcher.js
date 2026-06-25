@@ -6,6 +6,24 @@ import redisClient from "../utils/redisClient.js";
 import { webhookQueue } from "../services/queue.js";
 import { getMeteringState, invalidateMeteringCache } from "./destinationMetering.js";
 import { decrypt } from "../utils/encryption.js";
+import { retryConfig } from "../utils/retryConfig.js";
+
+/**
+ * Resolve the webhook_logs response_error code when a lead reaches no
+ * destination. `reasons` is a Set of per-destination skip reasons collected
+ * during the routing loop: 'cap' (daily Redis cap hit), 'paused' (metered
+ * credits exhausted with exhausted_action='pause'), or 'failed' (delivery
+ * attempted, non-2xx, no-retry plan). A single reason yields a specific code;
+ * a mix yields the general code.
+ */
+function undeliveredCode(reasons) {
+  if (reasons.size === 1) {
+    if (reasons.has("cap")) return "ALL_DESTINATIONS_CAP_REACHED";
+    if (reasons.has("paused")) return "ALL_DESTINATIONS_PAUSED";
+    if (reasons.has("failed")) return "ALL_DESTINATIONS_FAILED";
+  }
+  return "ALL_DESTINATIONS_UNDELIVERED";
+}
 
 /**
  * Debit one credit from a metered destination after a CONFIRMED 2xx delivery.
@@ -107,7 +125,7 @@ const CHECK_CAP_LUA = `
 export async function dispatchLead(userId, payload, contactId, isTest = false, flowId = null, leadId = null) {
   // 1. Fetch broker's strategy + billing context (joined from satellite tables)
   const userRes = await query(
-    `SELECT us.routing_strategy, ub.plan_type, ub.tier
+    `SELECT us.routing_strategy, ub.plan_type
      FROM users u
      JOIN user_billing  ub ON ub.user_id = u.id
      JOIN user_settings us ON us.user_id = u.id
@@ -119,7 +137,6 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
   }
   let routingStrategy = userRes.rows[0].routing_strategy || "round_robin";
   const planType = userRes.rows[0].plan_type || "free";
-  const tier = userRes.rows[0].tier || "sandbox";
 
   // 2. Resolve active destinations — via the flow's subset when a flow is set,
   //    otherwise fall back to all of the user's active destinations.
@@ -173,6 +190,9 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
   const todayStr = new Date().toISOString().split("T")[0];
 
   if (routingStrategy === "round_robin") {
+    // Track why each destination was skipped, to emit a specific log code if
+    // the lead ultimately reaches none of them (see undeliveredCode).
+    const skipReasons = new Set();
     for (const wh of destinations) {
       const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
@@ -187,7 +207,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
         // Metering: daily cap → metering check → dispatch → debit on success.
         const metering = await getMeteringState(wh.id);
         if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
-          continue; // out of credits + pause: skip this buyer, not a failure
+          skipReasons.add("paused"); // out of credits + pause: skip, not a failure
+          continue;
         }
 
         try {
@@ -224,37 +245,39 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
             await redisClient.decr(redisKey).catch(() => {});
           }
 
-          if (tier === 'sandbox') {
+          const { attempts, backoff } = retryConfig(planType);
+          if (attempts <= 1) {
+            // No-retry plans (free/basic): log the failure and try the next destination.
             await query(
               `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
                VALUES ($1, $2, $3, 500, $4, $5, $6)`,
-              [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
+              [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries on this plan', isTest]
             ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
 
             await query(
-              `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'Failed - No Retries for Sandbox' WHERE contact_id = $1`,
+              `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'Failed - No Retries on this plan' WHERE contact_id = $1`,
               [contactId]
             ).catch(() => {});
 
+            skipReasons.add("failed");
             console.warn(`[Dispatcher] Failed sending to ${wh.target_url}, trying next. Error: ${err.message}`);
-          } else if (tier === 'growth') {
-            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
-            await query(`UPDATE ghl_leads SET delivery_status = 'RETRYING', status = '500', last_delivery_error = $1 WHERE contact_id = $2`, [err.message, contactId]).catch(() => {});
-            return { success: true, strategy: "round_robin", destination: wh.target_url, destinationId: wh.id, queued: true };
-          } else if (tier === 'enterprise') {
-            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 100, backoff: { type: 'exponential', delay: 5000 } });
+          } else {
+            // Paid plans (pro/plus): enqueue for retry and stop here.
+            await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts, backoff });
             await query(`UPDATE ghl_leads SET delivery_status = 'RETRYING', status = '500', last_delivery_error = $1 WHERE contact_id = $2`, [err.message, contactId]).catch(() => {});
             return { success: true, strategy: "round_robin", destination: wh.target_url, destinationId: wh.id, queued: true };
           }
         }
+      } else {
+        skipReasons.add("cap");
       }
     }
 
     await query(
       `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
-       VALUES ($1, NULL, 'POST', 0, $2, 'ALL_CAPS_REACHED', $3)`,
-      [userId, JSON.stringify(payload), isTest]
-    ).catch((e) => console.error("[Dispatcher] Failed to write caps-reached log:", e.message));
+       VALUES ($1, NULL, 'POST', 0, $2, $3, $4)`,
+      [userId, JSON.stringify(payload), undeliveredCode(skipReasons), isTest]
+    ).catch((e) => console.error("[Dispatcher] Failed to write undelivered log:", e.message));
 
     await query(
       `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'No active destinations'
@@ -273,6 +296,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     // cannot open an unbounded number of sockets at once. Each destination is
     // isolated in its own try/catch, so one failure never aborts the others.
     // Each task returns the count it contributes (0 or 1) toward deliveredCount.
+    // Returns "delivered" (a 2xx or an enqueued paid retry), or a skip reason
+    // ('cap' | 'paused' | 'failed') so the caller can pick a specific log code.
     const deliverToDestination = async (wh) => {
       const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
@@ -283,12 +308,12 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
         isUnderCap = await redisClient.eval(CHECK_CAP_LUA, 1, redisKey, String(cap));
       }
 
-      if (isUnderCap !== 1) return 0;
+      if (isUnderCap !== 1) return "cap";
 
       // Metering: daily cap → metering check → dispatch → debit on success.
       const metering = await getMeteringState(wh.id);
       if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
-        return 0; // out of credits + pause: skip this buyer, not a failure
+        return "paused"; // out of credits + pause: skip this buyer, not a failure
       }
 
       try {
@@ -303,7 +328,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
           if (metering.is_metered) {
             await debitDestination(wh.id, userId, leadId);
           }
-          return 1;
+          return "delivered";
         }
         throw new Error("HTTP request failed with non-2xx status code");
       } catch (err) {
@@ -311,26 +336,24 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
           await redisClient.decr(redisKey).catch(() => {});
         }
 
-        if (tier === 'sandbox') {
+        const { attempts, backoff } = retryConfig(planType);
+        if (attempts <= 1) {
+          // No-retry plans (free/basic): log the failure.
           await query(
             `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
              VALUES ($1, $2, $3, 500, $4, $5, $6)`,
-            [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries for Sandbox', isTest]
+            [userId, wh.id, wh.http_method || "POST", JSON.stringify(payload), 'Failed - No Retries on this plan', isTest]
           ).catch((e) => console.error("[Dispatcher] Failed to write failure log:", e.message));
-          return 0;
-        } else if (tier === 'growth') {
-          await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 3, backoff: { type: 'fixed', delay: 5000 } });
-          return 1;
-        } else if (tier === 'enterprise') {
-          await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts: 100, backoff: { type: 'exponential', delay: 5000 } });
-          return 1;
+          return "failed";
         }
-        return 0;
+        // Paid plans (pro/plus): enqueue for retry.
+        await webhookQueue.add("dispatch", { webhook: wh, payload, method: wh.http_method || "POST", contactId, isTest }, { attempts, backoff });
+        return "delivered";
       }
     };
 
-    const counts = await mapWithConcurrency(destinations, BROADCAST_CONCURRENCY, deliverToDestination);
-    const deliveredCount = counts.reduce((sum, n) => sum + (n || 0), 0);
+    const results = await mapWithConcurrency(destinations, BROADCAST_CONCURRENCY, deliverToDestination);
+    const deliveredCount = results.filter((r) => r === "delivered").length;
 
     if (deliveredCount > 0) {
       await query(
@@ -343,11 +366,12 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
       return { success: true, strategy: "broadcast", deliveredCount };
     }
 
+    const skipReasons = new Set(results.filter((r) => r && r !== "delivered"));
     await query(
       `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, response_error, is_test)
-       VALUES ($1, NULL, 'POST', 0, $2, 'ALL_CAPS_REACHED', $3)`,
-      [userId, JSON.stringify(payload), isTest]
-    ).catch((e) => console.error("[Dispatcher] Failed to write caps-reached log:", e.message));
+       VALUES ($1, NULL, 'POST', 0, $2, $3, $4)`,
+      [userId, JSON.stringify(payload), undeliveredCode(skipReasons), isTest]
+    ).catch((e) => console.error("[Dispatcher] Failed to write undelivered log:", e.message));
 
     await query(
       `UPDATE ghl_leads SET delivery_status = 'FAILED', last_delivery_error = 'No active destinations'

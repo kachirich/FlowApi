@@ -13,6 +13,7 @@
 import pool, { query } from "../db/connection.js";
 import { webhookQueue } from "./queue.js";
 import { getPlanType } from "../middleware/requirePlan.js";
+import { retryConfig } from "../utils/retryConfig.js";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Helper — Smart Catcher extraction (recursive key finder)
@@ -82,6 +83,26 @@ export function calculateLeadScore(payload) {
  * @param {string}  [args.flowId]   - Optional flow id to thread into the dispatch job.
  * @returns {Promise<{ lead_id: string, contact_id: string, score: number, queued: boolean }>}
  */
+/**
+ * Normalize a Tally webhook payload into a flat object so findValue can
+ * extract standard fields (email, name, phone).
+ *
+ * Tally wraps all answers under data.fields[] as {label, type, value} objects.
+ * We flatten by lower-cased label so findValue's key-matching works normally.
+ */
+function normalizeTally(payload) {
+  const fields = payload?.data?.fields;
+  if (!Array.isArray(fields)) return payload;
+
+  const flat = {};
+  for (const field of fields) {
+    if (field.label && field.value !== undefined && field.value !== null) {
+      flat[field.label.toLowerCase().replace(/\s+/g, '_')] = field.value;
+    }
+  }
+  return { ...payload, ...flat };
+}
+
 export async function ingestLead({
   userId,
   payload,
@@ -95,13 +116,16 @@ export async function ingestLead({
 }) {
   const isTest = !!(payload && payload.flow_api_test);
 
-  // ── Smart Catcher — Lead Data Extraction ────────────────────────────────
-  const firstName = findValue(payload, ['first_name', 'firstName', 'first']) || '';
-  const lastName  = findValue(payload, ['last_name', 'lastName', 'last']) || '';
-  const email     = findValue(payload, ['email', 'Email', 'emailAddress']) || '';
-  const phone     = findValue(payload, ['phone', 'Phone', 'phoneNumber']) || '';
+  // Normalize Tally payloads (data.fields[] → flat keys) before extraction
+  const normalizedPayload = normalizeTally(payload);
 
-  let contactId = findValue(payload, ['contact_id', 'contactId', 'id', 'contact_key']);
+  // ── Smart Catcher — Lead Data Extraction ────────────────────────────────
+  const firstName = findValue(normalizedPayload, ['first_name', 'firstName', 'first']) || '';
+  const lastName  = findValue(normalizedPayload, ['last_name', 'lastName', 'last']) || '';
+  const email     = findValue(normalizedPayload, ['email', 'Email', 'emailAddress']) || '';
+  const phone     = findValue(normalizedPayload, ['phone', 'Phone', 'phoneNumber']) || '';
+
+  let contactId = findValue(normalizedPayload, ['contact_id', 'contactId', 'id', 'contact_key']);
   if (!contactId) {
     const cleanEmail = email ? email.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
     contactId = cleanEmail
@@ -109,7 +133,7 @@ export async function ingestLead({
       : `catch_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
   }
 
-  const leadScore = calculateLeadScore(payload);
+  const leadScore = calculateLeadScore(normalizedPayload);
 
   console.log(`[ingest:${source}] lead=${firstName} ${lastName} contact=${contactId} score=${leadScore}/100`);
 
@@ -194,19 +218,11 @@ export async function ingestLead({
 
   // ── Queue Webhook Dispatch Job ───────────────────────────────────────────
   if (webhook) {
-    // Catch path: dispatch directly to the single configured target_url, with
-    // the exact same plan-based retry config as before.
+    // Catch path: dispatch directly to the single configured target_url, using
+    // the shared plan-based retry config (single source of truth — same as the
+    // queue-routing path in WebhookDispatcher.dispatchLead).
     const planType = plan_type || (await getPlanType(userId)) || "free";
-
-    let attempts = 1;
-    let backoff = undefined;
-    if (planType === "pro") {
-      attempts = 5;
-      backoff = { type: "exponential", delay: 5000 };
-    } else if (planType === "plus") {
-      attempts = 10;
-      backoff = { type: "exponential", delay: 5000 };
-    }
+    const { attempts, backoff } = retryConfig(planType);
 
     const job = await webhookQueue.add(
       "dispatch",

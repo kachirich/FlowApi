@@ -69,7 +69,7 @@ export default async function meteredLimiter(req, res, next) {
 
     // ── Step C: Increment Odometer ───────────────────────────────────────
     const updatedRes = await query(
-      'UPDATE users SET monthly_request_count = monthly_request_count + 1 WHERE id = $1 RETURNING monthly_request_count',
+      'UPDATE user_billing SET monthly_request_count = monthly_request_count + 1 WHERE user_id = $1 RETURNING monthly_request_count',
       [userId]
     );
     const newCount = updatedRes.rows[0]?.monthly_request_count || currentCount + 1;
