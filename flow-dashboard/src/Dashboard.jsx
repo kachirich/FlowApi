@@ -1362,8 +1362,21 @@ function EgressTester({ leads, destinations = [] }) {
   
   const [urlError, setUrlError] = useState("");
 
-  // Real-time URL Validation
+  // The selected saved destination (if any). Token-based (rest_api) types
+  // fire server-side through the stored encrypted token via test-by-id.
+  const selectedDest = selectedDestId
+    ? destinations.find((d) => String(d.id) === String(selectedDestId))
+    : null;
+  const isTokenBased =
+    !!selectedDest && selectedDest.destination_type && selectedDest.destination_type !== "webhook";
+
+  // Real-time URL Validation — skipped for token-based saved destinations,
+  // whose URL is resolved server-side and shown read-only.
   useEffect(() => {
+    if (isTokenBased) {
+      setUrlError("");
+      return;
+    }
     if (!destinationUrl) {
       setUrlError("");
       return;
@@ -1374,7 +1387,7 @@ function EgressTester({ leads, destinations = [] }) {
     } else {
       setUrlError("");
     }
-  }, [destinationUrl]);
+  }, [destinationUrl, isTokenBased]);
 
   // Real-time Mapping Validation - optional when pass-through is enabled
   useEffect(() => {
@@ -1464,9 +1477,12 @@ function EgressTester({ leads, destinations = [] }) {
   
   const egressPayload = buildEgressPayload();
 
-  // Can fire if URL is valid and has mappings (or pass-through is enabled)
+  // Can fire if URL is valid and has mappings (or pass-through is enabled).
+  // Token-based saved destinations skip the manual URL check entirely.
   const hasMappings = Object.values(mappings).some(v => v && v.trim() !== "");
-  const canFire = !urlError && destinationUrl && destinationUrl.trim() !== "" && (hasMappings || passThrough);
+  const canFire = isTokenBased
+    ? (hasMappings || passThrough)
+    : !urlError && destinationUrl && destinationUrl.trim() !== "" && (hasMappings || passThrough);
 
   const handleFireEgress = async () => {
     if (!canFire) return;
@@ -1480,11 +1496,11 @@ function EgressTester({ leads, destinations = [] }) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          destinationUrl,
-          method,
-          payload: egressPayload,
-        }),
+        body: JSON.stringify(
+          isTokenBased
+            ? { destinationId: selectedDestId, payload: egressPayload }
+            : { destinationUrl, method, payload: egressPayload }
+        ),
       });
 
       const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
@@ -1575,19 +1591,37 @@ function EgressTester({ leads, destinations = [] }) {
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
               Destination Webhook URL (e.g. GoHighLevel)
             </label>
-            <input
-              type="url"
-              value={destinationUrl}
-              onChange={(e) => setDestinationUrl(e.target.value)}
-              placeholder="https://services.leadconnectorhq.com/hooks/..."
-              className={`w-full rounded-xl border bg-slate-900 px-4 py-3 font-mono text-xs text-slate-200 focus:outline-none transition ${urlError ? "border-rose-500/50 focus:border-rose-500" : "border-slate-700 focus:border-amber-500"}`}
-            />
-            {urlError && (
-              <p className="text-[10px] text-rose-500 font-medium animate-fade-in">{urlError}</p>
+            {isTokenBased ? (
+              <>
+                <input
+                  type="text"
+                  value={selectedDest?.target_url || ""}
+                  readOnly
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-xs text-slate-400 focus:outline-none cursor-not-allowed"
+                />
+                <p className="flex items-center gap-1.5 text-[10px] font-medium text-violet-300/90">
+                  <Lock className="h-3 w-3" />
+                  Uses the saved encrypted token automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <input
+                  type="url"
+                  value={destinationUrl}
+                  onChange={(e) => setDestinationUrl(e.target.value)}
+                  placeholder="https://services.leadconnectorhq.com/hooks/..."
+                  className={`w-full rounded-xl border bg-slate-900 px-4 py-3 font-mono text-xs text-slate-200 focus:outline-none transition ${urlError ? "border-rose-500/50 focus:border-rose-500" : "border-slate-700 focus:border-amber-500"}`}
+                />
+                {urlError && (
+                  <p className="text-[10px] text-rose-500 font-medium animate-fade-in">{urlError}</p>
+                )}
+              </>
             )}
           </div>
 
-          {/* HTTP Method Field */}
+          {/* HTTP Method Field — manual / webhook destinations only */}
+          {!isTokenBased && (
           <div className="space-y-2">
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
               HTTP Method
@@ -1602,6 +1636,7 @@ function EgressTester({ leads, destinations = [] }) {
               <option value="PATCH">PATCH</option>
             </select>
           </div>
+          )}
 
           {/* Pass-Through Toggle */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">

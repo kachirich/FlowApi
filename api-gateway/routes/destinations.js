@@ -6,6 +6,8 @@ import {
   deleteDestination
 } from '../controllers/destination.controller.js';
 import authenticate from '../middleware/auth.js';
+import { validateRequest } from '../middleware/validateRequest.js';
+import { createDestinationSchema, updateDestinationSchema } from '../middleware/validateRequest.js';
 
 const router = Router();
 
@@ -13,13 +15,13 @@ const router = Router();
 router.use(authenticate);
 
 // Create a new routing endpoint
-router.post('/', createDestination);
+router.post('/', validateRequest(createDestinationSchema), createDestination);
 
 // List all endpoints for the logged-in user
 router.get('/', listDestinations);
 
 // Update URL, name, status, or cap
-router.put('/:id', updateDestination);
+router.put('/:id', validateRequest(updateDestinationSchema), updateDestination);
 
 // Remove endpoint
 router.delete('/:id', deleteDestination);

@@ -34,4 +34,41 @@ describe("egressTestBodySchema", () => {
       });
     }).toThrow();
   });
+
+  it("accepts a destinationId (test-by-id) without a destinationUrl", () => {
+    const parsed = egressTestBodySchema.parse({
+      destinationId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      payload: { contact_id: "abc123" },
+    });
+
+    expect(parsed.destinationId).toBe("3f2504e0-4f89-41d3-9a0c-0305e82c3301");
+    expect(parsed.destinationUrl).toBeUndefined();
+  });
+
+  it("rejects a request providing both destinationUrl and destinationId", () => {
+    expect(() =>
+      egressTestBodySchema.parse({
+        destinationUrl: "https://example.com/webhook",
+        destinationId: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        payload: { contact_id: "abc123" },
+      })
+    ).toThrow();
+  });
+
+  it("rejects a request providing neither destinationUrl nor destinationId", () => {
+    expect(() =>
+      egressTestBodySchema.parse({
+        payload: { contact_id: "abc123" },
+      })
+    ).toThrow();
+  });
+
+  it("rejects a non-uuid destinationId", () => {
+    expect(() =>
+      egressTestBodySchema.parse({
+        destinationId: "not-a-uuid",
+        payload: { contact_id: "abc123" },
+      })
+    ).toThrow();
+  });
 });

@@ -166,10 +166,19 @@ export const webhookConfigBodySchema = z.object({
 /**
  * Pre-configured schema for the Egress Test POST route
  */
-export const egressTestBodySchema = z.object({
-  destinationUrl: webhookDestinationSchema,
-  payload: egressPayloadSchema,
-});
+export const egressTestBodySchema = z
+  .object({
+    // Manual entry: a raw HTTPS URL. Saved typed destination: a destinationId
+    // whose stored (encrypted) token the backend resolves server-side.
+    destinationUrl: webhookDestinationSchema.optional(),
+    destinationId: z.string().uuid("Invalid destination id").optional(),
+    payload: egressPayloadSchema,
+  })
+  .refine(
+    (data) =>
+      (data.destinationUrl !== undefined) !== (data.destinationId !== undefined),
+    { message: "Provide exactly one of destinationUrl or destinationId" }
+  );
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Flow management schemas
@@ -253,3 +262,53 @@ export const adminCreditSchema = z.object({
   pack_name: z.string().optional(),
   note: z.string().max(200).optional(),
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Destination create / update schemas (v2 — typed destinations with tokens)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const destinationTypeSchema = z.enum(["webhook", "rest_api"], {
+  message: "destination_type must be 'webhook' or 'rest_api'",
+});
+
+/** POST /api/destinations */
+export const createDestinationSchema = z
+  .object({
+    name: z.string().trim().min(1).max(50),
+    target_url: webhookDestinationSchema,
+    daily_cap: z.number().int().nonnegative().optional(),
+    is_active: z.boolean().optional(),
+    destination_type: destinationTypeSchema.optional().default("webhook"),
+    api_token: z.string().trim().min(1).max(512).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const type = data.destination_type ?? "webhook";
+    if (type !== "webhook" && !data.api_token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["api_token"],
+        message: `api_token is required for destination_type '${type}'`,
+      });
+    }
+    if (type === "webhook" && data.api_token) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["api_token"],
+        message: "api_token must not be provided for webhook destinations",
+      });
+    }
+  });
+
+/** PUT /api/destinations/:id */
+export const updateDestinationSchema = z
+  .object({
+    name: z.string().trim().min(1).max(50).optional(),
+    target_url: webhookDestinationSchema.optional(),
+    daily_cap: z.number().int().nonnegative().optional(),
+    is_active: z.boolean().optional(),
+    destination_type: destinationTypeSchema.optional(),
+    api_token: z.string().trim().min(1).max(512).optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, {
+    message: "At least one field is required for update",
+  });

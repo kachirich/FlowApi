@@ -1,6 +1,7 @@
 import { query } from '../db/connection.js';
 import { validateWebhookUrl } from '../utils/security.js';
 import { grantMonthlyCredits } from '../services/destinationMetering.js';
+import { encrypt } from '../utils/encryption.js';
 
 const sanitizeName = (str) => {
   if (typeof str !== 'string') return '';
@@ -13,7 +14,7 @@ const sanitizeName = (str) => {
 export const createDestination = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { name, target_url, daily_cap, is_active } = req.body;
+    const { name, target_url, daily_cap, is_active, destination_type, api_token } = req.body;
 
     if (!name || !target_url) {
       const error = new Error('Name and target_url are required');
@@ -64,12 +65,15 @@ export const createDestination = async (req, res, next) => {
     }
 
     const active = is_active !== undefined ? Boolean(is_active) : true;
+    const destType = destination_type || 'webhook';
+    const encryptedToken = api_token ? encrypt(api_token) : null;
 
     const result = await query(
-      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, target_url, daily_cap, is_active, created_at`,
-      [userId, sanitizedName, target_url, cap, active]
+      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active, destination_type, api_token_encrypted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, name, target_url, daily_cap, is_active, destination_type, created_at,
+                 (api_token_encrypted IS NOT NULL) AS has_token`,
+      [userId, sanitizedName, target_url, cap, active, destType, encryptedToken]
     );
 
     // Issue the first monthly credit grant for this destination (fire-and-forget)
@@ -94,7 +98,8 @@ export const listDestinations = async (req, res, next) => {
     const userId = req.user.id;
 
     const result = await query(
-      `SELECT id, name, target_url, daily_cap, is_active, created_at
+      `SELECT id, name, target_url, daily_cap, is_active, destination_type, created_at,
+              (api_token_encrypted IS NOT NULL) AS has_token
        FROM destinations
        WHERE user_id = $1
        ORDER BY created_at DESC`,
@@ -115,7 +120,7 @@ export const updateDestination = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const destinationId = req.params.id;
-    const { name, target_url, daily_cap, is_active } = req.body;
+    const { name, target_url, daily_cap, is_active, destination_type, api_token } = req.body;
 
     if (!destinationId) {
       const error = new Error('Destination ID is required');
@@ -176,19 +181,39 @@ export const updateDestination = async (req, res, next) => {
 
     const active = is_active !== undefined ? Boolean(is_active) : undefined;
 
+    // Token update logic — three cases:
+    // 1. api_token provided → re-encrypt (rotation)
+    // 2. destination_type explicitly set to 'webhook' → clear token
+    // 3. Neither → leave existing token unchanged
+    let shouldUpdateToken = false;
+    let newEncryptedToken = null;
+    if (api_token) {
+      shouldUpdateToken = true;
+      newEncryptedToken = encrypt(api_token);
+    } else if (destination_type === 'webhook') {
+      shouldUpdateToken = true;
+      newEncryptedToken = null;
+    }
+
     const result = await query(
       `UPDATE destinations
        SET name = COALESCE($1, name),
            target_url = COALESCE($2, target_url),
            daily_cap = COALESCE($3, daily_cap),
-           is_active = COALESCE($4, is_active)
-       WHERE id = $5 AND user_id = $6
-       RETURNING id, name, target_url, daily_cap, is_active, created_at`,
+           is_active = COALESCE($4, is_active),
+           destination_type = COALESCE($5, destination_type),
+           api_token_encrypted = CASE WHEN $6 THEN $7 ELSE api_token_encrypted END
+       WHERE id = $8 AND user_id = $9
+       RETURNING id, name, target_url, daily_cap, is_active, destination_type, created_at,
+                 (api_token_encrypted IS NOT NULL) AS has_token`,
       [
         sanitizedName !== undefined ? sanitizedName : null,
         target_url !== undefined ? target_url : null,
         cap !== undefined ? cap : null,
         active !== undefined ? active : null,
+        destination_type !== undefined ? destination_type : null,
+        shouldUpdateToken,
+        newEncryptedToken,
         destinationId,
         userId
       ]

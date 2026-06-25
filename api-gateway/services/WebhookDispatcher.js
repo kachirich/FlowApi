@@ -5,6 +5,7 @@ import { query } from "../db/connection.js";
 import redisClient from "../utils/redisClient.js";
 import { webhookQueue } from "../services/queue.js";
 import { getMeteringState, invalidateMeteringCache } from "./destinationMetering.js";
+import { decrypt } from "../utils/encryption.js";
 
 /**
  * Debit one credit from a metered destination after a CONFIRMED 2xx delivery.
@@ -134,7 +135,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     routingStrategy = flowRes.rows[0].routing_strategy || "round_robin";
 
     const flowDestRes = await query(
-      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers,
+              d.destination_type, d.api_token_encrypted
        FROM flow_destinations fd
        JOIN destinations d ON d.id = fd.destination_id
        WHERE fd.flow_id = $1 AND d.is_active = TRUE`,
@@ -143,7 +145,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     destinations = flowDestRes.rows;
   } else {
     const destinationsRes = await query(
-      `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+      `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers,
+              destination_type, api_token_encrypted
        FROM destinations
        WHERE user_id = $1 AND is_active = TRUE`,
       [userId]
@@ -385,11 +388,24 @@ async function attemptHttpRequest(webhook, payload, planType) {
   // Setup headers (include custom headers if Pro/Plus)
   const mergedHeaders = { "Content-Type": "application/json" };
   const blocklistedHeaders = ["host", "content-length", "connection"];
-  
+
+  // Inject bearer token for rest_api destinations — bypasses plan gate
+  // because this is the user's own API credential, not a platform feature.
+  if (webhook.destination_type && webhook.destination_type !== "webhook" && webhook.api_token_encrypted) {
+    try {
+      const token = decrypt(webhook.api_token_encrypted);
+      mergedHeaders["Authorization"] = `Bearer ${token}`;
+    } catch (decryptErr) {
+      throw new Error(`Token decryption failed for destination ${webhook.id}: ${decryptErr.message}`);
+    }
+  }
+
   if (planType !== "free" && planType !== "basic") {
     if (webhook.custom_headers && typeof webhook.custom_headers === "object") {
       for (const [key, value] of Object.entries(webhook.custom_headers)) {
         if (!blocklistedHeaders.includes(key.toLowerCase())) {
+          // Do not overwrite an already-injected Authorization bearer token
+          if (key.toLowerCase() === "authorization" && mergedHeaders["Authorization"]) continue;
           mergedHeaders[key] = value;
         }
       }

@@ -15,6 +15,7 @@ import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js"
 import { planCacheKey } from "../middleware/requirePlan.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 import { webhookQueue } from "../services/queue.js";
+import { decrypt } from "../utils/encryption.js";
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -553,12 +554,46 @@ router.delete("/logs", authenticate, requireAdmin, async (req, res, next) => {
  */
 router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(egressTestBodySchema), async (req, res, next) => {
   try {
-    const { destinationUrl, payload } = req.body;
+    const { destinationUrl, destinationId, payload } = req.body;
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Resolve the target URL + optional auth header.
+    //   - destinationId → look up an owned destination, decrypt its stored
+    //     token (token-based types only) into an Authorization: Bearer header.
+    //   - destinationUrl → manual entry, no stored credential.
+    // ════════════════════════════════════════════════════════════════════════
+    let targetUrl = destinationUrl;
+    const outboundHeaders = { "Content-Type": "application/json" };
+
+    if (destinationId) {
+      const destResult = await query(
+        `SELECT target_url, destination_type, api_token_encrypted
+         FROM destinations
+         WHERE id = $1 AND user_id = $2`,
+        [destinationId, req.user.id]
+      );
+      if (destResult.rows.length === 0) {
+        return res.status(404).json({ success: false, message: "Destination not found" });
+      }
+      const dest = destResult.rows[0];
+      targetUrl = dest.target_url;
+
+      if (dest.destination_type !== "webhook" && dest.api_token_encrypted) {
+        try {
+          outboundHeaders["Authorization"] = `Bearer ${decrypt(dest.api_token_encrypted)}`;
+        } catch (decryptErr) {
+          return res.status(500).json({
+            success: false,
+            error: "Failed to decrypt the stored token for this destination.",
+          });
+        }
+      }
+    }
 
     // ════════════════════════════════════════════════════════════════════════
     // GUARD 1: SSRF Blacklist Protection
     // ════════════════════════════════════════════════════════════════════════
-    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    const { isValid, error } = validateWebhookUrl(targetUrl);
     if (!isValid) {
       return res.status(400).json({
         success: false,
@@ -579,11 +614,9 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
       const timeoutId = setTimeout(() => controller.abort(), 3000);
 
       try {
-        outboundResponse = await fetch(destinationUrl, {
+        outboundResponse = await fetch(targetUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: outboundHeaders,
           body: JSON.stringify(payload),
           signal: controller.signal,
         });

@@ -12,6 +12,7 @@ import {
   Radio,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { DestinationTypeBadge, TokenBadge } from './DestinationBadges';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Routing strategy presentation helpers
@@ -265,10 +266,12 @@ export default function FlowManager() {
                         dests.map((d) => (
                           <span
                             key={d.id}
-                            className="inline-flex items-center rounded-md bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-xs font-medium text-zinc-300"
+                            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-xs font-medium text-zinc-300"
                             title={d.target_url}
                           >
                             {d.name}
+                            <DestinationTypeBadge type={d.destination_type} />
+                            {d.has_token && <TokenBadge />}
                           </span>
                         ))
                       )}
@@ -426,7 +429,11 @@ export default function FlowManager() {
                               ) : null}
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-medium text-zinc-200 truncate">{dest.name}</span>
+                              <span className="flex items-center gap-1.5">
+                                <span className="text-sm font-medium text-zinc-200 truncate">{dest.name}</span>
+                                <DestinationTypeBadge type={dest.destination_type} />
+                                {dest.has_token && <TokenBadge />}
+                              </span>
                               <span className="block font-mono text-xs text-zinc-500 truncate" title={dest.target_url}>
                                 {dest.target_url}
                               </span>

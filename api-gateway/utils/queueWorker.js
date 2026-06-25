@@ -1,5 +1,6 @@
 import axios from "axios";
 import { query } from "../db/connection.js";
+import { decrypt } from "./encryption.js";
 
 function getTranslatedErrorMessage(error) {
   if (error.response) {
@@ -29,9 +30,10 @@ export async function processQueue() {
   try {
     // Select leads that are PENDING or RETRYING
     const res = await query(`
-      SELECT gl.*, 
+      SELECT gl.*,
              COALESCE(wk.target_url, d.target_url) AS target_url,
-             COALESCE(wk.http_method, 'POST') AS http_method
+             COALESCE(wk.http_method, 'POST') AS http_method,
+             d.destination_type, d.api_token_encrypted
       FROM ghl_leads gl
       LEFT JOIN webhook_keys wk ON gl.webhook_key_id = wk.id
       LEFT JOIN destinations d ON gl.destination_id = d.id
@@ -60,7 +62,15 @@ export async function processQueue() {
 
       try {
         const method = (lead.http_method || 'POST').toLowerCase();
-        await axios({ method, url: destinationUrl, data: enrichedPayload, timeout: 5000 });
+        const headers = { 'Content-Type': 'application/json' };
+        if (lead.destination_type && lead.destination_type !== 'webhook' && lead.api_token_encrypted) {
+          try {
+            headers['Authorization'] = `Bearer ${decrypt(lead.api_token_encrypted)}`;
+          } catch (decryptErr) {
+            throw new Error(`Token decryption failed for destination ${lead.destination_id}: ${decryptErr.message}`);
+          }
+        }
+        await axios({ method, url: destinationUrl, data: enrichedPayload, headers, timeout: 5000 });
         
         // Success
         await query(`

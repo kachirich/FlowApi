@@ -49,6 +49,16 @@ export const webhookDestinationSchema = z
     }
   });
 
+/**
+ * Client-side guard for destination API tokens. Mirrors the backend
+ * `api_token` rule in middleware/validateRequest.js (trimmed, 1–512 chars).
+ */
+export const apiTokenSchema = z
+  .string()
+  .trim()
+  .min(1, "API token is required")
+  .max(512, "API token must be 512 characters or fewer");
+
 export const jsonKeyMappingSchema = z
   .string()
   .trim()
