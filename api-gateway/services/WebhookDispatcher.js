@@ -7,6 +7,7 @@ import { webhookQueue } from "../services/queue.js";
 import { getMeteringState, invalidateMeteringCache } from "./destinationMetering.js";
 import { decrypt } from "../utils/encryption.js";
 import { retryConfig } from "../utils/retryConfig.js";
+import { getAuthHeader } from "./providers/registry.js";
 
 /**
  * Resolve the webhook_logs response_error code when a lead reaches no
@@ -153,7 +154,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
     const flowDestRes = await query(
       `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers,
-              d.destination_type, d.api_token_encrypted
+              d.destination_type, d.provider, d.api_token_encrypted
        FROM flow_destinations fd
        JOIN destinations d ON d.id = fd.destination_id
        WHERE fd.flow_id = $1 AND d.is_active = TRUE`,
@@ -163,7 +164,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
   } else {
     const destinationsRes = await query(
       `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers,
-              destination_type, api_token_encrypted
+              destination_type, provider, api_token_encrypted
        FROM destinations
        WHERE user_id = $1 AND is_active = TRUE`,
       [userId]
@@ -413,12 +414,19 @@ async function attemptHttpRequest(webhook, payload, planType) {
   const mergedHeaders = { "Content-Type": "application/json" };
   const blocklistedHeaders = ["host", "content-length", "connection"];
 
-  // Inject bearer token for rest_api destinations — bypasses plan gate
-  // because this is the user's own API credential, not a platform feature.
+  // Inject the provider's auth header for rest_api destinations — bypasses the
+  // plan gate because this is the user's own API credential, not a platform
+  // feature. Header varies by provider (generic → Authorization: Bearer,
+  // nocodb → xc-token), resolved via the provider registry.
+  let injectedAuthHeader = null;
   if (webhook.destination_type && webhook.destination_type !== "webhook" && webhook.api_token_encrypted) {
     try {
       const token = decrypt(webhook.api_token_encrypted);
-      mergedHeaders["Authorization"] = `Bearer ${token}`;
+      const authHeader = getAuthHeader(webhook.provider, token);
+      if (authHeader) {
+        mergedHeaders[authHeader.name] = authHeader.value;
+        injectedAuthHeader = authHeader.name.toLowerCase();
+      }
     } catch (decryptErr) {
       throw new Error(`Token decryption failed for destination ${webhook.id}: ${decryptErr.message}`);
     }
@@ -428,8 +436,8 @@ async function attemptHttpRequest(webhook, payload, planType) {
     if (webhook.custom_headers && typeof webhook.custom_headers === "object") {
       for (const [key, value] of Object.entries(webhook.custom_headers)) {
         if (!blocklistedHeaders.includes(key.toLowerCase())) {
-          // Do not overwrite an already-injected Authorization bearer token
-          if (key.toLowerCase() === "authorization" && mergedHeaders["Authorization"]) continue;
+          // Do not overwrite the auth header we just injected.
+          if (injectedAuthHeader && key.toLowerCase() === injectedAuthHeader) continue;
           mergedHeaders[key] = value;
         }
       }

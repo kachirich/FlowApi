@@ -2,6 +2,7 @@ import { query } from '../db/connection.js';
 import { validateWebhookUrl } from '../utils/security.js';
 import { grantMonthlyCredits } from '../services/destinationMetering.js';
 import { encrypt } from '../utils/encryption.js';
+import { getAdapter } from '../services/providers/registry.js';
 
 const sanitizeName = (str) => {
   if (typeof str !== 'string') return '';
@@ -14,7 +15,7 @@ const sanitizeName = (str) => {
 export const createDestination = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { name, target_url, daily_cap, is_active, destination_type, api_token } = req.body;
+    const { name, target_url, daily_cap, is_active, destination_type, provider, api_token } = req.body;
 
     if (!name || !target_url) {
       const error = new Error('Name and target_url are required');
@@ -66,14 +67,15 @@ export const createDestination = async (req, res, next) => {
 
     const active = is_active !== undefined ? Boolean(is_active) : true;
     const destType = destination_type || 'webhook';
+    const prov = provider || 'generic';
     const encryptedToken = api_token ? encrypt(api_token) : null;
 
     const result = await query(
-      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active, destination_type, api_token_encrypted)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, name, target_url, daily_cap, is_active, destination_type, created_at,
+      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active, destination_type, provider, api_token_encrypted)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, name, target_url, daily_cap, is_active, destination_type, provider, created_at,
                  (api_token_encrypted IS NOT NULL) AS has_token`,
-      [userId, sanitizedName, target_url, cap, active, destType, encryptedToken]
+      [userId, sanitizedName, target_url, cap, active, destType, prov, encryptedToken]
     );
 
     // Issue the first monthly credit grant for this destination (fire-and-forget)
@@ -98,7 +100,7 @@ export const listDestinations = async (req, res, next) => {
     const userId = req.user.id;
 
     const result = await query(
-      `SELECT id, name, target_url, daily_cap, is_active, destination_type, created_at,
+      `SELECT id, name, target_url, daily_cap, is_active, destination_type, provider, created_at,
               (api_token_encrypted IS NOT NULL) AS has_token
        FROM destinations
        WHERE user_id = $1
@@ -120,7 +122,7 @@ export const updateDestination = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const destinationId = req.params.id;
-    const { name, target_url, daily_cap, is_active, destination_type, api_token } = req.body;
+    const { name, target_url, daily_cap, is_active, destination_type, provider, api_token } = req.body;
 
     if (!destinationId) {
       const error = new Error('Destination ID is required');
@@ -202,9 +204,10 @@ export const updateDestination = async (req, res, next) => {
            daily_cap = COALESCE($3, daily_cap),
            is_active = COALESCE($4, is_active),
            destination_type = COALESCE($5, destination_type),
-           api_token_encrypted = CASE WHEN $6 THEN $7 ELSE api_token_encrypted END
-       WHERE id = $8 AND user_id = $9
-       RETURNING id, name, target_url, daily_cap, is_active, destination_type, created_at,
+           provider = COALESCE($6, provider),
+           api_token_encrypted = CASE WHEN $7 THEN $8 ELSE api_token_encrypted END
+       WHERE id = $9 AND user_id = $10
+       RETURNING id, name, target_url, daily_cap, is_active, destination_type, provider, created_at,
                  (api_token_encrypted IS NOT NULL) AS has_token`,
       [
         sanitizedName !== undefined ? sanitizedName : null,
@@ -212,6 +215,7 @@ export const updateDestination = async (req, res, next) => {
         cap !== undefined ? cap : null,
         active !== undefined ? active : null,
         destination_type !== undefined ? destination_type : null,
+        provider !== undefined ? provider : null,
         shouldUpdateToken,
         newEncryptedToken,
         destinationId,
@@ -226,6 +230,38 @@ export const updateDestination = async (req, res, next) => {
   } catch (error) {
     console.error('Error updating destination:', error);
     next(error);
+  }
+};
+
+/**
+ * POST /api/destinations/browse
+ * Lazy resource picker for browsable providers (e.g. NocoDB base → table).
+ * The token is used only to query the provider's meta API; only resource
+ * names/ids/resolved-URLs are returned — never the token or raw upstream bodies.
+ */
+export const browseDestination = async (req, res, next) => {
+  try {
+    const { provider, api_token, path } = req.body;
+    const adapter = getAdapter(provider);
+    if (!adapter.browse) {
+      return res.status(400).json({ success: false, message: `Provider '${provider}' does not support browsing` });
+    }
+
+    const items = await adapter.browse.list(api_token, path || []);
+    return res.status(200).json({
+      success: true,
+      levels: adapter.browse.levels,
+      level: (path || []).length,
+      items,
+    });
+  } catch (error) {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) {
+      return res.status(401).json({ success: false, message: `${req.body?.provider} rejected the token. Check the API token and try again.` });
+    }
+    // Never surface the raw upstream body — it can leak internal detail.
+    console.error('Error browsing provider:', error.message);
+    return res.status(502).json({ success: false, message: 'Could not reach the provider. Please try again.' });
   }
 };
 

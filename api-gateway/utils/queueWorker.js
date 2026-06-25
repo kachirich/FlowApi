@@ -1,6 +1,7 @@
 import axios from "axios";
 import { query } from "../db/connection.js";
 import { decrypt } from "./encryption.js";
+import { getAuthHeader } from "../services/providers/registry.js";
 
 function getTranslatedErrorMessage(error) {
   if (error.response) {
@@ -33,7 +34,7 @@ export async function processQueue() {
       SELECT gl.*,
              COALESCE(wk.target_url, d.target_url) AS target_url,
              COALESCE(wk.http_method, 'POST') AS http_method,
-             d.destination_type, d.api_token_encrypted
+             d.destination_type, d.provider, d.api_token_encrypted
       FROM ghl_leads gl
       LEFT JOIN webhook_keys wk ON gl.webhook_key_id = wk.id
       LEFT JOIN destinations d ON gl.destination_id = d.id
@@ -65,7 +66,8 @@ export async function processQueue() {
         const headers = { 'Content-Type': 'application/json' };
         if (lead.destination_type && lead.destination_type !== 'webhook' && lead.api_token_encrypted) {
           try {
-            headers['Authorization'] = `Bearer ${decrypt(lead.api_token_encrypted)}`;
+            const authHeader = getAuthHeader(lead.provider, decrypt(lead.api_token_encrypted));
+            if (authHeader) headers[authHeader.name] = authHeader.value;
           } catch (decryptErr) {
             throw new Error(`Token decryption failed for destination ${lead.destination_id}: ${decryptErr.message}`);
           }

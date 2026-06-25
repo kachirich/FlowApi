@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PROVIDER_IDS, BROWSABLE_PROVIDER_IDS } from "../services/providers/registry.js";
 
 /**
  * Zod schema for webhook destination URLs with strict SSRF protection.
@@ -271,6 +272,12 @@ const destinationTypeSchema = z.enum(["webhook", "rest_api"], {
   message: "destination_type must be 'webhook' or 'rest_api'",
 });
 
+// `provider` selects a registry adapter (auth scheme + optional picker). The
+// specific tool name lives here, not in destination_type.
+const providerSchema = z
+  .string()
+  .refine((p) => PROVIDER_IDS.includes(p), { message: "Unknown provider" });
+
 /** POST /api/destinations */
 export const createDestinationSchema = z
   .object({
@@ -279,6 +286,7 @@ export const createDestinationSchema = z
     daily_cap: z.number().int().nonnegative().optional(),
     is_active: z.boolean().optional(),
     destination_type: destinationTypeSchema.optional().default("webhook"),
+    provider: providerSchema.optional().default("generic"),
     api_token: z.string().trim().min(1).max(512).optional(),
   })
   .superRefine((data, ctx) => {
@@ -307,8 +315,19 @@ export const updateDestinationSchema = z
     daily_cap: z.number().int().nonnegative().optional(),
     is_active: z.boolean().optional(),
     destination_type: destinationTypeSchema.optional(),
+    provider: providerSchema.optional(),
     api_token: z.string().trim().min(1).max(512).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, {
     message: "At least one field is required for update",
   });
+
+/** POST /api/destinations/browse — lazy provider resource picker */
+export const browseDestinationSchema = z.object({
+  provider: z
+    .string()
+    .refine((p) => BROWSABLE_PROVIDER_IDS.includes(p), { message: "Provider does not support browsing" }),
+  api_token: z.string().trim().min(1).max(512),
+  // Selected ancestor ids, deepest last (e.g. [baseId] to list that base's tables).
+  path: z.array(z.string().trim().min(1).max(200)).max(5).optional().default([]),
+});

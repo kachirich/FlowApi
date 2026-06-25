@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '../utils/api';
-import { Plus, Trash2, Loader2, Shuffle, Edit2, Pencil, X, Webhook, Plug } from 'lucide-react';
+import { Plus, Trash2, Loader2, Shuffle, Edit2, Pencil, X, Webhook, Plug, Database, Workflow } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { DestinationTypeBadge, TokenBadge } from './DestinationBadges';
@@ -27,6 +27,126 @@ const DEST_TYPE_META = {
 };
 
 const DEST_TYPE_ORDER = ['webhook', 'rest_api'];
+
+/**
+ * rest_api provider presets. `generic` = custom free-text URL + Bearer.
+ * `nocodb` = base/table picker (URL is resolved, not typed). `n8n` = free-text
+ * webhook URL + Bearer. Mirrors api-gateway/services/providers/registry.js.
+ */
+const PROVIDER_META = {
+  generic: { label: 'Custom URL', Icon: Plug, urlPlaceholder: 'https://your-api.example.com/endpoint' },
+  nocodb: { label: 'NocoDB', Icon: Database, picker: true },
+  n8n: { label: 'n8n', Icon: Workflow, urlPlaceholder: 'https://<your-n8n-host>/webhook/<path>' },
+};
+const PROVIDER_ORDER = ['generic', 'nocodb', 'n8n'];
+
+const pickerInputCls =
+  'w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 placeholder:text-zinc-600';
+const pickerLabelCls = 'text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5';
+
+/**
+ * NocoDB base → table picker. Uses the entered API token to browse the user's
+ * NocoDB cloud account server-side; the resolved records URL is sent up via
+ * onResolved. The base URL (app.nocodb.com) lives on the backend.
+ */
+function NocoDbPicker({ apiToken, resolvedUrl, onResolved }) {
+  const [bases, setBases] = useState([]);
+  const [tables, setTables] = useState([]);
+  const [baseId, setBaseId] = useState('');
+  const [tableId, setTableId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const browse = async (path) => {
+    const res = await apiClient.post('/api/destinations/browse', {
+      provider: 'nocodb',
+      api_token: apiToken,
+      path,
+    });
+    return res.data?.items || [];
+  };
+
+  const loadBases = async () => {
+    if (!apiToken.trim()) {
+      setError('Enter your NocoDB API token first.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    setTables([]);
+    setBaseId('');
+    setTableId('');
+    onResolved('');
+    try {
+      setBases(await browse([]));
+    } catch (e) {
+      setError(e.response?.data?.message || 'Could not list bases.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickBase = async (id) => {
+    setBaseId(id);
+    setTables([]);
+    setTableId('');
+    onResolved('');
+    if (!id) return;
+    setLoading(true);
+    setError('');
+    try {
+      setTables(await browse([id]));
+    } catch (e) {
+      setError(e.response?.data?.message || 'Could not list tables.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickTable = (id) => {
+    setTableId(id);
+    const t = tables.find((x) => String(x.id) === String(id));
+    onResolved(t?.target_url || '');
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className={pickerLabelCls}>NocoDB table</label>
+      <button
+        type="button"
+        onClick={loadBases}
+        disabled={loading || !apiToken.trim()}
+        className="inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+        {bases.length ? 'Reload bases' : 'Browse my NocoDB'}
+      </button>
+
+      {bases.length > 0 && (
+        <select value={baseId} onChange={(e) => pickBase(e.target.value)} className={`${pickerInputCls} mt-1`}>
+          <option value="">— Select a base —</option>
+          {bases.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+      )}
+
+      {tables.length > 0 && (
+        <select value={tableId} onChange={(e) => pickTable(e.target.value)} className={pickerInputCls}>
+          <option value="">— Select a table —</option>
+          {tables.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      )}
+
+      {error && <p className="text-xs text-rose-400">{error}</p>}
+      {resolvedUrl && (
+        <p className="font-mono text-xs text-emerald-400/90 break-all">{resolvedUrl}</p>
+      )}
+    </div>
+  );
+}
 
 const CAP_PRESETS = [
   { label: 'Unlimited', value: 0 },
@@ -118,6 +238,7 @@ export default function DestinationManager({ setActiveTab }) {
   const [targetUrl, setTargetUrl] = useState('');
   const [dailyCap, setDailyCap] = useState(0);
   const [destinationType, setDestinationType] = useState('webhook');
+  const [provider, setProvider] = useState('generic');
   const [apiToken, setApiToken] = useState('');
   const [tokenError, setTokenError] = useState('');
 
@@ -130,6 +251,7 @@ export default function DestinationManager({ setActiveTab }) {
   const [editName, setEditName] = useState('');
   const [editUrl, setEditUrl] = useState('');
   const [editType, setEditType] = useState('webhook');
+  const [editProvider, setEditProvider] = useState('generic');
   const [editToken, setEditToken] = useState('');
   const [editTokenError, setEditTokenError] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -185,6 +307,7 @@ export default function DestinationManager({ setActiveTab }) {
         target_url: targetUrl,
         daily_cap: dailyCap,
         destination_type: destinationType,
+        ...(destinationType === 'rest_api' ? { provider } : {}),
         ...(destinationType !== 'webhook' && apiToken ? { api_token: apiToken } : {}),
       });
       if (res.data && res.data.success) {
@@ -193,6 +316,7 @@ export default function DestinationManager({ setActiveTab }) {
         setTargetUrl('');
         setDailyCap(0);
         setDestinationType('webhook');
+        setProvider('generic');
         setApiToken('');
         fetchDestinations();
       }
@@ -252,6 +376,7 @@ export default function DestinationManager({ setActiveTab }) {
     setEditName(dest.name || '');
     setEditUrl(dest.target_url || '');
     setEditType(dest.destination_type || 'webhook');
+    setEditProvider(dest.provider || 'generic');
     setEditToken('');
     setEditTokenError('');
   };
@@ -270,6 +395,7 @@ export default function DestinationManager({ setActiveTab }) {
     (editName.trim() !== (editingDest.name || '') ||
       editUrl.trim() !== (editingDest.target_url || '') ||
       editType !== (editingDest.destination_type || 'webhook') ||
+      editProvider !== (editingDest.provider || 'generic') ||
       !!editToken.trim());
 
   const handleEditSubmit = async (e) => {
@@ -297,6 +423,7 @@ export default function DestinationManager({ setActiveTab }) {
     if (editName.trim() !== (editingDest.name || '')) payload.name = editName.trim();
     if (editUrl.trim() !== (editingDest.target_url || '')) payload.target_url = editUrl.trim();
     if (editType !== (editingDest.destination_type || 'webhook')) payload.destination_type = editType;
+    if (editType === 'rest_api' && editProvider !== (editingDest.provider || 'generic')) payload.provider = editProvider;
     if (editType !== 'webhook' && editToken.trim()) payload.api_token = editToken.trim();
 
     if (Object.keys(payload).length === 0) {
@@ -361,7 +488,7 @@ export default function DestinationManager({ setActiveTab }) {
                       <button
                         key={value}
                         type="button"
-                        onClick={() => { setDestinationType(value); setApiToken(''); }}
+                        onClick={() => { setDestinationType(value); setProvider('generic'); setApiToken(''); setTargetUrl(''); }}
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
                           destinationType === value
                             ? 'bg-indigo-500 text-white border-indigo-400'
@@ -375,17 +502,34 @@ export default function DestinationManager({ setActiveTab }) {
                   })}
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {destinationType === 'rest_api' && (
                 <div>
-                  <label className={labelCls}>Destination name</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. KCB Bank, Pesapal" className={inputCls} />
+                  <label className={labelCls}>Provider</label>
+                  <div className="flex gap-2">
+                    {PROVIDER_ORDER.map((value) => {
+                      const { label, Icon } = PROVIDER_META[value];
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => { setProvider(value); setTargetUrl(''); }}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                            provider === value
+                              ? 'bg-indigo-500 text-white border-indigo-400'
+                              : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600'
+                          }`}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <label className={labelCls}>Target URL</label>
-                  <input type="url" value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} placeholder={DEST_TYPE_META[destinationType].urlPlaceholder} className={`${inputCls} font-mono`} />
-                </div>
-              </div>
-              {destinationType !== 'webhook' && (
+              )}
+
+              {destinationType === 'rest_api' && (
                 <div>
                   <label className={labelCls}>API token</label>
                   <input
@@ -399,12 +543,34 @@ export default function DestinationManager({ setActiveTab }) {
                   {tokenError ? (
                     <p className="mt-1 text-xs text-rose-400">{tokenError}</p>
                   ) : (
-                    <p className="mt-1 text-xs text-zinc-500">Stored encrypted. Never shown again after save.</p>
-                  )}
-                  {DEST_TYPE_META[destinationType].helpText && (
-                    <p className="mt-1 text-xs text-zinc-500">{DEST_TYPE_META[destinationType].helpText}</p>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      {provider === 'nocodb' ? 'Used to list your NocoDB tables, then stored encrypted.' : 'Stored encrypted. Never shown again after save.'}
+                    </p>
                   )}
                 </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Destination name</label>
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. KCB Bank, Pesapal" className={inputCls} />
+                </div>
+                {!(destinationType === 'rest_api' && provider === 'nocodb') && (
+                  <div>
+                    <label className={labelCls}>Target URL</label>
+                    <input
+                      type="url"
+                      value={targetUrl}
+                      onChange={(e) => setTargetUrl(e.target.value)}
+                      placeholder={destinationType === 'webhook' ? DEST_TYPE_META.webhook.urlPlaceholder : (PROVIDER_META[provider]?.urlPlaceholder || DEST_TYPE_META.rest_api.urlPlaceholder)}
+                      className={`${inputCls} font-mono`}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {destinationType === 'rest_api' && provider === 'nocodb' && (
+                <NocoDbPicker apiToken={apiToken} resolvedUrl={targetUrl} onResolved={setTargetUrl} />
               )}
               <div>
                 <label className={labelCls}>Daily lead cap (0 = unlimited)</label>
@@ -450,7 +616,7 @@ export default function DestinationManager({ setActiveTab }) {
                     >
                       {dest.is_active ? 'Active' : 'Disabled'}
                     </button>
-                    <DestinationTypeBadge type={dest.destination_type} />
+                    <DestinationTypeBadge type={dest.destination_type} provider={dest.provider} />
                     {dest.has_token && <TokenBadge />}
                     <h3 className="text-base font-medium text-zinc-50 truncate">{dest.name}</h3>
                   </div>
@@ -542,7 +708,7 @@ export default function DestinationManager({ setActiveTab }) {
                         <button
                           key={value}
                           type="button"
-                          onClick={() => { setEditType(value); setEditToken(''); }}
+                          onClick={() => { setEditType(value); setEditProvider('generic'); setEditToken(''); }}
                           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
                             editType === value
                               ? 'bg-indigo-500 text-white border-indigo-400'
@@ -557,14 +723,35 @@ export default function DestinationManager({ setActiveTab }) {
                   </div>
                 </div>
 
+                {editType === 'rest_api' && (
+                  <div>
+                    <label className={labelCls}>Provider</label>
+                    <div className="flex gap-2">
+                      {PROVIDER_ORDER.map((value) => {
+                        const { label, Icon } = PROVIDER_META[value];
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setEditProvider(value)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                              editProvider === value
+                                ? 'bg-indigo-500 text-white border-indigo-400'
+                                : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600'
+                            }`}
+                          >
+                            <Icon className="h-3.5 w-3.5" />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className={labelCls}>Destination name</label>
                   <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className={inputCls} />
-                </div>
-
-                <div>
-                  <label className={labelCls}>Target URL</label>
-                  <input type="url" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} placeholder={DEST_TYPE_META[editType].urlPlaceholder} className={`${inputCls} font-mono`} />
                 </div>
 
                 {editType !== 'webhook' && (
@@ -583,14 +770,28 @@ export default function DestinationManager({ setActiveTab }) {
                     ) : (
                       <p className="mt-1 text-xs text-zinc-500">
                         {editingDest.has_token
-                          ? 'A token is already stored. Type a new value to rotate it.'
+                          ? (editProvider === 'nocodb' ? 'Type your token to re-pick a table, or leave blank to keep the current one.' : 'A token is already stored. Type a new value to rotate it.')
                           : 'Stored encrypted. Never shown again after save.'}
                       </p>
                     )}
-                    {DEST_TYPE_META[editType].helpText && (
-                      <p className="mt-1 text-xs text-zinc-500">{DEST_TYPE_META[editType].helpText}</p>
-                    )}
                   </div>
+                )}
+
+                {!(editType === 'rest_api' && editProvider === 'nocodb') && (
+                  <div>
+                    <label className={labelCls}>Target URL</label>
+                    <input
+                      type="url"
+                      value={editUrl}
+                      onChange={(e) => setEditUrl(e.target.value)}
+                      placeholder={editType === 'webhook' ? DEST_TYPE_META.webhook.urlPlaceholder : (PROVIDER_META[editProvider]?.urlPlaceholder || DEST_TYPE_META.rest_api.urlPlaceholder)}
+                      className={`${inputCls} font-mono`}
+                    />
+                  </div>
+                )}
+
+                {editType === 'rest_api' && editProvider === 'nocodb' && (
+                  <NocoDbPicker apiToken={editToken} resolvedUrl={editUrl} onResolved={setEditUrl} />
                 )}
               </div>
 

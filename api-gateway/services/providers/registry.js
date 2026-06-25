@@ -1,0 +1,84 @@
+import axios from "axios";
+
+/**
+ * Provider registry — single source of truth for how each REST API provider
+ * authenticates and (optionally) exposes a browsable resource tree.
+ *
+ * `destination_type` stays 'rest_api'; the `provider` column selects an adapter.
+ * Adding a new table-DB (Airtable, Baserow, …) is a new entry here, not a rewrite.
+ *
+ * Each adapter:
+ *   - label / icon            → presentation (icon = lucide name; FE maps it)
+ *   - auth { header, value }  → outbound auth header at dispatch time
+ *   - urlPlaceholder?         → hint for free-text (no-browse) providers
+ *   - browse?                 → lazy resource picker (omit for webhook-style tools)
+ */
+
+const NOCODB_BASE = "https://app.nocodb.com";
+
+const PROVIDERS = {
+  generic: {
+    label: "REST API",
+    icon: "Plug",
+    auth: { header: "Authorization", value: (t) => `Bearer ${t}` },
+  },
+
+  nocodb: {
+    label: "NocoDB",
+    icon: "Database",
+    // Cloud base is hardcoded — the user never pastes a base URL.
+    baseUrl: NOCODB_BASE,
+    auth: { header: "xc-token", value: (t) => t },
+    browse: {
+      levels: ["Base", "Table"],
+      // Lazy cascade: path=[] → bases; path=[baseId] → that base's tables (leaf).
+      // Leaf items carry the fully-resolved target_url so the base stays server-side.
+      list: async (token, path = []) => {
+        const headers = { "xc-token": token };
+        if (path.length === 0) {
+          const { data } = await axios.get(`${NOCODB_BASE}/api/v2/meta/bases/`, { headers, timeout: 5000 });
+          return (data?.list || []).map((b) => ({ id: b.id, name: b.title || b.id, leaf: false }));
+        }
+        const baseId = path[0];
+        const { data } = await axios.get(
+          `${NOCODB_BASE}/api/v2/meta/bases/${encodeURIComponent(baseId)}/tables`,
+          { headers, timeout: 5000 }
+        );
+        return (data?.list || []).map((t) => ({
+          id: t.id,
+          name: t.title || t.id,
+          leaf: true,
+          target_url: `${NOCODB_BASE}/api/v2/tables/${encodeURIComponent(t.id)}/records`,
+        }));
+      },
+    },
+  },
+
+  n8n: {
+    label: "n8n",
+    icon: "Workflow",
+    // Webhook-style: no browsable schema, so free-text URL + Bearer. Authenticated
+    // n8n sets a Header Auth credential expecting `Authorization: Bearer <token>`.
+    urlPlaceholder: "https://<your-n8n-host>/webhook/<path>",
+    auth: { header: "Authorization", value: (t) => `Bearer ${t}` },
+  },
+};
+
+export const PROVIDER_IDS = Object.keys(PROVIDERS);
+export const BROWSABLE_PROVIDER_IDS = PROVIDER_IDS.filter((id) => PROVIDERS[id].browse);
+
+/** Adapter for a provider, falling back to the generic (Bearer) adapter. */
+export function getAdapter(provider) {
+  return PROVIDERS[provider] || PROVIDERS.generic;
+}
+
+/**
+ * Outbound auth header for a destination, or null when there is no token.
+ * Used by both dispatch paths (WebhookDispatcher + legacy queueWorker) so they
+ * never diverge — generic/unknown → Bearer, nocodb → xc-token.
+ */
+export function getAuthHeader(provider, token) {
+  if (!token) return null;
+  const { auth } = getAdapter(provider);
+  return { name: auth.header, value: auth.value(token) };
+}
