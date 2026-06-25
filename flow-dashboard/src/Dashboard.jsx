@@ -36,8 +36,6 @@ import {
   FlaskConical,
   Send,
   Play,
-  ChevronLeft,
-  ChevronRight,
   Trash2,
   ChevronsUpDown,
   ChevronsDownUp,
@@ -1942,7 +1940,6 @@ export default function Dashboard() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
 
   // Advanced UX States
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [webhooksCollapsed, setWebhooksCollapsed] = useState(false);
   const [leadsCollapsed, setLeadsCollapsed] = useState(false);
   const [wipeModal, setWipeModal] = useState(null); // null | 'webhooks' | 'leads'
@@ -2783,7 +2780,7 @@ export default function Dashboard() {
   const displayName = greetName(user);
 
   return (
-    <div className="relative min-h-screen bg-surface flex flex-col md:flex-row">
+    <div className="relative min-h-screen bg-surface flex flex-col">
 
       {/* ── Ambient background ───────────────────────────────────────── */}
       <div className="pointer-events-none fixed inset-0 z-0">
@@ -2791,119 +2788,93 @@ export default function Dashboard() {
         <div className="absolute -right-40 bottom-20 h-[500px] w-[500px] rounded-full bg-violet-500/[0.03] blur-[120px]" />
       </div>
 
-      {/* ── Left Sidebar (Desktop) ───────────────────────────────────── */}
-      <aside className={`hidden md:flex flex-col border-r border-zinc-900 bg-zinc-950 h-screen sticky top-0 z-40 transition-all duration-150 ${sidebarCollapsed ? "w-20" : "w-60"}`}>
-        <div className={`p-6 flex items-center justify-between border-b border-slate-800/60 ${sidebarCollapsed ? "flex-col gap-3 px-2 py-6" : ""}`}>
+      {/* ── Top Navigation (Desktop) ─────────────────────────────────── */}
+      <header className="hidden md:flex flex-col border-b border-zinc-900 bg-zinc-950 sticky top-0 z-40">
+        {/* Row 1: brand + utility actions */}
+        <div className="flex items-center justify-between px-8 h-16 border-b border-slate-800/60">
           <div className="flex items-center gap-3">
-            {sidebarCollapsed ? (
-              <div className={`flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold ${
-                (user?.plan_type || 'free') === 'basic' ? 'border-blue-500/30 text-blue-400 bg-blue-500/5' :
-                (user?.plan_type || 'free') === 'pro' ? 'border-purple-500/30 text-purple-400 bg-purple-500/5' :
-                (user?.plan_type || 'free') === 'plus' ? 'border-yellow-400/30 text-yellow-400 bg-yellow-400/5' :
-                'border-emerald-500/30 text-emerald-400 bg-emerald-500/5'
-              }`} title={displayName}>
-                {displayName.charAt(0)}
-              </div>
-            ) : (
-              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
-                <Zap className="h-4 w-4" />
-              </div>
-            )}
-            {!sidebarCollapsed && (
-              <div>
-                <h1 className="flex items-center gap-2 text-sm font-medium tracking-tight text-zinc-50">
-                  <span className="h-2 w-2 rounded-full bg-indigo-500" />
-                  FlowGateway
-                </h1>
-                <p className="text-xs text-zinc-500 mt-1">Hi {displayName}</p>
-              </div>
-            )}
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
+              <Zap className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="flex items-center gap-2 text-sm font-medium tracking-tight text-zinc-50">
+                <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                FlowGateway
+              </h1>
+              <p className="text-xs text-zinc-500">Hi {displayName}</p>
+            </div>
           </div>
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 rounded-md transition-colors duration-150"
-            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-          >
-            {sidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={async () => { await refreshUser(); await fetchStats(); }}
+              title="Refresh plan status"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              <RefreshCw className="h-4 w-4 text-emerald-400" />
+            </button>
+            <a
+              href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}
+              title="Contact Support"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              <Mail className="h-4 w-4 text-cyan-400" />
+            </a>
+            <button onClick={() => setShowSecurityModal(true)} title="Security & 2FA Settings" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100">
+              <Shield className="h-4 w-4" />
+            </button>
+            <button onClick={handleLogout} title="End session" className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors duration-200 hover:bg-rose-500/10 hover:text-rose-400">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          <button onClick={() => setActiveTab("dashboard")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "dashboard" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Live Dashboard" : ""}>
-            <LayoutDashboard className="h-4 w-4" /> {!sidebarCollapsed && "Live Dashboard"}
+        {/* Row 2: horizontal tab strip (underline-active) */}
+        <nav className="flex flex-wrap items-center gap-1 px-8">
+          <button onClick={() => setActiveTab("dashboard")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "dashboard" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <LayoutDashboard className="h-4 w-4" /> Live Dashboard
           </button>
-          <button id="tour-destination-sandbox" onClick={() => setActiveTab("sandbox")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "sandbox" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Destination Sandbox" : ""}>
-            <FlaskConical className="h-4 w-4" /> {!sidebarCollapsed && "Destination Sandbox"}
+          <button id="tour-destination-sandbox" onClick={() => setActiveTab("sandbox")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "sandbox" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <FlaskConical className="h-4 w-4" /> Destination Sandbox
           </button>
-          <button onClick={() => setActiveTab("destinations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "destinations" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Destinations" : ""}>
-            <Shuffle className="h-4 w-4" /> {!sidebarCollapsed && "Destinations"}
+          <button onClick={() => setActiveTab("destinations")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "destinations" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <Shuffle className="h-4 w-4" /> Destinations
           </button>
-          <button onClick={() => setActiveTab("flows")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "flows" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Flows" : ""}>
-            <Workflow className="h-4 w-4" /> {!sidebarCollapsed && "Flows"}
+          <button onClick={() => setActiveTab("flows")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "flows" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <Workflow className="h-4 w-4" /> Flows
           </button>
-          <button onClick={() => setActiveTab("integrations")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "integrations" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Integrations" : ""}>
-            <Plug className="h-4 w-4" /> {!sidebarCollapsed && "Integrations"}
+          <button onClick={() => setActiveTab("integrations")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "integrations" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <Plug className="h-4 w-4" /> Integrations
           </button>
-          <button 
+          <button
             onClick={() => {
               if (stats.planType === 'free') {
                 setUpgradeModal({ isOpen: true, feature: 'Analytics Dashboard', tier: 'Basic or higher' });
               } else {
                 setActiveTab("logs");
               }
-            }} 
-            className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "logs" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} 
-            title={sidebarCollapsed ? "Analytics" : ""}
+            }}
+            className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "logs" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}
           >
-            {stats.planType === 'free' ? <Lock className="h-4 w-4 text-slate-500" /> : <Activity className="h-4 w-4" />} 
-            {!sidebarCollapsed && "Analytics"}
+            {stats.planType === 'free' ? <Lock className="h-4 w-4 text-slate-500" /> : <Activity className="h-4 w-4" />} Analytics
           </button>
-          <button onClick={() => setActiveTab("tutorial")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "tutorial" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Setup Tutorial" : ""}>
-            <BookOpen className="h-4 w-4" /> {!sidebarCollapsed && "Setup Tutorial"}
+          <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "tutorial" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <BookOpen className="h-4 w-4" /> Setup Tutorial
           </button>
-          <button onClick={() => setActiveTab("consulting")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "consulting" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Consulting" : ""}>
-            <PhoneCall className="h-4 w-4" /> {!sidebarCollapsed && "Consulting"}
+          <button onClick={() => setActiveTab("consulting")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "consulting" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <PhoneCall className="h-4 w-4" /> Consulting
           </button>
-          <button onClick={() => setActiveTab("pricing")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "pricing" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Billing" : ""}>
-            <CreditCard className="h-4 w-4" /> {!sidebarCollapsed && "Billing"}
+          <button onClick={() => setActiveTab("pricing")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "pricing" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <CreditCard className="h-4 w-4" /> Billing
           </button>
-          <button onClick={() => setActiveTab("notifications")} className={`w-full flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-semibold transition-all duration-200 ${sidebarCollapsed ? "justify-center px-2" : ""} ${activeTab === "notifications" ? "bg-indigo-500/10 text-zinc-50" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`} title={sidebarCollapsed ? "Notifications" : ""}>
-            <Settings className="h-4 w-4" /> {!sidebarCollapsed && "Notifications"}
+          <button onClick={() => setActiveTab("notifications")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "notifications" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
+            <Settings className="h-4 w-4" /> Notifications
           </button>
         </nav>
-
-        <div className="p-4 border-t border-slate-800/60 mt-auto space-y-2">
-
-
-          <button
-            type="button"
-            onClick={async () => { await refreshUser(); await fetchStats(); }}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/50 bg-surface-raised px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800 hover:text-white ${sidebarCollapsed ? "px-2" : ""}`}
-            title="Refresh plan status"
-          >
-            <RefreshCw className="h-4 w-4 text-emerald-400" /> {!sidebarCollapsed && "Refresh plan status"}
-          </button>
-
-          <a
-            href={`mailto:support.flowapi@gmail.com?subject=FlowAPI%20Support%20Request%20-%20${encodeURIComponent(userEmail)}`}
-            className={`flex w-full items-center justify-center gap-2 rounded-lg border border-slate-700/50 bg-surface-raised px-4 py-2.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-slate-800 hover:text-white ${sidebarCollapsed ? "px-2" : ""}`}
-            title={sidebarCollapsed ? "Contact Support" : ""}
-          >
-            <Mail className="h-4 w-4 text-cyan-400" /> {!sidebarCollapsed && "Contact Support"}
-          </a>
-
-          {!sidebarCollapsed && (
-            <div className="pt-1 text-center">
-              <Link to="/terms" target="_blank" className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Terms</Link>
-              <span className="text-[10px] text-slate-500"> & </span>
-              <Link to="/privacy" target="_blank" className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Privacy</Link>
-            </div>
-          )}
-        </div>
-      </aside>
+      </header>
 
       {/* ── Main Content Container ───────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-h-screen relative z-10 overflow-hidden">
+      <div className="flex-1 flex flex-col relative z-10 overflow-hidden">
         {/* Mobile Header */}
         <header className="md:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-800/60 bg-surface/80 px-4 backdrop-blur-xl">
           <div className="flex items-center gap-3">
@@ -2945,18 +2916,6 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab("pricing")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "pricing" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Billing</button>
           <button onClick={() => setActiveTab("notifications")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "notifications" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Notifications</button>
         </nav>
-
-        {/* Desktop Header (Top right tools) */}
-        <header className="hidden md:flex sticky top-0 z-30 h-14 items-center justify-end border-b border-slate-800/60 bg-surface/80 px-8 backdrop-blur-xl">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setShowSecurityModal(true)} title="Security & 2FA Settings" className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 transition-colors duration-150 hover:bg-zinc-800 hover:text-zinc-100">
-              <Shield className="h-4 w-4" />
-            </button>
-            <button onClick={handleLogout} title="End session" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 transition-colors duration-200 hover:bg-rose-500/10 hover:text-rose-400">
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </header>
 
         <div className="flex-1 flex flex-col lg:flex-row w-full max-w-[90rem] mx-auto relative">
           <main className="flex-1 w-full space-y-6 px-4 py-8 md:px-8">
