@@ -315,7 +315,9 @@ router.put("/destination", authenticate, async (req, res, next) => {
     }
 
     // Validate URL format and SSRF protection
-    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    const userResult = await query(`SELECT allow_internal_urls FROM users WHERE id = $1`, [req.user.id]);
+    const isUserWhitelisted = userResult.rows[0]?.allow_internal_urls || false;
+    const { isValid, error } = validateWebhookUrl(destinationUrl, isUserWhitelisted);
     if (!isValid) {
       return res.status(400).json({
         success: false,
@@ -557,7 +559,10 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
     // ════════════════════════════════════════════════════════════════════════
     // GUARD 1: SSRF Blacklist Protection
     // ════════════════════════════════════════════════════════════════════════
-    const { isValid, error } = validateWebhookUrl(destinationUrl);
+    const userResult = await query(`SELECT allow_internal_urls FROM users WHERE id = $1`, [req.user.id]);
+    const isUserWhitelisted = userResult.rows[0]?.allow_internal_urls || false;
+
+    const { isValid, error } = validateWebhookUrl(destinationUrl, isUserWhitelisted);
     if (!isValid) {
       return res.status(400).json({
         success: false,
@@ -870,6 +875,123 @@ router.post("/invalidate-plan-cache", authenticate, requireAdmin, async (req, re
     await redisClient.del(planCacheKey(userId));
 
     return res.json({ success: true, message: `Plan cache cleared for user ${userId}` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/whitelist-user
+ *
+ * Whitelists a user to use internal/localhost destination URLs.
+ * Body: { email }
+ * Protected by JWT and admin check.
+ */
+router.post("/whitelist-user", authenticate, requireAdmin, adminLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required field: email",
+      });
+    }
+
+    const result = await query(
+      `UPDATE users SET allow_internal_urls = TRUE WHERE email = $1 RETURNING id, email`,
+      [email.trim().toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No user found with that email address",
+      });
+    }
+
+    const user = result.rows[0];
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`✅ USER WHITELISTED: ${user.email} → allow_internal_urls = TRUE`);
+    console.log(`${'═'.repeat(60)}\n`);
+
+    return res.json({
+      success: true,
+      message: `User ${email} whitelisted for internal URLs`,
+      user: {
+        id: user.id,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/admin/whitelist-user
+ *
+ * Removes whitelist access from a user for internal/localhost URLs.
+ * Body: { email }
+ * Protected by JWT and admin check.
+ */
+router.delete("/whitelist-user", authenticate, requireAdmin, adminLimiter, async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required field: email",
+      });
+    }
+
+    const result = await query(
+      `UPDATE users SET allow_internal_urls = FALSE WHERE email = $1 RETURNING id, email`,
+      [email.trim().toLowerCase()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No user found with that email address",
+      });
+    }
+
+    const user = result.rows[0];
+    console.log(`\n${'═'.repeat(60)}`);
+    console.log(`❌ USER WHITELIST REMOVED: ${user.email} → allow_internal_urls = FALSE`);
+    console.log(`${'═'.repeat(60)}\n`);
+
+    return res.json({
+      success: true,
+      message: `Whitelist access removed from ${email}`,
+      user: {
+        id: user.id,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/whitelisted-users
+ *
+ * Lists all whitelisted users (allow_internal_urls = TRUE).
+ * Protected by JWT and admin check.
+ */
+router.get("/whitelisted-users", authenticate, requireAdmin, async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT id, email, created_at FROM users WHERE allow_internal_urls = TRUE ORDER BY created_at DESC`
+    );
+
+    return res.json({
+      success: true,
+      whitelisted_users: result.rows,
+    });
   } catch (err) {
     next(err);
   }

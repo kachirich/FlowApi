@@ -1,4 +1,4 @@
-export function validateWebhookUrl(url) {
+export function validateWebhookUrl(url, isUserWhitelisted = false) {
   try {
     const parsedUrl = new URL(url);
     const hostname = parsedUrl.hostname.toLowerCase();
@@ -15,7 +15,8 @@ export function validateWebhookUrl(url) {
       isMaliciousPrivateIP(hostname) ||
       hostname.endsWith('.local');
 
-    if (isInternal) {
+    // Allow internal URLs only if user is whitelisted
+    if (isInternal && !isUserWhitelisted) {
       return { isValid: false, error: "Invalid or prohibited target URL" };
     }
 

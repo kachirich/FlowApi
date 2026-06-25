@@ -21,7 +21,11 @@ export const createDestination = async (req, res, next) => {
       return next(error);
     }
 
-    const { isValid } = validateWebhookUrl(target_url);
+    // Check if user is whitelisted for internal URLs
+    const userResult = await query(`SELECT allow_internal_urls FROM users WHERE id = $1`, [userId]);
+    const isUserWhitelisted = userResult.rows[0]?.allow_internal_urls || false;
+
+    const { isValid } = validateWebhookUrl(target_url, isUserWhitelisted);
     if (!isValid) {
       const error = new Error('Invalid or restricted Destination URL.');
       error.name = 'ValidationError';
@@ -141,7 +145,9 @@ export const updateDestination = async (req, res, next) => {
     }
 
     if (target_url !== undefined) {
-      const { isValid } = validateWebhookUrl(target_url);
+      const userResult = await query(`SELECT allow_internal_urls FROM users WHERE id = $1`, [userId]);
+      const isUserWhitelisted = userResult.rows[0]?.allow_internal_urls || false;
+      const { isValid } = validateWebhookUrl(target_url, isUserWhitelisted);
       if (!isValid) {
         const error = new Error('Invalid or restricted Destination URL.');
         error.name = 'ValidationError';
