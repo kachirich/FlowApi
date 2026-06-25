@@ -135,7 +135,7 @@ export const logout = async (req, res) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    await redisClient.setEx(`blacklist:${token}`, 604800, 'revoked');
+    await redisClient.setex(`blacklist:${token}`, 604800, 'revoked');
     return res.status(200).json({ success: true, message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);

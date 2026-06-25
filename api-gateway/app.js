@@ -12,6 +12,7 @@ import express from "express";
 import "express-async-errors";
 import cookieParser from "cookie-parser";
 import cors from "cors";
+import correlationId from "./middleware/correlationId.js";
 import helmetMiddleware from "./middleware/helmet.js";
 import { requestLogger, authenticate } from "./middleware/index.js";
 import adminRoutes from "./routes/admin.js";
@@ -35,6 +36,9 @@ const app = express();
 // Trust only the immediate upstream reverse proxy (Nginx / load balancer).
 // Using `true` (trust all) would allow IP spoofing via X-Forwarded-For.
 app.set("trust proxy", 1);
+
+// Correlation ID must be first to tag all requests with a unique ID
+app.use(correlationId);
 
 app.use(helmetMiddleware);
 

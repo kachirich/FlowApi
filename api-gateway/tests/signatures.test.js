@@ -20,7 +20,8 @@ import request from "supertest";
 import crypto from "crypto";
 
 import app from "../app.js";
-import { query, closePool, initializeDatabase } from "../db/connection.js";
+import { query, closePool } from "../db/connection.js";
+import { migrate } from "../db/migrate.js";
 
 const PW_HASH = "$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012";
 const EMAIL = `sig_test_${Date.now()}@flowapi-test.dev`;
@@ -44,7 +45,7 @@ const sign = (secret, ts, rawBody) =>
   crypto.createHmac("sha256", secret).update(`${ts}.${rawBody}`).digest("hex");
 
 beforeAll(async () => {
-  await initializeDatabase();
+  await migrate();
 
   const u = await query(
     `INSERT INTO users (email, password_hash, plan_type, tier)

@@ -15,7 +15,8 @@ vi.mock("axios", () => ({
 }));
 
 import app from "../app.js";
-import { query, closePool, initializeDatabase } from "../db/connection.js";
+import { query, closePool } from "../db/connection.js";
+import { migrate } from "../db/migrate.js";
 import { dispatchLead } from "../services/WebhookDispatcher.js";
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -58,7 +59,7 @@ async function setBalance(destId, userId, { is_metered = true, exhausted_action 
 const auth = (label) => `Bearer ${users[label].token}`;
 
 beforeAll(async () => {
-  await initializeDatabase();
+  await migrate();
   await makeUser("broker", { tier: "growth", isAdmin: false });
   await makeUser("admin", { tier: "growth", isAdmin: true });
   await makeUser("sandbox", { tier: "sandbox" });

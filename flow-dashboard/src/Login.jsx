@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { Loader2, Mail, ArrowLeft, Zap, Database, Route, TestTube, Code } from "lucide-react";
 import toast from "react-hot-toast";
+import { useAuth } from "./context/AuthContext";
 
 const API = import.meta.env.VITE_API_BASE_URL;
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { refreshUser } = useAuth();
 
 
 
@@ -145,7 +147,9 @@ export default function Login() {
       }
 
       if (data.success) {
-        localStorage.setItem("flow_logged_in", "true");
+        // Hydrate auth state from the freshly-set cookie before navigating,
+        // so ProtectedRoute (which reads useAuth) sees the user immediately.
+        await refreshUser();
         toast.success("Welcome back!");
         navigate("/dashboard", { replace: true });
       }
@@ -238,11 +242,8 @@ export default function Login() {
 
       if (!res.ok) throw new Error(data.message || data.error || "Verification failed");
 
-      if (data.success) {
-        localStorage.setItem("flow_logged_in", "true");
-      }
-
       toast.success("Email verified successfully!");
+      // Full reload re-runs AuthContext's /api/auth/me check, hydrating the session.
       window.location.href = "/dashboard";
     } catch (err) {
       toast.error(err.message);

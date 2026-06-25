@@ -1,10 +1,10 @@
 import "dotenv/config";
 import app from "./app.js";
+import logger from "./utils/logger.js";
 import { migrate } from "./db/migrate.js";
 import { closePool } from "./db/connection.js";
 import { startJanitorService } from "./services/janitor.service.js";
 import redisClient, { connectRedis } from "./utils/redisClient.js";
-import { redisClient as limiterRedisClient } from "./middleware/rateLimiter.js";
 import { worker as webhookWorker } from "./services/queue.js";
 import "./services/notification.queue.js";
 
@@ -14,7 +14,7 @@ const requiredSecrets = ['JWT_SECRET', 'PGPASSWORD'];
 for (const key of requiredSecrets) {
   const val = process.env[key];
   if (!val || val === PLACEHOLDER || val === 'change_me_to_a_long_random_string') {
-    console.error(`[server] FATAL: ${key} is not configured. Set a real value in .env before starting.`);
+    logger.fatal(`${key} is not configured. Set a real value in .env before starting.`);
     process.exit(1);
   }
 }
@@ -27,7 +27,7 @@ const missingGoogleVars = GOOGLE_OAUTH_VARS.filter((k) => {
   return !v || v === PLACEHOLDER || v === 'change_me';
 });
 if (missingGoogleVars.length > 0) {
-  console.warn(`[server] WARNING: Google OAuth is not configured — the following vars are missing or still set to placeholder values: ${missingGoogleVars.join(', ')}. Google sign-in will be disabled until these are set.`);
+  logger.warn(`Google OAuth is not configured — the following vars are missing or still set to placeholder values: ${missingGoogleVars.join(', ')}. Google sign-in will be disabled until these are set.`);
 }
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -44,8 +44,8 @@ async function start() {
     await connectRedis();
     startJanitorService();
     server = app.listen(PORT, HOST, () => {
-      console.log(`[server] API Gateway listening on http://${HOST}:${PORT}`);
-      console.log(`[server] Environment: ${process.env.NODE_ENV || "development"}`);
+      logger.info(`API Gateway listening on http://${HOST}:${PORT}`);
+      logger.info(`Environment: ${process.env.NODE_ENV || "development"}`);
     });
 
     // Keep-alive must outlive the upstream proxy's idle timeout to avoid races
@@ -54,7 +54,7 @@ async function start() {
     server.keepAliveTimeout = 65_000;
     server.headersTimeout = 66_000;
   } catch (err) {
-    console.error("[server] Failed to start:", err.message);
+    logger.error({ err }, "Failed to start");
     process.exit(1);
   }
 }
@@ -67,12 +67,12 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return; // ignore duplicate signals
   shuttingDown = true;
-  console.log(`\n[server] ${signal} received — shutting down gracefully`);
+  logger.info(`${signal} received — shutting down gracefully`);
 
   // Hard cap: if draining + cleanup exceeds 10s, force-exit so the orchestrator
   // doesn't hang waiting on a stuck connection.
   const forceExit = setTimeout(() => {
-    console.error("[server] Graceful shutdown timed out — forcing exit");
+    logger.error("Graceful shutdown timed out — forcing exit");
     process.exit(1);
   }, 10_000);
   forceExit.unref();
@@ -81,38 +81,37 @@ async function shutdown(signal) {
     // 1. Stop accepting new connections and wait for in-flight requests.
     if (server) {
       await new Promise((resolve) => server.close(resolve));
-      console.log("[server] HTTP server closed (in-flight requests drained)");
+      logger.info("HTTP server closed (in-flight requests drained)");
     }
 
     // 2. Stop the BullMQ worker so no new jobs start mid-shutdown.
     await webhookWorker.close().catch((e) =>
-      console.error("[server] Worker close error:", e.message)
+      logger.error({ err: e }, "Worker close error")
     );
 
     // 3. Close the PostgreSQL pool.
     await closePool();
 
-    // 4. Close both node-redis clients.
-    await Promise.all([
-      redisClient.isOpen ? redisClient.quit() : Promise.resolve(),
-      limiterRedisClient.isOpen ? limiterRedisClient.quit() : Promise.resolve(),
-    ]).catch((e) => console.error("[server] Redis close error:", e.message));
+    // 4. Close the ioredis client.
+    if (redisClient.status !== "closed") {
+      await redisClient.quit().catch((e) => logger.error({ err: e }, "Redis close error"));
+    }
 
     clearTimeout(forceExit);
-    console.log("[server] Clean shutdown complete");
+    logger.info("Clean shutdown complete");
     process.exit(0);
   } catch (err) {
-    console.error("[server] Error during shutdown:", err.message);
+    logger.error({ err }, "Error during shutdown");
     process.exit(1);
   }
 }
 
 process.on("unhandledRejection", (reason, promise) => {
-  console.error("[server] Unhandled Rejection at:", promise, "reason:", reason);
+  logger.error({ reason, promise }, "Unhandled Rejection");
 });
 
 process.on("uncaughtException", (err) => {
-  console.error("[server] Uncaught Exception:", err);
+  logger.error({ err }, "Uncaught Exception");
 });
 
 process.on("SIGINT", () => shutdown("SIGINT"));

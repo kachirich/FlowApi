@@ -1,12 +1,9 @@
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
-import RedisStore from "rate-limit-redis";
+import rateLimit from "express-rate-limit";
+import { RedisStore } from "rate-limit-redis";
 import redisClient from "../utils/redisClient.js";
+import logger from "../utils/logger.js";
 
-if (!redisClient.isOpen) {
-  await redisClient.connect().catch((err) => console.error("[redis] Error connecting:", err));
-}
-
-import { getClientIp, globalKeyGenerator } from "./rateLimiter.js";
+import { globalKeyGenerator } from "./rateLimiter.js";
 
 const webhookCreationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -18,7 +15,7 @@ const webhookCreationLimiter = rateLimit({
   
   // Use the Redis store
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: (...args) => redisClient.call(...args),
     prefix: "rl:webhook_create:",
   }),
 
@@ -26,7 +23,7 @@ const webhookCreationLimiter = rateLimit({
   keyGenerator: globalKeyGenerator,
 
   handler: (req, res) => {
-    console.warn(`[rate-limit] Webhook creation limit exceeded for user/IP ${globalKeyGenerator(req)}`);
+    logger.warn(`Webhook creation limit exceeded for user/IP ${globalKeyGenerator(req)}`);
     res.status(429).json({
       success: false,
       message: "Too many webhooks generated recently. Please try again later.",

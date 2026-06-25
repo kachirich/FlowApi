@@ -44,7 +44,7 @@ export async function getMeteringState(destinationId) {
     : { ...DEFAULT_STATE };
 
   try {
-    await redisClient.setEx(key, CACHE_TTL_SECONDS, JSON.stringify(state));
+    await redisClient.setex(key, CACHE_TTL_SECONDS, JSON.stringify(state));
   } catch (err) {
     console.error("[metering] Redis write error:", err.message);
   }

@@ -176,10 +176,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
       let isUnderCap = 1;
       if (cap > 0) {
-        isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
-          keys: [redisKey],
-          arguments: [String(cap)],
-        });
+        // ioredis eval: (script, numKeys, ...keys, ...args)
+        isUnderCap = await redisClient.eval(CHECK_CAP_LUA, 1, redisKey, String(cap));
       }
 
       if (isUnderCap === 1) {
@@ -278,10 +276,8 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
       let isUnderCap = 1;
       if (cap > 0) {
-        isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
-          keys: [redisKey],
-          arguments: [String(cap)],
-        });
+        // ioredis eval: (script, numKeys, ...keys, ...args)
+        isUnderCap = await redisClient.eval(CHECK_CAP_LUA, 1, redisKey, String(cap));
       }
 
       if (isUnderCap !== 1) return 0;

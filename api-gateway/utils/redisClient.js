@@ -1,34 +1,35 @@
-import { createClient } from "redis";
+import IORedis from "ioredis";
+import logger from "./logger.js";
 
 const redisUrl = process.env.REDIS_URL || "redis://redis:6379";
+const url = new URL(redisUrl);
 
-const redisClient = createClient({
-  url: redisUrl,
-  socket: {
-    // Fail a connection attempt after 5s instead of hanging indefinitely.
-    connectTimeout: 5000,
-    // Exponential backoff capped at 10s. After 10 consecutive failures, stop
-    // retrying and surface an error so commands reject fast rather than
-    // queueing forever (the node-redis analogue of bounded per-request retries).
-    reconnectStrategy: (retries) => {
-      if (retries > 10) {
-        return new Error("[redis] Max reconnection attempts reached");
-      }
-      return Math.min(retries * 200, 10000);
-    },
+const redisClient = new IORedis({
+  host: url.hostname,
+  port: parseInt(url.port || "6379", 10),
+  ...(url.username ? { username: url.username } : {}),
+  ...(url.password ? { password: url.password } : {}),
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+  retryStrategy: (times) => {
+    if (times > 10) {
+      return null;
+    }
+    return Math.min(times * 200, 10000);
   },
 });
 
-redisClient.on("error", (err) => console.error("[redis] Redis Client Error:", err));
-redisClient.on("connect", () => console.log("[redis] Connected to Redis"));
+redisClient.on("error", (err) => logger.error({ err }, "Redis client error"));
+redisClient.on("connect", () => logger.info("Connected to Redis"));
+redisClient.on("reconnecting", () => logger.info("Reconnecting to Redis"));
 
 export const connectRedis = async () => {
   try {
-    if (!redisClient.isOpen) {
-      await redisClient.connect();
-    }
+    await redisClient.ping();
+    logger.info("Redis connection verified");
   } catch (err) {
-    console.error("[redis] Failed to connect on startup:", err.message);
+    logger.error({ err }, "Failed to connect to Redis on startup");
+    throw err;
   }
 };
 
