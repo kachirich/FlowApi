@@ -205,15 +205,18 @@ export async function initializeDatabase() {
 
       -- Destinations Table
       CREATE TABLE IF NOT EXISTS destinations (
-        id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id      UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name         VARCHAR(255) NOT NULL,
-        target_url   TEXT         NOT NULL,
-        daily_cap    INTEGER      NOT NULL DEFAULT 0,
-        is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
-        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id          UUID         NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name             VARCHAR(255) NOT NULL,
+        target_url       TEXT         NOT NULL,
+        daily_cap        INTEGER      NOT NULL DEFAULT 0,
+        is_active        BOOLEAN      NOT NULL DEFAULT TRUE,
+        destination_type VARCHAR(20)  NOT NULL DEFAULT 'standard'
+                           CHECK (destination_type IN ('standard', 'free')),
+        created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_destinations_user_id ON destinations(user_id);
+      ALTER TABLE destinations ADD COLUMN IF NOT EXISTS destination_type VARCHAR(20) NOT NULL DEFAULT 'standard';
 
       ALTER TABLE webhook_logs ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE;
       ALTER TABLE ghl_leads ADD COLUMN IF NOT EXISTS destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL;

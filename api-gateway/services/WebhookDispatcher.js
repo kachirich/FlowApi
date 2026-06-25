@@ -134,7 +134,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     routingStrategy = flowRes.rows[0].routing_strategy || "round_robin";
 
     const flowDestRes = await query(
-      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+      `SELECT d.id, d.target_url, 'POST' AS http_method, d.daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers, d.destination_type
        FROM flow_destinations fd
        JOIN destinations d ON d.id = fd.destination_id
        WHERE fd.flow_id = $1 AND d.is_active = TRUE`,
@@ -143,7 +143,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     destinations = flowDestRes.rows;
   } else {
     const destinationsRes = await query(
-      `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers
+      `SELECT id, target_url, 'POST' AS http_method, daily_cap AS daily_lead_cap, '{}'::jsonb AS custom_headers, destination_type
        FROM destinations
        WHERE user_id = $1 AND is_active = TRUE`,
       [userId]
@@ -171,11 +171,12 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
   if (routingStrategy === "round_robin") {
     for (const wh of destinations) {
+      const isFree = wh.destination_type === 'free';
       const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
 
       let isUnderCap = 1;
-      if (cap > 0) {
+      if (!isFree && cap > 0) {
         isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
           keys: [redisKey],
           arguments: [String(cap)],
@@ -183,9 +184,9 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
       }
 
       if (isUnderCap === 1) {
-        // Metering: daily cap → metering check → dispatch → debit on success.
-        const metering = await getMeteringState(wh.id);
-        if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
+        // Free destinations bypass daily cap and credit metering entirely.
+        const metering = isFree ? { is_metered: false, balance: 0, exhausted_action: 'continue' } : await getMeteringState(wh.id);
+        if (!isFree && await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
           continue; // out of credits + pause: skip this buyer, not a failure
         }
 
@@ -273,11 +274,12 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     // isolated in its own try/catch, so one failure never aborts the others.
     // Each task returns the count it contributes (0 or 1) toward deliveredCount.
     const deliverToDestination = async (wh) => {
+      const isFree = wh.destination_type === 'free';
       const cap = wh.daily_lead_cap ?? 0;
       const redisKey = `destination:leads:${wh.id}:${todayStr}`;
 
       let isUnderCap = 1;
-      if (cap > 0) {
+      if (!isFree && cap > 0) {
         isUnderCap = await redisClient.eval(CHECK_CAP_LUA, {
           keys: [redisKey],
           arguments: [String(cap)],
@@ -286,9 +288,9 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 
       if (isUnderCap !== 1) return 0;
 
-      // Metering: daily cap → metering check → dispatch → debit on success.
-      const metering = await getMeteringState(wh.id);
-      if (await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
+      // Free destinations bypass daily cap and credit metering entirely.
+      const metering = isFree ? { is_metered: false, balance: 0, exhausted_action: 'continue' } : await getMeteringState(wh.id);
+      if (!isFree && await isPausedNoCredits(metering, wh, userId, payload, isTest, cap, redisKey)) {
         return 0; // out of credits + pause: skip this buyer, not a failure
       }
 
