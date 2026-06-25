@@ -13,7 +13,7 @@ const sanitizeName = (str) => {
 export const createDestination = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { name, target_url, daily_cap, is_active } = req.body;
+    const { name, target_url, daily_cap, is_active, destination_type } = req.body;
 
     if (!name || !target_url) {
       const error = new Error('Name and target_url are required');
@@ -65,11 +65,14 @@ export const createDestination = async (req, res, next) => {
 
     const active = is_active !== undefined ? Boolean(is_active) : true;
 
+    const VALID_TYPES = ['standard', 'free'];
+    const destType = destination_type && VALID_TYPES.includes(destination_type) ? destination_type : 'standard';
+
     const result = await query(
-      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, target_url, daily_cap, is_active, created_at`,
-      [userId, sanitizedName, target_url, cap, active]
+      `INSERT INTO destinations (user_id, name, target_url, daily_cap, is_active, destination_type)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, target_url, daily_cap, is_active, destination_type, created_at`,
+      [userId, sanitizedName, target_url, cap, active, destType]
     );
 
     // Issue the first monthly credit grant for this destination (fire-and-forget)
@@ -94,7 +97,7 @@ export const listDestinations = async (req, res, next) => {
     const userId = req.user.id;
 
     const result = await query(
-      `SELECT id, name, target_url, daily_cap, is_active, created_at
+      `SELECT id, name, target_url, daily_cap, is_active, destination_type, created_at
        FROM destinations
        WHERE user_id = $1
        ORDER BY created_at DESC`,
@@ -115,7 +118,7 @@ export const updateDestination = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const destinationId = req.params.id;
-    const { name, target_url, daily_cap, is_active } = req.body;
+    const { name, target_url, daily_cap, is_active, destination_type } = req.body;
 
     if (!destinationId) {
       const error = new Error('Destination ID is required');
@@ -176,19 +179,24 @@ export const updateDestination = async (req, res, next) => {
 
     const active = is_active !== undefined ? Boolean(is_active) : undefined;
 
+    const VALID_TYPES = ['standard', 'free'];
+    const destType = destination_type !== undefined && VALID_TYPES.includes(destination_type) ? destination_type : undefined;
+
     const result = await query(
       `UPDATE destinations
        SET name = COALESCE($1, name),
            target_url = COALESCE($2, target_url),
            daily_cap = COALESCE($3, daily_cap),
-           is_active = COALESCE($4, is_active)
-       WHERE id = $5 AND user_id = $6
-       RETURNING id, name, target_url, daily_cap, is_active, created_at`,
+           is_active = COALESCE($4, is_active),
+           destination_type = COALESCE($5, destination_type)
+       WHERE id = $6 AND user_id = $7
+       RETURNING id, name, target_url, daily_cap, is_active, destination_type, created_at`,
       [
         sanitizedName !== undefined ? sanitizedName : null,
         target_url !== undefined ? target_url : null,
         cap !== undefined ? cap : null,
         active !== undefined ? active : null,
+        destType !== undefined ? destType : null,
         destinationId,
         userId
       ]
