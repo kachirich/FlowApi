@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api from '../utils/api';
+import { API_BASE_URL } from '../utils/apiConfig';
 
 const AuthContext = createContext();
 
@@ -24,10 +25,8 @@ export const AuthProvider = ({ children }) => {
         
         if (response.data?.success && response.data?.user) {
           setAuthenticatedUser(response.data.user);
-          localStorage.setItem('flow_logged_in', 'true'); // Ensure sync
         } else {
-          // Clean up if the session is absent or expired
-          localStorage.removeItem('flow_logged_in');
+          // Session is absent or expired — the HttpOnly cookie is the source of truth.
           setUser(null);
         }
       } catch (error) {
@@ -69,8 +68,7 @@ export const AuthProvider = ({ children }) => {
       const data = await response.json();
       
       if (data.success) {
-        setUser(data.user);
-        localStorage.setItem('flow_logged_in', 'true');
+        setAuthenticatedUser(data.user);
         return data;
       } else {
         throw new Error(data.error || 'Failed to login');
@@ -95,7 +93,6 @@ export const AuthProvider = ({ children }) => {
     } finally {
       // Regardless of API success, clear local state
       setUser(null);
-      localStorage.removeItem('flow_logged_in');
       window.location.href = '/login';
     }
   };
@@ -104,7 +101,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, setUser: setAuthenticatedUser, login, logout, loading, refreshUser }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
 };

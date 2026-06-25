@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import {
   Terminal,
   Zap,
@@ -1098,6 +1098,35 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
    ═══════════════════════════════════════════════════════════════════════════ */
 
 function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefire, onCancelJob, planType, setActiveTab }) {
+  // Client-side pagination over the leads already in memory. The backend
+  // GET /api/admin/leads currently returns a fixed window (LIMIT 100) with no
+  // page/offset params, so true server-side pagination is gated on a backend
+  // change. Until then we page the in-memory set (max 100) to cap rendered DOM
+  // rows and keep the ledger responsive. URL contract: ?page=N (pageSize 50).
+  const PAGE_SIZE = 50;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const totalPages = Math.max(1, Math.ceil(leads.length / PAGE_SIZE));
+  const rawPage = parseInt(searchParams.get("page") || "1", 10);
+  const page = Math.min(Math.max(1, Number.isNaN(rawPage) ? 1 : rawPage), totalPages);
+  const pagedLeads = useMemo(
+    () => leads.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [leads, page]
+  );
+  const goToPage = useCallback(
+    (p) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (p <= 1) next.delete("page");
+          else next.set("page", String(p));
+          return next;
+        },
+        { replace: false }
+      );
+    },
+    [setSearchParams]
+  );
+
   if (planType === 'free') {
     return (
       <div id="tour-lead-ledger" className="rounded-2xl border border-slate-800/60 bg-surface p-6 animate-fade-in flex flex-col items-center justify-center min-h-[300px] text-center">
@@ -1155,7 +1184,7 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-slate-300">
-            {leads.map((lead) => {
+            {pagedLeads.map((lead) => {
               const score = lead.lead_score ?? 0;
               let badgeColor = "bg-rose-500/10 text-rose-400 border-rose-500/20";
               if (score >= 80) badgeColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
@@ -1243,6 +1272,41 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
             )}
           </tbody>
         </table>
+        {leads.length > PAGE_SIZE && (
+          <nav
+            className="mt-4 flex items-center justify-between border-t border-slate-800/60 pt-3 text-xs text-slate-400"
+            aria-label="Lead ledger pagination"
+          >
+            <span aria-live="polite">
+              Showing{" "}
+              <span className="font-semibold text-slate-200">
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, leads.length)}
+              </span>{" "}
+              of <span className="font-semibold text-slate-200">{leads.length}</span>
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page <= 1}
+                aria-label="Previous page"
+                className="rounded-md border border-slate-700/60 px-2.5 py-1 font-semibold text-slate-300 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Prev
+              </button>
+              <span className="font-mono text-[11px] text-slate-500">
+                Page {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages}
+                aria-label="Next page"
+                className="rounded-md border border-slate-700/60 px-2.5 py-1 font-semibold text-slate-300 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </nav>
+        )}
       </div>
     </div>
   );
@@ -1764,7 +1828,35 @@ export default function Dashboard() {
   const [activeModal, setActiveModal] = useState(null); // { id, accent }
   // New signups land on the dashboard so the Joyride onboarding tour can
   // anchor to its targets (the tour replaces the old auto-shown tutorial tab).
-  const [activeTab, setActiveTab] = useState("dashboard");
+  //
+  // The active tab lives in the URL (?tab=…) so panels are deep-linkable and
+  // browser back/forward navigates between them. `activeTab`/`setActiveTab`
+  // keep their original signatures so existing call sites are unchanged.
+  const VALID_TABS = useMemo(
+    () => [
+      "dashboard", "sandbox", "destinations", "flows", "integrations",
+      "logs", "tutorial", "consulting", "pricing", "notifications",
+    ],
+    []
+  );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab = VALID_TABS.includes(tabParam) ? tabParam : "dashboard";
+  const setActiveTab = useCallback(
+    (tab) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.set("tab", tab);
+          // A tab switch resets lead-ledger pagination to the first page.
+          next.delete("page");
+          return next;
+        },
+        { replace: false }
+      );
+    },
+    [setSearchParams]
+  );
 
   useEffect(() => {
     if (localStorage.getItem("just_registered") === "true") {
@@ -1876,7 +1968,6 @@ export default function Dashboard() {
 
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
-          localStorage.removeItem("flow_logged_in");
           navigate("/login", { replace: true });
         }
         // Bail out after 3 consecutive non-auth errors (e.g. 400) to prevent infinite loop
@@ -2125,7 +2216,6 @@ export default function Dashboard() {
       const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server" }));
       if (res.ok && data.success) {
         showToast("Account permanently deleted.", "success");
-        localStorage.removeItem("flow_logged_in");
         setShowDeleteAccountModal(false);
         setDeleteConfirmText("");
         handleCloseSecurityModal();
@@ -2643,7 +2733,6 @@ export default function Dashboard() {
     } catch (err) {
       console.error("Logout API error:", err);
     } finally {
-      localStorage.removeItem("flow_logged_in");
       navigate("/login", { replace: true });
     }
   };

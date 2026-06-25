@@ -11,7 +11,6 @@ export default function useLogout() {
     } catch (err) {
       console.error("Logout API error:", err);
     } finally {
-      localStorage.removeItem("flow_logged_in");
       window.location.href = "/login";
     }
   };
