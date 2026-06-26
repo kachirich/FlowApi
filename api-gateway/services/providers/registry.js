@@ -30,16 +30,29 @@ const PROVIDERS = {
     baseUrl: NOCODB_BASE,
     auth: { header: "xc-token", value: (t) => t },
     browse: {
-      levels: ["Base", "Table"],
-      // Lazy cascade: path=[] → bases; path=[baseId] → that base's tables (leaf).
-      // Leaf items carry the fully-resolved target_url so the base stays server-side.
+      // Three-level cascade. NocoDB Cloud scopes base listing to a workspace —
+      // the bare /meta/bases/ endpoint 403s — so we start at the workspace.
+      // path=[] → workspaces; path=[wsId] → bases; path=[wsId,baseId] → tables.
+      // Leaf items carry the fully-resolved records URL so ids stay server-side.
+      levels: ["Workspace", "Base", "Table"],
       list: async (token, path = []) => {
         const headers = { "xc-token": token };
+
         if (path.length === 0) {
-          const { data } = await axios.get(`${NOCODB_BASE}/api/v2/meta/bases/`, { headers, timeout: 5000 });
+          const { data } = await axios.get(`${NOCODB_BASE}/api/v2/meta/workspaces/`, { headers, timeout: 5000 });
+          return (data?.list || []).map((w) => ({ id: w.id, name: w.title || w.id, leaf: false }));
+        }
+
+        if (path.length === 1) {
+          const workspaceId = path[0];
+          const { data } = await axios.get(
+            `${NOCODB_BASE}/api/v2/meta/workspaces/${encodeURIComponent(workspaceId)}/bases`,
+            { headers, timeout: 5000 }
+          );
           return (data?.list || []).map((b) => ({ id: b.id, name: b.title || b.id, leaf: false }));
         }
-        const baseId = path[0];
+
+        const baseId = path[1];
         const { data } = await axios.get(
           `${NOCODB_BASE}/api/v2/meta/bases/${encodeURIComponent(baseId)}/tables`,
           { headers, timeout: 5000 }

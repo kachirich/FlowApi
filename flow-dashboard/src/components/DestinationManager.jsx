@@ -98,15 +98,17 @@ const pickerInputCls =
   'w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 placeholder:text-zinc-600';
 
 /**
- * NocoDB base → table picker. Uses the entered API token to browse the user's
- * NocoDB cloud account server-side; the resolved records URL is sent up via
- * onResolved. The base URL (app.nocodb.com) lives on the backend.
+ * Generic NocoDB resource picker — a lazy N-level cascade driven entirely by
+ * the backend's `levels` labels and per-item `leaf`/`target_url` flags. NocoDB
+ * Cloud needs Workspace → Base → Table (base listing is workspace-scoped), but
+ * this component never hardcodes that depth, so the registry can change levels
+ * without a frontend edit. The resolved records URL is sent up via onResolved;
+ * the base URL (app.nocodb.com) and all ids stay server-side.
  */
 function NocoDbPicker({ apiToken, resolvedUrl, onResolved }) {
-  const [bases, setBases] = useState([]);
-  const [tables, setTables] = useState([]);
-  const [baseId, setBaseId] = useState('');
-  const [tableId, setTableId] = useState('');
+  const [levels, setLevels] = useState([]);     // label per depth, e.g. ["Workspace","Base","Table"]
+  const [options, setOptions] = useState([]);   // options[i] = item list shown at depth i
+  const [selected, setSelected] = useState([]); // selected[i] = chosen id at depth i
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -116,50 +118,60 @@ function NocoDbPicker({ apiToken, resolvedUrl, onResolved }) {
       api_token: apiToken,
       path,
     });
-    return res.data?.items || [];
+    return res.data || {};
   };
 
-  const loadBases = async () => {
+  const start = async () => {
     if (!apiToken.trim()) {
       setError('Enter your NocoDB API token first.');
       return;
     }
     setLoading(true);
     setError('');
-    setTables([]);
-    setBaseId('');
-    setTableId('');
+    setSelected([]);
     onResolved('');
     try {
-      setBases(await browse([]));
+      const data = await browse([]);
+      setLevels(data.levels || []);
+      setOptions([data.items || []]);
     } catch (e) {
-      setError(e.response?.data?.message || 'Could not list bases.');
+      setError(e.response?.data?.message || 'Could not browse NocoDB.');
+      setLevels([]);
+      setOptions([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const pickBase = async (id) => {
-    setBaseId(id);
-    setTables([]);
-    setTableId('');
+  const pick = async (depth, id) => {
+    const nextSelected = selected.slice(0, depth);
+    nextSelected[depth] = id;
+    setSelected(nextSelected);
+    setOptions((prev) => prev.slice(0, depth + 1)); // drop any deeper levels
     onResolved('');
     if (!id) return;
+
+    const item = (options[depth] || []).find((x) => String(x.id) === String(id));
+    if (!item) return;
+    if (item.leaf) {
+      onResolved(item.target_url || '');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
-      setTables(await browse([id]));
+      const data = await browse(nextSelected.slice(0, depth + 1));
+      setOptions((prev) => {
+        const next = prev.slice(0, depth + 1);
+        next[depth + 1] = data.items || [];
+        return next;
+      });
     } catch (e) {
-      setError(e.response?.data?.message || 'Could not list tables.');
+      setError(e.response?.data?.message || 'Could not load the next level.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const pickTable = (id) => {
-    setTableId(id);
-    const t = tables.find((x) => String(x.id) === String(id));
-    onResolved(t?.target_url || '');
   };
 
   return (
@@ -167,31 +179,28 @@ function NocoDbPicker({ apiToken, resolvedUrl, onResolved }) {
       <label className={labelCls}>NocoDB table</label>
       <button
         type="button"
-        onClick={loadBases}
+        onClick={start}
         disabled={loading || !apiToken.trim()}
         className="inline-flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
-        {bases.length ? 'Reload bases' : 'Browse my NocoDB'}
+        {options.length ? 'Reload' : 'Browse my NocoDB'}
       </button>
 
-      {bases.length > 0 && (
-        <select value={baseId} onChange={(e) => pickBase(e.target.value)} className={`${pickerInputCls} mt-1`}>
-          <option value="">— Select a base —</option>
-          {bases.map((b) => (
-            <option key={b.id} value={b.id}>{b.name}</option>
+      {options.map((opts, depth) => (
+        <select
+          key={depth}
+          value={selected[depth] || ''}
+          onChange={(e) => pick(depth, e.target.value)}
+          disabled={loading}
+          className={`${pickerInputCls} ${depth === 0 ? 'mt-1' : ''}`}
+        >
+          <option value="">— Select a {(levels[depth] || 'item').toLowerCase()} —</option>
+          {opts.map((o) => (
+            <option key={o.id} value={o.id}>{o.name}</option>
           ))}
         </select>
-      )}
-
-      {tables.length > 0 && (
-        <select value={tableId} onChange={(e) => pickTable(e.target.value)} className={pickerInputCls}>
-          <option value="">— Select a table —</option>
-          {tables.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
-      )}
+      ))}
 
       {error && <p className="text-xs text-rose-400">{error}</p>}
       {resolvedUrl && (
