@@ -12,31 +12,33 @@ import { normalizeTier } from "../config/plans.js";
 export const planCacheKey = (userId) => `user:${userId}:plan`;
 
 /**
- * Retrieves the user's plan type from Redis (fast path) or Postgres (fallback).
- * If fetched from Postgres, the cache is populated with a 15-minute TTL.
+ * Retrieves the user's billing tier (sandbox/growth/enterprise) from Redis
+ * (fast path) or Postgres (fallback). On a cache miss the value is back-filled
+ * with a 15-minute TTL. normalizeTier() coerces any legacy plan_type value, so
+ * Redis entries cached before the tier cutover resolve safely.
  *
  * @param {string|number} userId
- * @returns {Promise<string>} The user's plan type (e.g. 'free', 'pro')
+ * @returns {Promise<string|null>} The user's tier, or null if the user is unknown.
  */
-export async function getPlanType(userId) {
+export async function getUserTier(userId) {
   const cacheKey = planCacheKey(userId);
-  let planType;
+  let tier;
 
   // ── Step 1: Redis look-up (fast path) ────────────────────────────
   try {
     const cached = await redisClient.get(cacheKey);
     if (cached) {
-      planType = cached;
+      tier = normalizeTier(cached);
     }
   } catch (redisErr) {
     // Redis down → fall through to Postgres; never block the request
-    console.error("[getPlanType] Redis read error (falling back to Postgres):", redisErr.message);
+    console.error("[getUserTier] Redis read error (falling back to Postgres):", redisErr.message);
   }
 
   // ── Step 2: Postgres look-up (cache miss) ────────────────────────
-  if (!planType) {
+  if (!tier) {
     const result = await query(
-      "SELECT plan_type FROM user_billing WHERE user_id = $1",
+      "SELECT tier FROM user_billing WHERE user_id = $1",
       [userId],
     );
 
@@ -44,17 +46,17 @@ export async function getPlanType(userId) {
       return null;
     }
 
-    planType = result.rows[0].plan_type || "free";
+    tier = normalizeTier(result.rows[0].tier);
 
     // Back-fill cache with 15-minute TTL (non-blocking)
     redisClient
-      .set(cacheKey, planType, { EX: 900 })
+      .set(cacheKey, tier, { EX: 900 })
       .catch((err) =>
-        console.error("[getPlanType] Redis write error:", err.message),
+        console.error("[getUserTier] Redis write error:", err.message),
       );
   }
 
-  return planType;
+  return tier;
 }
 
 /**
@@ -63,18 +65,16 @@ export async function getPlanType(userId) {
  * Express middleware factory that authorises a request only when the
  * authenticated user's billing tier is in `allowedPlans`.
  *
- * Resolution order (Redis → Postgres):
- *   1. Check Redis  →  `user:<id>:plan`
- *   2. Cache miss   →  SELECT plan_type FROM users, then SET with 15-min TTL
+ * Resolution order (Redis → Postgres) via getUserTier(). The resolved tier is
+ * attached to `req.user.tier` for downstream use, keeping ALL per-request state
+ * on the `req` object — never in module scope. Allowed values may be passed as
+ * tiers or legacy plan_type names; both are normalised before comparison.
  *
- * The user's plan is attached to `req.user.plan_type` for downstream use,
- * keeping ALL per-request state on the `req` object — never in module scope.
- *
- * @param  {...string} allowedPlans  e.g. "basic", "pro", "plus"
+ * @param  {...string} allowedPlans  e.g. "growth", "enterprise"
  * @returns {Function} Express middleware
  *
  * @example
- *   router.get("/premium", authenticate, requirePlan("pro", "plus"), handler);
+ *   router.get("/premium", authenticate, requirePlan("growth", "enterprise"), handler);
  */
 export default function requirePlan(...allowedPlans) {
   return async (req, res, next) => {
@@ -88,9 +88,9 @@ export default function requirePlan(...allowedPlans) {
         });
       }
 
-      const planType = await getPlanType(userId);
+      const tier = await getUserTier(userId);
 
-      if (!planType) {
+      if (!tier) {
         return res.status(401).json({
           success: false,
           message: "Unauthorized: User not found",
@@ -98,8 +98,6 @@ export default function requirePlan(...allowedPlans) {
       }
 
       // ── Step 3: Attach to request and authorise ──────────────────────
-      const tier = normalizeTier(planType);
-      req.user.plan_type = planType;
       req.user.tier = tier;
 
       // Compare on canonical tiers so callers can pass either tiers or legacy

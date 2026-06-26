@@ -12,7 +12,7 @@
  */
 import pool, { query } from "../db/connection.js";
 import { webhookQueue } from "./queue.js";
-import { getPlanType } from "../middleware/requirePlan.js";
+import { getUserTier } from "../middleware/requirePlan.js";
 import { retryConfig } from "../utils/retryConfig.js";
 import { planFor } from "../config/plans.js";
 
@@ -74,8 +74,7 @@ export function calculateLeadScore(payload) {
  * @param {string}  args.userId     - Owning user id.
  * @param {object}  args.payload    - Raw inbound JSON payload (any shape).
  * @param {string}  args.source     - Short label for logging/audit ('catch', 'v1_api', ...).
- * @param {string}  [args.tier]     - User billing tier (informational; reserved).
- * @param {string}  [args.plan_type]- User plan type, used for catch-style retry config.
+ * @param {string}  [args.tier]     - User billing tier; drives daily cap + catch-path retry. Looked up if omitted.
  * @param {object}  [args.webhook]  - webhook_keys row (catch path only). When present the
  *                                    queued job dispatches directly to webhook.target_url.
  *                                    When absent the job routes via destinations/flows.
@@ -109,13 +108,16 @@ export async function ingestLead({
   payload,
   source = 'ingest',
   tier,
-  plan_type,
   webhook = null,
   headers = null,
   method = null,
   flowId = null,
 }) {
   const isTest = !!(payload && payload.flow_api_test);
+
+  // Resolve the user's tier once (caller may pass it; else look it up). Drives
+  // the daily-cap seed and the catch-path retry config.
+  const userTier = tier || (await getUserTier(userId)) || "sandbox";
 
   // Normalize Tally payloads (data.fields[] → flat keys) before extraction
   const normalizedPayload = normalizeTally(payload);
@@ -150,7 +152,7 @@ export async function ingestLead({
       `INSERT INTO lead_counters (user_id, daily_lead_cap, daily_leads_received, last_reset_date)
        VALUES ($1, $2, 0, CURRENT_DATE)
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId, planFor(plan_type).dailyLeadCap]
+      [userId, planFor(userTier).dailyLeadCap]
     );
 
     // Acquire exclusive lock on the row to queue concurrent requests
@@ -221,10 +223,9 @@ export async function ingestLead({
   // ── Queue Webhook Dispatch Job ───────────────────────────────────────────
   if (webhook) {
     // Catch path: dispatch directly to the single configured target_url, using
-    // the shared plan-based retry config (single source of truth — same as the
+    // the shared tier-based retry config (single source of truth — same as the
     // queue-routing path in WebhookDispatcher.dispatchLead).
-    const planType = plan_type || (await getPlanType(userId)) || "free";
-    const { attempts, backoff } = retryConfig(planType);
+    const { attempts, backoff } = retryConfig(userTier);
 
     const job = await webhookQueue.add(
       "dispatch",
@@ -236,7 +237,7 @@ export async function ingestLead({
         contactId,
         leadId,
         isTest,
-        plan_type: planType,
+        tier: userTier,
         flow_id: flowId ?? null,
       },
       {

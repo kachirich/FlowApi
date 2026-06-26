@@ -3,7 +3,7 @@
  *
  * Mounted at BOTH /api/destinations (for /:id/balance/*) and /api/balance (for
  * /summary). JWT-authenticated. Metering is available on all plan types;
- * monthly credit grants are sized by plan_type (free→50, pro→1k, plus→10k).
+ * monthly credit grants are sized by tier (sandbox→50, growth→1k, enterprise→10k).
  * Credit balances are admin-only immutable — users can toggle metering on/off
  * but cannot self-issue credits.
  */

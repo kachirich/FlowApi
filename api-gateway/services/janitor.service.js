@@ -54,7 +54,7 @@ async function expireAndRenewMonthlyGrants() {
   try {
     // Find metered destinations whose grant has expired
     const expired = await query(`
-      SELECT db.destination_id, db.user_id, db.balance, ub.plan_type
+      SELECT db.destination_id, db.user_id, db.balance, ub.tier
       FROM destination_balances db
       JOIN user_billing ub ON ub.user_id = db.user_id
       WHERE db.grant_expires_at <= NOW()
@@ -76,7 +76,7 @@ async function expireAndRenewMonthlyGrants() {
         );
       }
       // Issue the new month's grant
-      await grantMonthlyCredits(row.destination_id, row.user_id, row.plan_type || 'free');
+      await grantMonthlyCredits(row.destination_id, row.user_id, row.tier || 'sandbox');
       expired_count++;
     }
     console.log(`[janitor] Monthly grant renewal complete — ${expired_count} destinations refreshed`);

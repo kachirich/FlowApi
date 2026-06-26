@@ -50,7 +50,6 @@ router.post("/", perKeyBurstLimiter, apiKeyAuth, verifySignature, async (req, re
         payload,
         source: "v1_api",
         tier: req.user.tier,
-        plan_type: req.user.plan_type,
         flowId: req.user.flow_id || null,
       });
     } catch (ingestErr) {

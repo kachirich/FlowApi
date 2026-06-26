@@ -127,7 +127,7 @@ const CHECK_CAP_LUA = `
 export async function dispatchLead(userId, payload, contactId, isTest = false, flowId = null, leadId = null) {
   // 1. Fetch broker's strategy + billing context (joined from satellite tables)
   const userRes = await query(
-    `SELECT us.routing_strategy, ub.plan_type
+    `SELECT us.routing_strategy, ub.tier
      FROM users u
      JOIN user_billing  ub ON ub.user_id = u.id
      JOIN user_settings us ON us.user_id = u.id
@@ -138,7 +138,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
     return { success: false, error: "USER_NOT_FOUND", message: "Broker user not found." };
   }
   let routingStrategy = userRes.rows[0].routing_strategy || "round_robin";
-  const planType = userRes.rows[0].plan_type || "free";
+  const tier = userRes.rows[0].tier || "sandbox";
 
   // 2. Resolve active destinations — via the flow's subset when a flow is set,
   //    otherwise fall back to all of the user's active destinations.
@@ -214,7 +214,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
         }
 
         try {
-          const success = await attemptHttpRequest(wh, payload, planType);
+          const success = await attemptHttpRequest(wh, payload, tier);
           if (success) {
             await query(
               `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
@@ -247,7 +247,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
             await redisClient.decr(redisKey).catch(() => {});
           }
 
-          const { attempts, backoff } = retryConfig(planType);
+          const { attempts, backoff } = retryConfig(tier);
           if (attempts <= 1) {
             // No-retry plans (free/basic): log the failure and try the next destination.
             await query(
@@ -319,7 +319,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
       }
 
       try {
-        const success = await attemptHttpRequest(wh, payload, planType);
+        const success = await attemptHttpRequest(wh, payload, tier);
         if (success) {
           await query(
             `INSERT INTO webhook_logs (user_id, destination_id, method, status_code, request_payload, is_test)
@@ -338,7 +338,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
           await redisClient.decr(redisKey).catch(() => {});
         }
 
-        const { attempts, backoff } = retryConfig(planType);
+        const { attempts, backoff } = retryConfig(tier);
         if (attempts <= 1) {
           // No-retry plans (free/basic): log the failure.
           await query(
@@ -392,7 +392,7 @@ export async function dispatchLead(userId, payload, contactId, isTest = false, f
 /**
  * Performs DNS Rebinding protection check and triggers the outgoing HTTP POST call.
  */
-async function attemptHttpRequest(webhook, payload, planType) {
+async function attemptHttpRequest(webhook, payload, tier) {
   const targetUrl = webhook.target_url;
   const parsedUrl = new URL(targetUrl);
   
@@ -433,7 +433,7 @@ async function attemptHttpRequest(webhook, payload, planType) {
     }
   }
 
-  if (planFor(planType).customHeaders) {
+  if (planFor(tier).customHeaders) {
     if (webhook.custom_headers && typeof webhook.custom_headers === "object") {
       for (const [key, value] of Object.entries(webhook.custom_headers)) {
         if (!blocklistedHeaders.includes(key.toLowerCase())) {

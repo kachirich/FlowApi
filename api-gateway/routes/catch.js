@@ -96,7 +96,7 @@ router.post("/:webhook_id", perKeyBurstLimiter, webhookIngressLimiter, async (re
         userId,
         payload,
         source: "catch",
-        plan_type: req.webhookKey.planType || "free",
+        tier: req.webhookKey.tier || "sandbox",
         webhook,
         headers: req.headers,
         method: webhook.http_method || "POST",

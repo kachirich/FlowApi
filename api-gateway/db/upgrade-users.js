@@ -60,27 +60,27 @@ async function upgradeUsers() {
   const plan = args[0].toLowerCase();
   const emails = args.slice(1).map((e) => e.trim().toLowerCase());
 
-  const allowedPlans = ["free", "basic", "pro", "plus"];
-  if (!allowedPlans.includes(plan)) {
+  const allowed = ["sandbox", "growth", "enterprise", "free", "basic", "pro", "plus"];
+  if (!allowed.includes(plan)) {
     console.error(`[upgrade-users] ✘ Invalid plan: ${plan}`);
-    console.error(`               Valid plans: ${allowedPlans.join(", ")}`);
+    console.error(`               Valid tiers: sandbox, growth, enterprise`);
     process.exit(1);
   }
+  const tier = tierFromPlan(plan); // normalises tier-or-legacy → canonical tier
 
   const pool = new Pool();
 
   try {
-    console.log(`\n[upgrade-users] Upgrading ${emails.length} user(s) to "${plan}"...`);
+    console.log(`\n[upgrade-users] Upgrading ${emails.length} user(s) to tier "${tier}"...`);
 
-    // plan_type lives in user_billing (split out of users in migration 002),
-    // so we update there — that's the column requirePlan and /me actually read.
+    // tier is authoritative in user_billing — that's what requirePlan/getUserTier read.
     const result = await pool.query(
       `UPDATE user_billing ub
-       SET plan_type = $1, tier = $2
+       SET tier = $1
        FROM users u
-       WHERE ub.user_id = u.id AND u.email = ANY($3::text[])
-       RETURNING u.id, u.email, ub.plan_type`,
-      [plan, tierFromPlan(plan), emails]
+       WHERE ub.user_id = u.id AND u.email = ANY($2::text[])
+       RETURNING u.id, u.email, ub.tier`,
+      [tier, emails]
     );
 
     if (result.rows.length === 0) {
@@ -88,13 +88,13 @@ async function upgradeUsers() {
       process.exit(1);
     }
 
-    // Invalidate the Redis plan cache so requirePlan/getPlanType see the new
+    // Invalidate the Redis plan cache so requirePlan/getUserTier see the new
     // tier immediately instead of serving the stale 15-minute cached value.
     await invalidatePlanCache(result.rows.map((u) => u.id));
 
     console.log(`\n[upgrade-users] ✔ Successfully upgraded ${result.rows.length} user(s):`);
     result.rows.forEach((user) => {
-      console.log(`                 • ${user.email} → ${user.plan_type}`);
+      console.log(`                 • ${user.email} → ${user.tier}`);
     });
 
     const notFound = emails.filter(

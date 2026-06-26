@@ -381,7 +381,7 @@ router.get("/me", authenticate, async (req, res, next) => {
   try {
     const result = await query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.is_admin,
-              ub.plan_type, ub.tier, ub.lifetime_webhooks_created,
+              ub.tier, ub.lifetime_webhooks_created,
               ua.two_factor_enabled,
               us.has_completed_onboarding
        FROM users u

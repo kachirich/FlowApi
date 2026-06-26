@@ -1,6 +1,7 @@
 import { query } from '../db/connection.js';
 import { getPreferences, setPreferences, unsubscribeByToken, NOTIFICATION_TYPES } from '../services/notification.service.js';
 import { enqueueNotification } from '../services/notification.queue.js';
+import { normalizeTier } from '../config/plans.js';
 
 export const getNotificationPreferences = async (req, res) => {
   try {
@@ -51,11 +52,12 @@ export const adminBroadcast = async (req, res) => {
       return res.status(400).json({ success: false, error: 'subject, headline, and body_html are required' });
     }
 
-    let sql = 'SELECT id FROM users WHERE TRUE';
+    let sql = 'SELECT u.id FROM users u JOIN user_billing ub ON ub.user_id = u.id WHERE TRUE';
     const params = [];
     if (Array.isArray(plan_filter) && plan_filter.length > 0) {
-      params.push(plan_filter);
-      sql += ` AND plan_type = ANY($${params.length})`;
+      // Accept tier or legacy plan_type names; filter on the canonical tier.
+      params.push([...new Set(plan_filter.map(normalizeTier))]);
+      sql += ` AND ub.tier = ANY($${params.length})`;
     }
 
     const result = await query(sql, params);

@@ -1,5 +1,5 @@
 import { query } from '../db/connection.js';
-import { getPlanType } from './index.js';
+import { getUserTier } from './index.js';
 import { planFor } from '../config/plans.js';
 import { enqueueNotification } from '../services/notification.queue.js';
 import { dedupCheck, NOTIFICATION_TYPES } from '../services/notification.service.js';
@@ -40,8 +40,8 @@ export default async function meteredLimiter(req, res, next) {
     }
 
     const billing = billingResult.rows[0];
-    const planType = await getPlanType(userId) || 'free';
-    req.webhookKey.planType = planType;
+    const tier = await getUserTier(userId) || 'sandbox';
+    req.webhookKey.tier = tier;
     let currentCount = billing.monthly_request_count || 0;
     const cycleReset = new Date(billing.billing_cycle_reset);
     const now = new Date();
@@ -57,7 +57,7 @@ export default async function meteredLimiter(req, res, next) {
     }
 
     // ── Step B: Plan Limit Enforcement ───────────────────────────────────
-    const limit = planFor(planType).monthlyRequests;
+    const limit = planFor(tier).monthlyRequests;
 
     if (currentCount >= limit) {
       return res.status(429).json({
@@ -81,7 +81,7 @@ export default async function meteredLimiter(req, res, next) {
         dedupCheck(dedupKey, 30 * 24 * 3600).then(already => {
           if (!already) {
             enqueueNotification(userId, NOTIFICATION_TYPES.USAGE_ALERT, {
-              threshold: 100, current: newCount, limit, plan_type: planType,
+              threshold: 100, current: newCount, limit, tier,
             }).catch(() => {});
           }
         }).catch(() => {});
@@ -90,7 +90,7 @@ export default async function meteredLimiter(req, res, next) {
         dedupCheck(dedupKey, 30 * 24 * 3600).then(already => {
           if (!already) {
             enqueueNotification(userId, NOTIFICATION_TYPES.USAGE_ALERT, {
-              threshold: 80, current: newCount, limit, plan_type: planType,
+              threshold: 80, current: newCount, limit, tier,
             }).catch(() => {});
           }
         }).catch(() => {});

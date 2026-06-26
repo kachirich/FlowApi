@@ -111,33 +111,34 @@ export const handleStripeWebhook = async (req, res) => {
 
       if (userId) {
         try {
-          const planTier = (session.metadata?.plan_type || 'pro').toLowerCase();
+          // Stripe product metadata still uses legacy plan names; map to a tier.
+          const tier = tierFromPlan((session.metadata?.plan_type || 'pro').toLowerCase());
 
           await query(
             `UPDATE user_billing
-             SET stripe_customer_id = $1, stripe_subscription_id = $2, plan_type = $3, tier = $4, subscription_status = $5
-             WHERE user_id = $6`,
-            [customerId, subscriptionId, planTier, tierFromPlan(planTier), 'active', userId]
+             SET stripe_customer_id = $1, stripe_subscription_id = $2, tier = $3, subscription_status = $4
+             WHERE user_id = $5`,
+            [customerId, subscriptionId, tier, 'active', userId]
           );
           redisClient.del(planCacheKey(userId)).catch((e) =>
             console.error('[stripe-webhook] Redis cache invalidation error:', e.message)
           );
-          console.log(`[stripe-webhook] ✅ User ${userId} upgraded to ${planTier}`);
+          console.log(`[stripe-webhook] ✅ User ${userId} upgraded to ${tier}`);
 
-          // Re-grant monthly credits to all existing destinations for the new plan
+          // Re-grant monthly credits to all existing destinations for the new tier
           query("SELECT id FROM destinations WHERE user_id = $1 AND is_active = TRUE", [userId])
             .then(({ rows }) =>
-              Promise.all(rows.map((d) => grantMonthlyCredits(d.id, userId, planTier)))
+              Promise.all(rows.map((d) => grantMonthlyCredits(d.id, userId, tier)))
             )
             .catch((e) => console.error('[stripe-webhook] Monthly grant error:', e.message));
 
-          // Fire-and-forget welcome-to-<plan> email
-          const DISPLAY = { basic: 'Starter', pro: 'Growth', plus: 'Enterprise' };
-          const displayName = DISPLAY[planTier] || planTier;
+          // Fire-and-forget welcome-to-<tier> email
+          const DISPLAY = { sandbox: 'Sandbox', growth: 'Growth', enterprise: 'Enterprise' };
+          const displayName = DISPLAY[tier] || tier;
           enqueueNotification(userId, NOTIFICATION_TYPES.FEATURE_ANNOUNCEMENT, {
             subject: `Welcome to FlowGateway ${displayName} — your new features are live`,
             headline: `You're on ${displayName}`,
-            plan: planTier,
+            plan: tier,
           }).catch((e) =>
             console.error('[stripe-webhook] Feature-announcement enqueue failed:', e.message)
           );
@@ -155,15 +156,13 @@ export const handleStripeWebhook = async (req, res) => {
       const status = subscription.status;
       const subscriptionId = subscription.id;
       
-      let planType = 'free';
-      if (status === 'active' || status === 'trialing') {
-         planType = 'pro';
-      }
+      // Active/trialing subs map to growth; lapsed/cancelled fall back to sandbox.
+      const tier = (status === 'active' || status === 'trialing') ? 'growth' : 'sandbox';
 
       try {
         const subUpdateResult = await query(
-          "UPDATE user_billing SET subscription_status = $1, plan_type = $2, tier = $3 WHERE stripe_subscription_id = $4 RETURNING user_id",
-          [status, planType, tierFromPlan(planType), subscriptionId]
+          "UPDATE user_billing SET subscription_status = $1, tier = $2 WHERE stripe_subscription_id = $3 RETURNING user_id",
+          [status, tier, subscriptionId]
         );
         // Invalidate cached plan for the affected user
         if (subUpdateResult.rows[0]?.user_id) {
@@ -171,7 +170,7 @@ export const handleStripeWebhook = async (req, res) => {
             console.error("[stripe-webhook] Redis cache invalidation error:", e.message)
           );
         }
-        console.log(`[stripe-webhook] ✅ Success: Subscription ${subscriptionId} updated to ${status} (${planType})`);
+        console.log(`[stripe-webhook] ✅ Success: Subscription ${subscriptionId} updated to ${status} (${tier})`);
       } catch (dbErr) {
         console.error(`[stripe-webhook] ❌ Database error updating subscription ${subscriptionId}:`, dbErr.message);
       }

@@ -2,7 +2,7 @@ import { Router } from "express";
 import axios from "axios";
 import authenticate from "../middleware/auth.js";
 import requirePlan from "../middleware/requirePlan.js";
-import { getPlanType } from "../middleware/index.js";
+import { getUserTier } from "../middleware/index.js";
 import meteredLimiter from "../middleware/meteredLimiter.js";
 import { planFor } from "../config/plans.js";
 import { query } from "../db/connection.js";
@@ -69,9 +69,9 @@ router.put("/:id", authenticate, validateRequest(webhookConfigBodySchema), async
     }
     if (custom_headers !== undefined) {
       // Authoritative State: strictly rely on DB (or signed JWT) to prevent RBAC escalation
-      const planType = await getPlanType(req.user.id) || 'free';
+      const tier = await getUserTier(req.user.id) || 'sandbox';
 
-      if (!planFor(planType).customHeaders) {
+      if (!planFor(tier).customHeaders) {
         return res.status(403).json({
           success: false,
           error: "Upgrade required to access this engine"

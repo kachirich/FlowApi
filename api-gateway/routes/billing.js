@@ -4,7 +4,6 @@ import { query } from "../db/connection.js";
 import lemonSqueezyAuth from "../middleware/lemonSqueezyAuth.js";
 import { redisClient } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
-import { tierFromPlan } from "../utils/tierFromPlan.js";
 
 const router = Router();
 
@@ -20,26 +19,22 @@ router.post("/webhook", express.raw({ type: 'application/json' }), lemonSqueezyA
       const userId = meta.custom_data?.user_id;
       
       if (userId) {
-        let planType = 'plus'; // Default to plus
-        
-        // Dynamically infer tier if possible
-        if (data && data.attributes && data.attributes.first_order_item && data.attributes.first_order_item.product_name) {
-          const productName = data.attributes.first_order_item.product_name.toLowerCase();
-          if (productName.includes('basic')) planType = 'basic';
-          else if (productName.includes('pro')) planType = 'pro';
-          else if (productName.includes('plus')) planType = 'plus';
-        } else if (data && data.attributes && data.attributes.product_name) {
-          const productName = data.attributes.product_name.toLowerCase();
-          if (productName.includes('basic')) planType = 'basic';
-          else if (productName.includes('pro')) planType = 'pro';
-          else if (productName.includes('plus')) planType = 'plus';
-        }
+        // Infer the tier from the LemonSqueezy product name (legacy names map
+        // via tierFromPlan: basic/pro→growth, plus→enterprise). Default growth.
+        const productName = (
+          data?.attributes?.first_order_item?.product_name ||
+          data?.attributes?.product_name ||
+          ''
+        ).toLowerCase();
+        let tier = 'growth';
+        if (productName.includes('plus') || productName.includes('enterprise')) tier = 'enterprise';
+        else if (productName.includes('sandbox') || productName.includes('free')) tier = 'sandbox';
 
-        // 5. Database Update — set tier alongside plan_type so the daily lead
-        //    cap (rateLimiter) and downstream gating reflect the paid plan.
+        // 5. Database Update — tier drives the daily lead cap (rateLimiter) and
+        //    all downstream gating.
         await query(
-          "UPDATE user_billing SET plan_type = $1, tier = $2 WHERE user_id = $3",
-          [planType, tierFromPlan(planType), userId]
+          "UPDATE user_billing SET tier = $1 WHERE user_id = $2",
+          [tier, userId]
         );
 
         // 6. Invalidate cached plan so downstream middleware sees the new tier immediately

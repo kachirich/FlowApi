@@ -78,9 +78,9 @@ export const createDestination = async (req, res, next) => {
     );
 
     // Issue the first monthly credit grant for this destination (fire-and-forget)
-    const billingRow = await query("SELECT plan_type FROM user_billing WHERE user_id = $1", [userId]);
-    const planType = billingRow.rows[0]?.plan_type || 'free';
-    grantMonthlyCredits(result.rows[0].id, userId, planType).catch((err) =>
+    const billingRow = await query("SELECT tier FROM user_billing WHERE user_id = $1", [userId]);
+    const tier = billingRow.rows[0]?.tier || 'sandbox';
+    grantMonthlyCredits(result.rows[0].id, userId, tier).catch((err) =>
       console.error("[destination] Monthly grant failed:", err.message)
     );
 

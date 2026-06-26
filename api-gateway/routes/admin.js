@@ -12,11 +12,10 @@ import { validateWebhookUrl } from "../utils/security.js";
 import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
-import { planFor } from "../config/plans.js";
+import { planFor, normalizeTier } from "../config/plans.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 import { webhookQueue } from "../services/queue.js";
 import { decrypt } from "../utils/encryption.js";
-import { tierFromPlan } from "../utils/tierFromPlan.js";
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -125,14 +124,14 @@ router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimi
     // Step-up (2FA / trusted-device) is enforced by stepUpAuth. Here we only
     // enforce the per-plan lifetime webhook-key limit.
     const userResult = await query(
-      `SELECT plan_type, lifetime_webhooks_created FROM user_billing WHERE user_id = $1`,
+      `SELECT tier, lifetime_webhooks_created FROM user_billing WHERE user_id = $1`,
       [req.user.id]
     );
     const user = userResult.rows[0] || {};
-    const planType = user.plan_type || 'free';
+    const tier = user.tier || 'sandbox';
     const lifetimeWebhooks = user.lifetime_webhooks_created || 0;
 
-    const limit = planFor(planType).maxApiKeys;
+    const limit = planFor(tier).maxApiKeys;
 
     if (lifetimeWebhooks >= limit) {
       return res.status(403).json({
@@ -203,7 +202,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
       query("SELECT COUNT(*)::int AS count FROM webhook_keys WHERE user_id = $1", [req.user.id]),
       query("SELECT value::int AS count FROM gateway_counters WHERE key = 'bots_blocked'"),
       query(
-        `SELECT ua.two_factor_enabled, us.has_completed_onboarding, ub.plan_type
+        `SELECT ua.two_factor_enabled, us.has_completed_onboarding, ub.tier
          FROM user_auth ua
          JOIN user_billing  ub ON ub.user_id = ua.user_id
          JOIN user_settings us ON us.user_id = ua.user_id
@@ -220,7 +219,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
     const zapierTaxAvoided = (totalLeads * 0.05).toFixed(2);
     const twoFactorEnabled = userResult.rows[0]?.two_factor_enabled ?? false;
     const hasCompletedOnboarding = userResult.rows[0]?.has_completed_onboarding ?? false;
-    const planType = userResult.rows[0]?.plan_type || 'free';
+    const tier = userResult.rows[0]?.tier || 'sandbox';
 
     // ── Daily lead cap usage (read-only mirror of services/leadIngest.js) ──
     // Counter row may not exist until the first lead; default to the 100/day seed.
@@ -243,7 +242,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
       }
     }
     // null = unlimited (enterprise). JSON can't carry Infinity.
-    const planMonthly = planFor(planType).monthlyRequests;
+    const planMonthly = planFor(tier).monthlyRequests;
     const monthlyRequestLimit = planMonthly === Infinity ? null : planMonthly;
 
     return res.json({
@@ -253,7 +252,7 @@ router.get("/stats", authenticate, async (req, res, next) => {
       zapierTaxAvoided,
       twoFactorEnabled,
       hasCompletedOnboarding,
-      planType,
+      tier,
       dailyLeadCap,
       dailyLeadsReceived,
       monthlyRequestCount,
@@ -623,7 +622,7 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
     const { id } = req.params;
 
     const leadResult = await query(
-      `SELECT gl.*, ub.plan_type, ub.tier
+      `SELECT gl.*, ub.tier
        FROM ghl_leads gl
        JOIN user_billing ub ON ub.user_id = gl.user_id
        WHERE gl.id = $1 AND gl.user_id = $2`,
@@ -654,7 +653,7 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
         isTest: lead.is_test ?? false,
         source: "refire",
         flow_id: lead.flow_id ?? null,
-        plan_type: lead.plan_type ?? "free",
+        tier: lead.tier ?? "sandbox",
       },
       { attempts: 1, removeOnComplete: true, removeOnFail: false }
     );
@@ -688,24 +687,24 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
       });
     }
 
-    const allowedPlans = ['free', 'basic', 'pro', 'plus'];
-    if (!allowedPlans.includes(newPlan)) {
+    // Accept a canonical tier or a legacy plan_type name; normalise to a tier.
+    const allowed = ['sandbox', 'growth', 'enterprise', 'free', 'basic', 'pro', 'plus'];
+    if (!allowed.includes(newPlan)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid plan. Must be one of: ${allowedPlans.join(', ')}`,
+        message: `Invalid plan. Must be one of: sandbox, growth, enterprise`,
       });
     }
+    const newTier = normalizeTier(newPlan);
 
-    // Update the user's plan in the database.
-    // plan_type lives in user_billing (split out of users in migration 002),
-    // so we update there — that's the column requirePlan and /me actually read.
+    // tier is authoritative in user_billing — that's what requirePlan/getUserTier read.
     const result = await query(
       `UPDATE user_billing ub
-       SET plan_type = $1, tier = $2
+       SET tier = $1
        FROM users u
-       WHERE ub.user_id = u.id AND u.email = $3
-       RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
-      [newPlan, tierFromPlan(newPlan), email.trim().toLowerCase()]
+       WHERE ub.user_id = u.id AND u.email = $2
+       RETURNING u.id, u.email, u.first_name, u.last_name, ub.tier`,
+      [newTier, email.trim().toLowerCase()]
     );
 
     if (result.rows.length === 0) {
@@ -724,22 +723,22 @@ router.post("/upgrade-user", authenticate, requireAdmin, adminLimiter, async (re
     );
 
     // Fire the tier-specific welcome email (non-blocking — don't let a
-    // Resend failure roll back the plan upgrade)
-    sendTierUpgradeEmail(user.email, userName, newPlan).catch((err) =>
+    // Resend failure roll back the upgrade)
+    sendTierUpgradeEmail(user.email, userName, newTier).catch((err) =>
       console.error('[admin] Failed to send upgrade email:', err)
     );
 
     console.log(`\n${'═'.repeat(60)}`);
-    console.log(`⬆️  PLAN UPGRADED: ${user.email} → ${newPlan}`);
+    console.log(`⬆️  TIER UPGRADED: ${user.email} → ${newTier}`);
     console.log(`${'═'.repeat(60)}\n`);
 
     return res.json({
       success: true,
-      message: `User upgraded to ${newPlan}`,
+      message: `User upgraded to ${newTier}`,
       user: {
         id: user.id,
         email: user.email,
-        plan_type: user.plan_type,
+        tier: user.tier,
       },
     });
   } catch (err) {
@@ -765,25 +764,25 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
       });
     }
 
-    const allowedPlans = ['free', 'basic', 'pro', 'plus'];
-    if (!allowedPlans.includes(newPlan)) {
+    const allowed = ['sandbox', 'growth', 'enterprise', 'free', 'basic', 'pro', 'plus'];
+    if (!allowed.includes(newPlan)) {
       return res.status(400).json({
         success: false,
-        message: `Invalid plan. Must be one of: ${allowedPlans.join(', ')}`,
+        message: `Invalid plan. Must be one of: sandbox, growth, enterprise`,
       });
     }
+    const newTier = normalizeTier(newPlan);
 
     const normalizedEmails = emails.map((e) => e.trim().toLowerCase());
 
-    // plan_type is authoritative in user_billing (users.plan_type is a legacy
-    // dead column re-added by connection.js but never read by application code).
+    // tier is authoritative in user_billing — that's what requirePlan/getUserTier read.
     const result = await query(
       `UPDATE user_billing ub
-       SET plan_type = $1, tier = $2
+       SET tier = $1
        FROM users u
-       WHERE ub.user_id = u.id AND u.email = ANY($3::text[])
-       RETURNING u.id, u.email, u.first_name, u.last_name, ub.plan_type`,
-      [newPlan, tierFromPlan(newPlan), normalizedEmails]
+       WHERE ub.user_id = u.id AND u.email = ANY($2::text[])
+       RETURNING u.id, u.email, u.first_name, u.last_name, ub.tier`,
+      [newTier, normalizedEmails]
     );
 
     if (result.rows.length === 0) {
@@ -805,7 +804,7 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
     // Send upgrade emails (non-blocking)
     result.rows.forEach((user) => {
       const userName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.email.split('@')[0];
-      sendTierUpgradeEmail(user.email, userName, newPlan).catch((err) =>
+      sendTierUpgradeEmail(user.email, userName, newTier).catch((err) =>
         console.error('[admin] Failed to send upgrade email to', user.email, ':', err)
       );
     });
@@ -815,7 +814,7 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
     );
 
     console.log(`\n${'═'.repeat(60)}`);
-    console.log(`⬆️  BATCH UPGRADE: ${result.rows.length} user(s) → ${newPlan}`);
+    console.log(`⬆️  BATCH UPGRADE: ${result.rows.length} user(s) → ${newTier}`);
     result.rows.forEach((user) => {
       console.log(`   • ${user.email}`);
     });
@@ -826,8 +825,8 @@ router.post("/upgrade-users-batch", authenticate, requireAdmin, adminLimiter, as
 
     return res.json({
       success: true,
-      message: `Upgraded ${result.rows.length} user(s) to ${newPlan}`,
-      upgraded: result.rows.map((u) => ({ id: u.id, email: u.email, plan_type: u.plan_type })),
+      message: `Upgraded ${result.rows.length} user(s) to ${newTier}`,
+      upgraded: result.rows.map((u) => ({ id: u.id, email: u.email, tier: u.tier })),
       notFound,
     });
   } catch (err) {

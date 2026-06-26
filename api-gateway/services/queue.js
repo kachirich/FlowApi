@@ -6,6 +6,7 @@ import axios from "axios";
 import { query } from "../db/connection.js";
 import { enqueueNotification } from "./notification.queue.js";
 import { dedupCheck, NOTIFICATION_TYPES } from "./notification.service.js";
+import { planFor } from "../config/plans.js";
 
 const redisUrl = process.env.REDIS_URL || "redis://redis:6379";
 const parsed = new URL(redisUrl);
@@ -30,7 +31,7 @@ export const webhookQueue = new Queue("webhook-dispatch", { connection });
 export const worker = new Worker(
   "webhook-dispatch",
   async (job) => {
-    const { webhook, payload, headers, method, contactId, isTest, userId, flow_id, plan_type: jobPlanType } = job.data;
+    const { webhook, payload, headers, method, contactId, isTest, userId, flow_id, tier: jobTier } = job.data;
 
     // Destination/flow routing path: jobs enqueued without a single `webhook`
     // target (e.g. /api/v1/leads) fan out via the smart dispatcher, which
@@ -56,10 +57,10 @@ export const worker = new Worker(
     // Explicitly block system-critical headers (case-insensitive checks)
     const blocklistedHeaders = ["host", "content-length", "connection"];
     
-    // plan_type is included in the job payload at enqueue time (leadIngest.js)
-    const authoritativePlan = jobPlanType || 'free';
-    
-    if (authoritativePlan !== 'free' && authoritativePlan !== 'basic') {
+    // tier is included in the job payload at enqueue time (leadIngest.js)
+    const authoritativeTier = jobTier || 'sandbox';
+
+    if (planFor(authoritativeTier).customHeaders) {
       if (webhook.custom_headers && typeof webhook.custom_headers === "object") {
         for (const [key, value] of Object.entries(webhook.custom_headers)) {
           if (!blocklistedHeaders.includes(key.toLowerCase())) {

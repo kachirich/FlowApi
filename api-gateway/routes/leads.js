@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, apiKeyAuth, webhookIngressLimiter, getPlanType } from "../middleware/index.js";
+import { authenticate, apiKeyAuth, webhookIngressLimiter } from "../middleware/index.js";
 import pool, { query } from "../db/connection.js";
 import { webhookQueue } from "../services/queue.js";
 import { dispatchLead } from "../services/WebhookDispatcher.js";

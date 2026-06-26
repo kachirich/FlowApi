@@ -53,16 +53,16 @@ export async function getMeteringState(destinationId) {
 }
 
 /**
- * Grant monthly credits to a destination based on the user's plan_type.
+ * Grant monthly credits to a destination based on the user's tier.
  * Idempotent: skips if a grant has already been issued for the current month
- * (grant_expires_at > NOW()). Safe to call on destination create and plan upgrade.
+ * (grant_expires_at > NOW()). Safe to call on destination create and tier upgrade.
  *
  * @param {string} destinationId
  * @param {string} userId
- * @param {string} planType  e.g. 'free', 'pro', 'plus'
+ * @param {string} tier  'sandbox' | 'growth' | 'enterprise' (legacy plan_type also accepted)
  */
-export async function grantMonthlyCredits(destinationId, userId, planType) {
-  const amount = planFor(planType).monthlyCredits;
+export async function grantMonthlyCredits(destinationId, userId, tier) {
+  const amount = planFor(tier).monthlyCredits;
 
   // Check if a grant was already issued for the current calendar month
   const existing = await query(
@@ -88,7 +88,7 @@ export async function grantMonthlyCredits(destinationId, userId, planType) {
   await query(
     `INSERT INTO balance_transactions (destination_id, user_id, type, amount, pack_name, note)
      VALUES ($1, $2, 'credit', $3, 'monthly_grant', $4)`,
-    [destinationId, userId, amount, `Monthly grant — ${planType} plan`]
+    [destinationId, userId, amount, `Monthly grant — ${tier} tier`]
   );
 
   await invalidateMeteringCache(destinationId);

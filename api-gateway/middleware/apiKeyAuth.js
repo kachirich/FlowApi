@@ -93,7 +93,7 @@ export const apiKeyAuth = async (req, res, next) => {
     // 2. Cache miss -> Query the database for the hash
     const result = await query(
       `SELECT ak.id AS key_id, ak.flow_id, ak.signing_secret, ak.require_signature, ak.expires_at,
-              u.id AS user_id, u.email, ub.tier, ub.plan_type
+              u.id AS user_id, u.email, ub.tier
        FROM api_keys ak
        JOIN users u ON ak.user_id = u.id
        JOIN user_billing ub ON ub.user_id = u.id
@@ -108,7 +108,7 @@ export const apiKeyAuth = async (req, res, next) => {
       return next(error);
     }
 
-    const { key_id, flow_id, signing_secret, require_signature, expires_at, user_id, email, tier, plan_type } = result.rows[0];
+    const { key_id, flow_id, signing_secret, require_signature, expires_at, user_id, email, tier } = result.rows[0];
 
     // Reject expired keys (null expires_at = never expires).
     if (expires_at && new Date(expires_at).getTime() <= Date.now()) {
@@ -123,7 +123,6 @@ export const apiKeyAuth = async (req, res, next) => {
       id: user_id,
       email,
       tier,
-      plan_type,
       flow_id: flow_id || null,
       require_signature: require_signature === true,
       expires_at: expires_at ? new Date(expires_at).toISOString() : null,
