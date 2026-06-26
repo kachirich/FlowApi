@@ -1,4 +1,4 @@
-import { Plug, Database, Workflow, Webhook, Send } from 'lucide-react';
+import { Plug, Database, Workflow, Webhook, Send, Zap, FileText, Table2 } from 'lucide-react';
 
 /**
  * Presentational badges shared by DestinationManager and FlowManager.
@@ -6,6 +6,43 @@ import { Plug, Database, Workflow, Webhook, Send } from 'lucide-react';
  * ('generic' | 'nocodb' | 'n8n' | 'gohighlevel'), and a boolean `has_token`
  * (the raw token is never returned to the client).
  */
+
+/**
+ * Brand identity for the flow icon-chain. Lightweight: a real backend provider
+ * wins, otherwise the brand is inferred from the destination URL hostname so a
+ * plain webhook pointed at Zapier/Notion/Airtable/etc. still reads at a glance.
+ * Icons are clean lucide glyphs, not exact logos (no extra deps, no schema).
+ */
+const BRANDS = {
+  gohighlevel: { label: 'GoHighLevel', Icon: Send },
+  nocodb: { label: 'NocoDB', Icon: Database },
+  n8n: { label: 'n8n', Icon: Workflow },
+  zapier: { label: 'Zapier', Icon: Zap },
+  notion: { label: 'Notion', Icon: FileText },
+  airtable: { label: 'Airtable', Icon: Table2 },
+  make: { label: 'Make', Icon: Workflow },
+  webhook: { label: 'Webhook', Icon: Webhook },
+  custom: { label: 'Custom', Icon: Plug },
+};
+
+function inferBrandKey({ destination_type, provider, target_url } = {}) {
+  if (provider && provider !== 'generic' && BRANDS[provider]) return provider;
+  let host = '';
+  try { host = new URL(target_url).hostname.toLowerCase(); } catch { host = ''; }
+  if (host.includes('leadconnectorhq') || host.includes('gohighlevel')) return 'gohighlevel';
+  if (host.includes('zapier')) return 'zapier';
+  if (host.includes('notion')) return 'notion';
+  if (host.includes('airtable')) return 'airtable';
+  if (host.includes('make.com') || host.includes('integromat')) return 'make';
+  if (host.includes('nocodb')) return 'nocodb';
+  if (host.includes('n8n')) return 'n8n';
+  return destination_type === 'rest_api' ? 'custom' : 'webhook';
+}
+
+/** Resolve a destination to its { label, Icon } brand. */
+export function brandFor(dest) {
+  return BRANDS[inferBrandKey(dest)] || BRANDS.custom;
+}
 
 // rest_api providers get a specific label/icon; generic/undefined → "REST API".
 const PROVIDER_BADGE_META = {

@@ -692,7 +692,14 @@ function RecentInboundActivity({ leads = [] }) {
   );
 }
 
-function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook, generating, toast, destinationUrl, onDestinationChange, onSaveDestination, savingDestination, onRefreshStats, refreshingStats, hasWebhook }) {
+const KEY_EXPIRY_OPTIONS = [
+  { value: "30d", label: "30d" },
+  { value: "90d", label: "90d" },
+  { value: "1y", label: "1y" },
+  { value: "never", label: "Never" },
+];
+
+function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook, generating, keyExpiry, onKeyExpiryChange, keyExpiryCustom, onKeyExpiryCustomChange, toast, destinationUrl, onDestinationChange, onSaveDestination, savingDestination, onRefreshStats, refreshingStats, hasWebhook }) {
   const [webhookOpen, setWebhookOpen] = useState(false);
   const [webhookCopied, setWebhookCopied] = useState(false);
 
@@ -731,9 +738,54 @@ function DashboardTopActions({ leads, stats, onGenerateWebhook, generatedWebhook
           {/* Dropdown Content */}
           <div className={`overflow-hidden transition-all duration-300 flex-1 flex flex-col ${webhookOpen ? "max-h-[600px] mt-2 opacity-100" : "max-h-0 opacity-0"}`}>
             <div className="rounded-xl border border-zinc-800 bg-surface-raised p-5 shadow-xl flex flex-col flex-1">
+              {/* Expiry selector — keys are short-lived by default; this is the
+                  one knob worth surfacing inline rather than in its own tab. */}
+              <div className="mb-3">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Key expires in</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {KEY_EXPIRY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => onKeyExpiryChange(opt.value)}
+                      className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors border ${
+                        keyExpiry === opt.value
+                          ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
+                          : "bg-slate-900 text-slate-400 border-slate-700/60 hover:border-slate-600"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => onKeyExpiryChange("custom")}
+                    className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors border ${
+                      keyExpiry === "custom"
+                        ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/40"
+                        : "bg-slate-900 text-slate-400 border-slate-700/60 hover:border-slate-600"
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+                {keyExpiry === "custom" && (
+                  <input
+                    type="date"
+                    value={keyExpiryCustom}
+                    min={new Date(Date.now() + 86400000).toISOString().slice(0, 10)}
+                    onChange={(e) => onKeyExpiryCustomChange(e.target.value)}
+                    className="mt-2 w-full rounded-md border border-slate-700/60 bg-slate-900 px-2.5 py-1.5 text-[11px] text-slate-200 outline-none focus:border-cyan-500/50 [color-scheme:dark]"
+                  />
+                )}
+                {keyExpiry === "never" && (
+                  <p className="mt-1.5 text-[10px] text-amber-400/80">Never-expiring keys are riskier — rotate them periodically.</p>
+                )}
+              </div>
+
               <button
                 onClick={onGenerateWebhook}
-                disabled={generating}
+                disabled={generating || (keyExpiry === "custom" && !keyExpiryCustom)}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30 py-2.5 text-xs font-semibold text-cyan-400 hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
               >
                 {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin"/> Generating...</> : <><Plus className="h-3.5 w-3.5" /> Generate Secure API Key</>}
@@ -1899,6 +1951,9 @@ export default function Dashboard() {
   }, []);
   const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00", planType: "free", dailyLeadCap: 100, dailyLeadsReceived: 0, monthlyRequestCount: 0, monthlyRequestLimit: 10000 });
   const [generatedWebhook, setGeneratedWebhook] = useState(null);
+  // API-key expiry chosen at generation time: '30d' | '90d' | '1y' | 'never' | 'custom'.
+  const [keyExpiry, setKeyExpiry] = useState("90d");
+  const [keyExpiryCustom, setKeyExpiryCustom] = useState(""); // yyyy-mm-dd when 'custom'
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState(null);
   const [destinationUrl, setDestinationUrl] = useState("");
@@ -2543,6 +2598,19 @@ export default function Dashboard() {
     setStepUpOtp("");
   };
 
+  // Resolve the selected expiry to an ISO timestamp (or null = never expires).
+  const computeKeyExpiresAt = () => {
+    const d = new Date();
+    switch (keyExpiry) {
+      case "30d": d.setDate(d.getDate() + 30); return d.toISOString();
+      case "90d": d.setDate(d.getDate() + 90); return d.toISOString();
+      case "1y": d.setFullYear(d.getFullYear() + 1); return d.toISOString();
+      case "custom": return keyExpiryCustom ? new Date(`${keyExpiryCustom}T23:59:59`).toISOString() : null;
+      case "never":
+      default: return null;
+    }
+  };
+
   const generateWebhookAPI = async (token, otp) => {
     const trustedToken = localStorage.getItem("trusted_device_token");
     const headers = {
@@ -2553,10 +2621,15 @@ export default function Dashboard() {
       headers["x-trusted-device-token"] = trustedToken;
     }
 
+    const body = {};
+    if (otp) body.totpToken = otp;
+    const expiresAt = computeKeyExpiresAt();
+    if (expiresAt) body.expires_at = expiresAt;
+
     const res = await fetch(`${GATEWAY_URL}/api/keys`, {
       method: "POST",
       headers,
-      body: JSON.stringify(otp ? { totpToken: otp } : {}),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
 
@@ -2999,6 +3072,10 @@ export default function Dashboard() {
                 onGenerateWebhook={handleGenerateWebhook}
                 generatedWebhook={generatedWebhook}
                 generating={generating}
+                keyExpiry={keyExpiry}
+                onKeyExpiryChange={setKeyExpiry}
+                keyExpiryCustom={keyExpiryCustom}
+                onKeyExpiryCustomChange={setKeyExpiryCustom}
                 toast={toast}
                 destinationUrl={destinationUrl}
                 onDestinationChange={setDestinationUrl}

@@ -57,6 +57,15 @@ export const apiKeyAuth = async (req, res, next) => {
       if (cachedData) {
         const parsed = JSON.parse(cachedData);
 
+        // Reject expired keys even on a cache hit (expiry is cached alongside).
+        if (parsed.expires_at && new Date(parsed.expires_at).getTime() <= Date.now()) {
+          await redisClient.del(cacheKey).catch(() => {});
+          const error = new Error('API key has expired');
+          error.name = 'Unauthorized';
+          error.status = 401;
+          return next(error);
+        }
+
         // signing_secret is not cached — fetch fresh when HMAC verification is needed
         if (parsed.require_signature) {
           const sk = await query(
@@ -83,7 +92,7 @@ export const apiKeyAuth = async (req, res, next) => {
 
     // 2. Cache miss -> Query the database for the hash
     const result = await query(
-      `SELECT ak.id AS key_id, ak.flow_id, ak.signing_secret, ak.require_signature,
+      `SELECT ak.id AS key_id, ak.flow_id, ak.signing_secret, ak.require_signature, ak.expires_at,
               u.id AS user_id, u.email, ub.tier, ub.plan_type
        FROM api_keys ak
        JOIN users u ON ak.user_id = u.id
@@ -99,7 +108,15 @@ export const apiKeyAuth = async (req, res, next) => {
       return next(error);
     }
 
-    const { key_id, flow_id, signing_secret, require_signature, user_id, email, tier, plan_type } = result.rows[0];
+    const { key_id, flow_id, signing_secret, require_signature, expires_at, user_id, email, tier, plan_type } = result.rows[0];
+
+    // Reject expired keys (null expires_at = never expires).
+    if (expires_at && new Date(expires_at).getTime() <= Date.now()) {
+      const error = new Error('API key has expired');
+      error.name = 'Unauthorized';
+      error.status = 401;
+      return next(error);
+    }
 
     const cachePayload = {
       key_id,
@@ -109,6 +126,7 @@ export const apiKeyAuth = async (req, res, next) => {
       plan_type,
       flow_id: flow_id || null,
       require_signature: require_signature === true,
+      expires_at: expires_at ? new Date(expires_at).toISOString() : null,
       // signing_secret intentionally NOT cached — fetched fresh on each cache hit when needed
     };
 

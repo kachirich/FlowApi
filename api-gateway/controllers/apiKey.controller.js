@@ -5,6 +5,8 @@ import { invalidateApiKeyCache } from '../middleware/apiKeyAuth.js';
 export const generateKey = async (req, res) => {
   try {
     const userId = req.user.id; // From authenticate middleware
+    // Validated by generateKeySchema: ISO string in the future (≤5y), or null.
+    const expiresAt = req.body.expires_at || null;
 
     // Generate random raw key
     const rawKey = `flow_live_${crypto.randomBytes(32).toString('hex')}`;
@@ -14,12 +16,12 @@ export const generateKey = async (req, res) => {
 
     // Insert into DB
     const insertResult = await query(
-      `INSERT INTO api_keys (user_id, key_hash, prefix, last_four)
-       VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
-      [userId, keyHash, prefix, lastFour]
+      `INSERT INTO api_keys (user_id, key_hash, prefix, last_four, expires_at)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at, expires_at`,
+      [userId, keyHash, prefix, lastFour, expiresAt]
     );
 
-    const { id, created_at } = insertResult.rows[0];
+    const { id, created_at, expires_at } = insertResult.rows[0];
 
     // Return the raw key EXACTLY ONCE
     return res.status(201).json({
@@ -30,7 +32,8 @@ export const generateKey = async (req, res) => {
         raw_key: rawKey,
         prefix,
         last_four: lastFour,
-        created_at
+        created_at,
+        expires_at
       }
     });
   } catch (error) {
@@ -44,7 +47,7 @@ export const listKeys = async (req, res) => {
     const userId = req.user.id;
 
     const result = await query(
-      `SELECT id, prefix, last_four, flow_id, created_at, last_used_at
+      `SELECT id, prefix, last_four, flow_id, created_at, last_used_at, expires_at
        FROM api_keys
        WHERE user_id = $1
        ORDER BY created_at DESC`,

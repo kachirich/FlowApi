@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import apiClient from '../utils/api';
 import {
   Workflow,
@@ -10,9 +10,10 @@ import {
   Check,
   Shuffle,
   Radio,
+  Lock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { DestinationTypeBadge, TokenBadge } from './DestinationBadges';
+import { DestinationTypeBadge, TokenBadge, brandFor } from './DestinationBadges';
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Routing strategy presentation helpers
@@ -258,22 +259,32 @@ export default function FlowManager() {
                       </span>
                     </div>
 
-                    {/* Destination pills */}
-                    <div className="mt-3 flex flex-wrap gap-1.5">
+                    {/* Destination icon-chain — '→' for round-robin (sequential),
+                        '+' for broadcast (fan-out). Brand icon per destination. */}
+                    <div className="mt-3 flex flex-wrap items-center gap-x-1 gap-y-1.5">
                       {dests.length === 0 ? (
                         <span className="text-xs text-zinc-500 italic">No destinations</span>
                       ) : (
-                        dests.map((d) => (
-                          <span
-                            key={d.id}
-                            className="inline-flex items-center gap-1.5 rounded-md bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-xs font-medium text-zinc-300"
-                            title={d.target_url}
-                          >
-                            {d.name}
-                            <DestinationTypeBadge type={d.destination_type} />
-                            {d.has_token && <TokenBadge />}
-                          </span>
-                        ))
+                        dests.map((d, i) => {
+                          const brand = brandFor(d);
+                          return (
+                            <Fragment key={d.id}>
+                              {i > 0 && (
+                                <span className="px-0.5 text-xs font-semibold text-zinc-600">
+                                  {flow.routing_strategy === 'broadcast' ? '+' : '→'}
+                                </span>
+                              )}
+                              <span
+                                className="inline-flex items-center gap-1.5 rounded-md bg-zinc-800 border border-zinc-700 px-2 py-0.5 text-xs font-medium text-zinc-300"
+                                title={`${brand.label} — ${d.target_url}`}
+                              >
+                                <brand.Icon className="h-3.5 w-3.5 text-indigo-300" />
+                                {d.name}
+                                {d.has_token && <Lock className="h-3 w-3 text-zinc-500" />}
+                              </span>
+                            </Fragment>
+                          );
+                        })
                       )}
                     </div>
 

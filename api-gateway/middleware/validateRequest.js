@@ -238,6 +238,29 @@ export const signatureRequiredSchema = z.object({
   required: z.boolean({ message: "required must be a boolean" }),
 });
 
+/**
+ * POST /api/keys — optional user-chosen expiry.
+ * `expires_at` is an ISO-8601 timestamp (or null/omitted = never expires).
+ * Must be in the future and within five years. `totpToken` is accepted (the
+ * step-up OTP flow sends it) but unused here.
+ */
+const FIVE_YEARS_MS = 5 * 365 * 24 * 60 * 60 * 1000;
+export const generateKeySchema = z
+  .object({
+    expires_at: z.string().datetime({ message: "expires_at must be an ISO-8601 timestamp" }).nullable().optional(),
+    totpToken: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.expires_at) return;
+    const t = new Date(data.expires_at).getTime();
+    const now = Date.now();
+    if (Number.isNaN(t) || t <= now) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expires_at"], message: "Expiry must be a future date." });
+    } else if (t - now > FIVE_YEARS_MS) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["expires_at"], message: "Expiry cannot be more than 5 years out." });
+    }
+  });
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Per-destination lead metering / credit balance schemas
    ═══════════════════════════════════════════════════════════════════════════ */

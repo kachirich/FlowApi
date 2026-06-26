@@ -9,15 +9,15 @@ import {
   setSignatureRequired,
 } from '../controllers/apiKey.controller.js';
 import authenticate from '../middleware/auth.js';
-import { validateRequest, assignFlowSchema, signatureRequiredSchema } from '../middleware/validateRequest.js';
+import { validateRequest, assignFlowSchema, signatureRequiredSchema, generateKeySchema } from '../middleware/validateRequest.js';
 
 const router = Router();
 
 // All API Key management routes require a valid user session
 router.use(authenticate);
 
-// Generate a new API Key
-router.post('/', generateKey);
+// Generate a new API Key (optional user-chosen expiry)
+router.post('/', validateRequest(generateKeySchema), generateKey);
 
 // List all API Keys for the user
 router.get('/', listKeys);
