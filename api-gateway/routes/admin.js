@@ -1,12 +1,11 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
-import jwt from "jsonwebtoken";
-import speakeasy from "speakeasy";
 import rateLimit from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { query } from "../db/connection.js";
 import authenticate from "../middleware/auth.js";
+import stepUpAuth from "../middleware/stepUpAuth.js";
 import webhookCreationLimiter from "../middleware/webhookCreationLimiter.js";
 import { generateApiKey } from "../utils/apiKeyGenerator.js";
 import { validateWebhookUrl } from "../utils/security.js";
@@ -121,40 +120,15 @@ router.get("/dashboard", authenticate, async (req, res, next) => {
  *
  * Protected by JWT.
  */
-router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimiter, async (req, res, next) => {
+router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimiter, stepUpAuth, async (req, res, next) => {
   try {
-    const { totpToken } = req.body;
-
-    // Enforce 2FA verification + billing tier check in a single query
+    // Step-up (2FA / trusted-device) is enforced by stepUpAuth. Here we only
+    // enforce the per-plan lifetime webhook-key limit.
     const userResult = await query(
-      `SELECT ua.two_factor_secret, ua.two_factor_enabled,
-              ub.plan_type, ub.lifetime_webhooks_created
-       FROM user_auth ua
-       JOIN user_billing ub ON ub.user_id = ua.user_id
-       WHERE ua.user_id = $1`,
+      `SELECT plan_type, lifetime_webhooks_created FROM user_billing WHERE user_id = $1`,
       [req.user.id]
     );
-
-    const user = userResult.rows[0];
-    if (!user || !user.two_factor_secret) {
-      return res.status(403).json({ error: "2FA must be configured before generating webhooks" });
-    }
-
-    if (!totpToken) {
-      return res.status(401).json({ error: "Unauthorized: 2FA Token Required" });
-    }
-
-    const verified = speakeasy.totp.verify({
-      secret: user.two_factor_secret,
-      encoding: "base32",
-      token: totpToken,
-    });
-
-    if (!verified) {
-      return res.status(401).json({ error: "Invalid Code" });
-    }
-
-    // ── Enforce Billing Tiers (Lifetime Counter) ───────────────────────────
+    const user = userResult.rows[0] || {};
     const planType = user.plan_type || 'free';
     const lifetimeWebhooks = user.lifetime_webhooks_created || 0;
 
@@ -201,18 +175,12 @@ router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimi
     console.log(`🔑 NEW WEBHOOK KEY GENERATED: ${maskedKey}`);
     console.log("═".repeat(60) + "\n");
 
-    const trustedDeviceToken = jwt.sign(
-      { userId: req.user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: "72h" }
-    );
-
     return res.json({
       success: true,
       apiKey: rawKey,
       webhookUrl,
       id: webhookId,
-      trustedDeviceToken
+      trustedDeviceToken: res.locals.trustedDeviceToken
     });
   } catch (err) {
     next(err);
@@ -490,60 +458,10 @@ router.delete("/webhooks", authenticate, async (req, res, next) => {
  *
  * Revokes a single webhook key.
  */
-router.delete("/webhooks/:id", authenticate, async (req, res, next) => {
+router.delete("/webhooks/:id", authenticate, stepUpAuth, async (req, res, next) => {
   try {
-    const totpToken = req.body.totpToken || req.headers.totptoken;
-    const email = req.user.email;
-
-    const trustedToken = req.headers['x-trusted-device-token'];
-    let deviceTrusted = false;
-    if (trustedToken) {
-      try {
-        const decoded = jwt.verify(trustedToken, process.env.JWT_SECRET);
-        if (decoded && decoded.userId === req.user.id) {
-          deviceTrusted = true;
-        }
-      } catch (err) {
-        // ignore
-      }
-    }
-
-    if (!deviceTrusted) {
-      if (!totpToken) {
-        return res.status(401).json({ error: "Unauthorized: Missing 2FA code" });
-      }
-
-      // Enforce 2FA verification
-      const userResult = await query(
-        "SELECT two_factor_secret, two_factor_enabled FROM user_auth WHERE user_id = $1",
-        [req.user.id]
-      );
-
-      const user = userResult.rows[0];
-      if (!user || !user.two_factor_enabled) {
-        return res.status(403).json({ error: "Two-factor authentication must be enabled to revoke webhooks" });
-      }
-
-      const verified = speakeasy.totp.verify({
-        secret: user.two_factor_secret,
-        encoding: "base32",
-        token: totpToken,
-      });
-
-      if (!verified) {
-        return res.status(401).json({ error: "Invalid authenticator code" });
-      }
-    }
-
     await query(`DELETE FROM webhook_keys WHERE id = $1 AND user_id = $2`, [req.params.id, req.user.id]);
-
-    const trustedDeviceToken = jwt.sign(
-      { userId: req.user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: "72h" }
-    );
-
-    return res.json({ success: true, trustedDeviceToken });
+    return res.json({ success: true, trustedDeviceToken: res.locals.trustedDeviceToken });
   } catch (err) {
     next(err);
   }
