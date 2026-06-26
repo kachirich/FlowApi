@@ -3,6 +3,7 @@ import { query } from "../db/connection.js";
 import { enqueueNotification, notificationQueue } from "./notification.queue.js";
 import { NOTIFICATION_TYPES } from "./notification.service.js";
 import { grantMonthlyCredits } from "./destinationMetering.js";
+import { PLANS, TIERS } from "../config/plans.js";
 
 /**
  * Janitor Service — Log Retention Enforcer + Nightly Housekeeping
@@ -16,37 +17,33 @@ async function purgeExpiredLogs() {
   console.log("[janitor] Running nightly log retention sweep...");
 
   try {
-    // Delete logs for free/basic users older than 7 days
-    const freeResult = await query(`
-      DELETE FROM webhook_logs wl
-      USING users u, user_billing ub
-      WHERE wl.user_id = u.id
-        AND ub.user_id = u.id
-        AND (ub.plan_type = 'free' OR ub.plan_type = 'basic' OR ub.plan_type IS NULL)
-        AND wl.created_at < NOW() - INTERVAL '7 days'
-    `);
-
-    // Delete logs for pro users older than 30 days
-    const proResult = await query(`
-      DELETE FROM webhook_logs wl
-      USING users u, user_billing ub
-      WHERE wl.user_id = u.id
-        AND ub.user_id = u.id
-        AND ub.plan_type = 'pro'
-        AND wl.created_at < NOW() - INTERVAL '30 days'
-    `);
+    // Retention per tier is config-driven (config/plans.js). Tiers with a null
+    // retention (enterprise) are never purged. Rows with no tier are treated as
+    // sandbox (the safest/shortest retention).
+    let totalPurged = 0;
+    for (const tier of TIERS) {
+      const days = PLANS[tier].logRetentionDays;
+      if (days == null) continue; // retain forever
+      const tierMatch = tier === "sandbox" ? "(ub.tier = $1 OR ub.tier IS NULL)" : "ub.tier = $1";
+      const result = await query(
+        `DELETE FROM webhook_logs wl
+         USING user_billing ub
+         WHERE wl.user_id = ub.user_id
+           AND ${tierMatch}
+           AND wl.created_at < NOW() - ($2 || ' days')::interval`,
+        [tier, String(days)]
+      );
+      totalPurged += result.rowCount || 0;
+      console.log(`[janitor]   ${tier} (>${days}d): ${result.rowCount || 0} removed`);
+    }
 
     // Delete expired OTP codes (safe; they've already been rejected or used)
     const otpResult = await query(`
       DELETE FROM otps WHERE expires_at < NOW()
     `);
 
-    const totalPurged = (freeResult.rowCount || 0) + (proResult.rowCount || 0);
     console.log(`[janitor] Retention sweep complete — ${totalPurged} expired logs purged`);
-    console.log(`[janitor]   Free/Basic (>7d):  ${freeResult.rowCount || 0} removed`);
-    console.log(`[janitor]   Pro (>30d):         ${proResult.rowCount || 0} removed`);
-    console.log(`[janitor]   Plus:               Unlimited — no purge`);
-    console.log(`[janitor]   Expired OTPs:       ${otpResult.rowCount || 0} removed`);
+    console.log(`[janitor]   Expired OTPs: ${otpResult.rowCount || 0} removed`);
   } catch (err) {
     console.error("[janitor] Error during log retention sweep:", err.message);
   }

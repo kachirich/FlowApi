@@ -1,5 +1,6 @@
 import { redisClient } from "./rateLimiter.js";
 import { query } from "../db/connection.js";
+import { normalizeTier } from "../config/plans.js";
 
 /**
  * Redis cache key for a user's plan tier.
@@ -97,14 +98,19 @@ export default function requirePlan(...allowedPlans) {
       }
 
       // ── Step 3: Attach to request and authorise ──────────────────────
+      const tier = normalizeTier(planType);
       req.user.plan_type = planType;
+      req.user.tier = tier;
 
-      if (!allowedPlans.includes(planType)) {
+      // Compare on canonical tiers so callers can pass either tiers or legacy
+      // plan_type names and still match (e.g. "pro" and "growth" are equal).
+      const allowedTiers = allowedPlans.map(normalizeTier);
+      if (!allowedTiers.includes(tier)) {
         return res.status(403).json({
           success: false,
           error: "Upgrade required",
-          message: `This feature requires one of the following plans: ${allowedPlans.join(", ")}`,
-          currentPlan: planType,
+          message: `This feature requires one of the following tiers: ${[...new Set(allowedTiers)].join(", ")}`,
+          currentPlan: tier,
         });
       }
 

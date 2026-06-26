@@ -3,6 +3,7 @@ import { RedisStore } from "rate-limit-redis";
 import redisClient from "../utils/redisClient.js";
 import logger from "../utils/logger.js";
 import { query } from "../db/connection.js";
+import { planFor } from "../config/plans.js";
 
 // Re-export the shared ioredis singleton so existing importers that pull
 // `redisClient` from this module (routes, controllers, requirePlan) keep
@@ -168,12 +169,7 @@ export const webhookIngressLimiter = rateLimit({
     prefix: 'rl_webhook_ingress_',
   }),
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  max: async (req, res) => {
-    const tier = req.user?.tier || 'sandbox';
-    if (tier === 'enterprise') return 100000;
-    if (tier === 'growth') return 10000;
-    return 500; // sandbox
-  },
+  max: async (req, res) => planFor(req.user?.tier).dailyLeadCap,
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipRateLimit,

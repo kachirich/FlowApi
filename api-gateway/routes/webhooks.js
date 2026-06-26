@@ -4,6 +4,7 @@ import authenticate from "../middleware/auth.js";
 import requirePlan from "../middleware/requirePlan.js";
 import { getPlanType } from "../middleware/index.js";
 import meteredLimiter from "../middleware/meteredLimiter.js";
+import { planFor } from "../config/plans.js";
 import { query } from "../db/connection.js";
 import { webhookQueue } from "../services/queue.js";
 import { validateRequest, webhookConfigBodySchema } from "../middleware/validateRequest.js";
@@ -17,7 +18,7 @@ const router = Router();
  * Returns recent webhook logs for the authenticated user.
  * Gated to paid plans via requirePlan middleware (Redis-cached tier check).
  */
-router.get("/logs", authenticate, requirePlan("basic", "pro", "plus"), async (req, res) => {
+router.get("/logs", authenticate, requirePlan("growth", "enterprise"), async (req, res) => {
   try {
     const result = await query(
       `SELECT id, user_id, webhook_id, destination_id, method, status_code,
@@ -69,8 +70,8 @@ router.put("/:id", authenticate, validateRequest(webhookConfigBodySchema), async
     if (custom_headers !== undefined) {
       // Authoritative State: strictly rely on DB (or signed JWT) to prevent RBAC escalation
       const planType = await getPlanType(req.user.id) || 'free';
-      
-      if (planType === 'free' || planType === 'basic') {
+
+      if (!planFor(planType).customHeaders) {
         return res.status(403).json({
           success: false,
           error: "Upgrade required to access this engine"

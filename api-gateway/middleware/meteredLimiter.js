@@ -1,5 +1,6 @@
 import { query } from '../db/connection.js';
 import { getPlanType } from './index.js';
+import { planFor } from '../config/plans.js';
 import { enqueueNotification } from '../services/notification.queue.js';
 import { dedupCheck, NOTIFICATION_TYPES } from '../services/notification.service.js';
 
@@ -56,9 +57,7 @@ export default async function meteredLimiter(req, res, next) {
     }
 
     // ── Step B: Plan Limit Enforcement ───────────────────────────────────
-    let limit = 10000;                   // free / basic
-    if (planType === 'pro') limit = 100000;
-    if (planType === 'plus') limit = Infinity;
+    const limit = planFor(planType).monthlyRequests;
 
     if (currentCount >= limit) {
       return res.status(429).json({

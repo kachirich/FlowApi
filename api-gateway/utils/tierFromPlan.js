@@ -1,11 +1,13 @@
 /**
- * Derive the billing `tier` from a `plan_type`. Single source of truth so the
- * billing webhook, the admin upgrade routes, and the migration-014 backfill all
- * agree. `tier` gates the daily lead cap in middleware/rateLimiter.js
- * (enterprise → 100k, growth → 10k, sandbox → 500/day).
+ * Derive the billing `tier` from a `plan_type` (or pass a tier through). Thin
+ * wrapper over the single source of truth in config/plans.js — kept as a named
+ * export so the billing webhook, admin upgrade routes and migrations that
+ * already import it don't need to change.
+ *
+ * Mapping: plus→enterprise, pro+basic→growth, free→sandbox.
  */
+import { normalizeTier } from "../config/plans.js";
+
 export function tierFromPlan(planType) {
-  if (planType === "plus") return "enterprise";
-  if (planType === "pro") return "growth";
-  return "sandbox";
+  return normalizeTier(planType);
 }

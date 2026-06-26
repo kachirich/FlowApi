@@ -14,6 +14,7 @@ import pool, { query } from "../db/connection.js";
 import { webhookQueue } from "./queue.js";
 import { getPlanType } from "../middleware/requirePlan.js";
 import { retryConfig } from "../utils/retryConfig.js";
+import { planFor } from "../config/plans.js";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Helper — Smart Catcher extraction (recursive key finder)
@@ -143,12 +144,13 @@ export async function ingestLead({
   try {
     await client.query("BEGIN");
 
-    // Ensure the counter row exists for the user
+    // Ensure the counter row exists for the user, seeded with their plan's
+    // daily cap (was a hardcoded 100 regardless of plan).
     await client.query(
       `INSERT INTO lead_counters (user_id, daily_lead_cap, daily_leads_received, last_reset_date)
-       VALUES ($1, 100, 0, CURRENT_DATE)
+       VALUES ($1, $2, 0, CURRENT_DATE)
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId]
+      [userId, planFor(plan_type).dailyLeadCap]
     );
 
     // Acquire exclusive lock on the row to queue concurrent requests

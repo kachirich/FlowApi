@@ -13,6 +13,7 @@ import { validateWebhookUrl } from "../utils/security.js";
 import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
+import { planFor } from "../config/plans.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 import { webhookQueue } from "../services/queue.js";
 import { decrypt } from "../utils/encryption.js";
@@ -157,9 +158,7 @@ router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimi
     const planType = user.plan_type || 'free';
     const lifetimeWebhooks = user.lifetime_webhooks_created || 0;
 
-    let limit = 2;
-    if (planType === 'pro') limit = 50;
-    if (planType === 'plus') limit = Infinity;
+    const limit = planFor(planType).maxApiKeys;
 
     if (lifetimeWebhooks >= limit) {
       return res.status(403).json({
@@ -275,10 +274,9 @@ router.get("/stats", authenticate, async (req, res, next) => {
         monthlyRequestCount = 0; // cycle rolled over
       }
     }
-    // null = unlimited (plus). JSON can't carry Infinity.
-    let monthlyRequestLimit = 10000;
-    if (planType === 'pro') monthlyRequestLimit = 100000;
-    if (planType === 'plus') monthlyRequestLimit = null;
+    // null = unlimited (enterprise). JSON can't carry Infinity.
+    const planMonthly = planFor(planType).monthlyRequests;
+    const monthlyRequestLimit = planMonthly === Infinity ? null : planMonthly;
 
     return res.json({
       totalLeads,

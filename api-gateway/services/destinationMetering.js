@@ -7,7 +7,7 @@
  */
 import { query } from "../db/connection.js";
 import redisClient from "../utils/redisClient.js";
-import { PLAN_MONTHLY_GRANTS } from "../constants/creditPacks.js";
+import { planFor } from "../config/plans.js";
 
 const CACHE_TTL_SECONDS = 120;
 
@@ -62,7 +62,7 @@ export async function getMeteringState(destinationId) {
  * @param {string} planType  e.g. 'free', 'pro', 'plus'
  */
 export async function grantMonthlyCredits(destinationId, userId, planType) {
-  const amount = PLAN_MONTHLY_GRANTS[planType] ?? PLAN_MONTHLY_GRANTS.free;
+  const amount = planFor(planType).monthlyCredits;
 
   // Check if a grant was already issued for the current calendar month
   const existing = await query(

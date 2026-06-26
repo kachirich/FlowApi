@@ -7,6 +7,7 @@ import { webhookQueue } from "../services/queue.js";
 import { getMeteringState, invalidateMeteringCache } from "./destinationMetering.js";
 import { decrypt } from "../utils/encryption.js";
 import { retryConfig } from "../utils/retryConfig.js";
+import { planFor } from "../config/plans.js";
 import { getAuthHeader } from "./providers/registry.js";
 
 /**
@@ -432,7 +433,7 @@ async function attemptHttpRequest(webhook, payload, planType) {
     }
   }
 
-  if (planType !== "free" && planType !== "basic") {
+  if (planFor(planType).customHeaders) {
     if (webhook.custom_headers && typeof webhook.custom_headers === "object") {
       for (const [key, value] of Object.entries(webhook.custom_headers)) {
         if (!blocklistedHeaders.includes(key.toLowerCase())) {

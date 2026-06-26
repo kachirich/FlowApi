@@ -3,6 +3,7 @@ import { validateWebhookUrl } from '../utils/security.js';
 import { grantMonthlyCredits } from '../services/destinationMetering.js';
 import { encrypt } from '../utils/encryption.js';
 import { getAdapter } from '../services/providers/registry.js';
+import { planFor } from '../config/plans.js';
 
 const sanitizeName = (str) => {
   if (typeof str !== 'string') return '';
@@ -47,9 +48,7 @@ export const createDestination = async (req, res, next) => {
     const countResult = await query(`SELECT COUNT(*) FROM destinations WHERE user_id = $1 AND is_active = TRUE`, [userId]);
     const activeCount = parseInt(countResult.rows[0].count, 10);
 
-    if (userTier === 'sandbox' && activeCount >= 1) {
-      return res.status(403).json({ error: 'Upgrade tier to add more destinations.' });
-    } else if (userTier === 'growth' && activeCount >= 5) {
+    if (activeCount >= planFor(userTier).maxDestinations) {
       return res.status(403).json({ error: 'Upgrade tier to add more destinations.' });
     }
 
