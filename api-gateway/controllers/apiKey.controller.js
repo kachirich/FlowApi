@@ -23,10 +23,12 @@ export const generateKey = async (req, res) => {
 
     const { id, created_at, expires_at } = insertResult.rows[0];
 
-    // Return the raw key EXACTLY ONCE
+    // Return the raw key EXACTLY ONCE. trustedDeviceToken (minted by stepUpAuth)
+    // lets the client skip the OTP prompt for the next 72h.
     return res.status(201).json({
       success: true,
       message: 'API Key generated successfully. Please save this key now as you will not be able to see it again.',
+      trustedDeviceToken: res.locals.trustedDeviceToken,
       key: {
         id,
         raw_key: rawKey,

@@ -42,10 +42,11 @@ async function run() {
     );
     const userId = userResult.rows[0].id;
 
-    // Generate API Key for Inbound Ingestion
+    // Generate API Key for Inbound Ingestion (step-up bypassed via trusted device)
     const keyRes = await request(app)
       .post('/api/keys')
-      .set('Authorization', `Bearer ${jwtSign(userId, email)}`);
+      .set('Authorization', `Bearer ${jwtSign(userId, email)}`)
+      .set('x-trusted-device-token', jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '72h' }));
     const apiKey = keyRes.body.key.raw_key;
     console.log('Test User and API Key configured.');
 

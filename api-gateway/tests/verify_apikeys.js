@@ -27,11 +27,15 @@ async function run() {
     );
     
     console.log('1. Generated User Token');
-    
+
+    // Step-up bypass: a valid trusted-device token stands in for an OTP.
+    const trustedDeviceToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "72h" });
+
     // 2. Generate API Key
     const generateRes = await request(app)
       .post('/api/keys')
-      .set('Authorization', `Bearer ${token}`);
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-trusted-device-token', trustedDeviceToken);
       
     if (generateRes.status !== 201) {
       throw new Error(`Failed to generate key: ${JSON.stringify(generateRes.body)}`);

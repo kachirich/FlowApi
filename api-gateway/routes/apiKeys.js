@@ -9,6 +9,7 @@ import {
   setSignatureRequired,
 } from '../controllers/apiKey.controller.js';
 import authenticate from '../middleware/auth.js';
+import stepUpAuth from '../middleware/stepUpAuth.js';
 import { validateRequest, assignFlowSchema, signatureRequiredSchema, generateKeySchema } from '../middleware/validateRequest.js';
 
 const router = Router();
@@ -16,8 +17,10 @@ const router = Router();
 // All API Key management routes require a valid user session
 router.use(authenticate);
 
-// Generate a new API Key (optional user-chosen expiry)
-router.post('/', validateRequest(generateKeySchema), generateKey);
+// Generate a new API Key — step-up (2FA / trusted device) required, then
+// optional user-chosen expiry. stepUpAuth runs before the validator so it can
+// read totpToken off the raw body.
+router.post('/', stepUpAuth, validateRequest(generateKeySchema), generateKey);
 
 // List all API Keys for the user
 router.get('/', listKeys);
