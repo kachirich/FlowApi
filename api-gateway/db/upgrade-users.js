@@ -7,7 +7,7 @@ const { Pool } = pg;
 
 // Mirrors middleware/requirePlan.js:planCacheKey — keep formats in sync.
 const planCacheKey = (userId) => `user:${userId}:plan`;
-// plan_type lives in user_billing — never UPDATE users.plan_type directly.
+// tier lives in user_billing — the sole plan axis (plan_type was dropped).
 
 /**
  * Best-effort invalidation of the Redis plan cache for the given user ids.
@@ -43,17 +43,17 @@ async function invalidatePlanCache(userIds) {
 }
 
 /**
- * Usage: node db/upgrade-users.js <plan> <email1> [<email2> ...]
- * Example: node db/upgrade-users.js plus kachirichard75@gmail.com kachirichard34@gmail.com
+ * Usage: node db/upgrade-users.js <tier> <email1> [<email2> ...]
+ * Example: node db/upgrade-users.js enterprise kachirichard75@gmail.com kachirichard34@gmail.com
  *
- * Directly updates user plan_type in the database.
+ * Directly sets the user's billing tier in user_billing.
  */
 async function upgradeUsers() {
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
-    console.error("Usage: node db/upgrade-users.js <plan> <email1> [<email2> ...]");
-    console.error("Example: node db/upgrade-users.js plus kachirichard75@gmail.com kachirichard34@gmail.com");
+    console.error("Usage: node db/upgrade-users.js <tier> <email1> [<email2> ...]");
+    console.error("Example: node db/upgrade-users.js enterprise kachirichard75@gmail.com kachirichard34@gmail.com");
     process.exit(1);
   }
 

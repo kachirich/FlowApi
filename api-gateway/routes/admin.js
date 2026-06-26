@@ -670,8 +670,8 @@ router.post("/leads/:id/refire", authenticate, async (req, res, next) => {
  * Admin / testing route to manually upgrade a user's plan and fire the
  * tier-specific welcome email.  Accepts { email, newPlan } in the body.
  *
- * - Validates newPlan against the allowed tier list.
- * - Updates the user's plan_type in Postgres.
+ * - Validates newPlan against the allowed tier list (tier or legacy name).
+ * - Updates the user's tier in user_billing.
  * - Fires sendTierUpgradeEmail() with the resolved user name.
  *
  * Protected by JWT and admin check.

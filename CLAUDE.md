@@ -87,9 +87,11 @@ Before each HTTP dispatch, DNS resolution is checked to block internal IP ranges
 
 ### Plan & Billing Middleware
 
-`requirePlan(...allowedPlans)` in `middleware/requirePlan.js` gates routes by billing tier. It reads from Redis first (`user:{id}:plan`, 15-min TTL) then falls back to Postgres. Plan type is attached to `req.user.plan_type` for downstream use.
+Billing is a single tier axis — **`sandbox` · `growth` · `enterprise`** — with every limit defined in one place: `config/plans.js` (`PLANS[tier]` + `normalizeTier()`/`planFor()`). The legacy `plan_type` (free/basic/pro/plus) column was dropped (migration 019); `tier` is authoritative. `getUserTier(userId)` resolves the tier from Redis (`user:{id}:plan`, 15-min TTL) then Postgres.
 
-`meteredLimiter` enforces monthly quotas: 10k (free/basic), 100k (pro), unlimited (plus). Resets roll at 30-day intervals tracked in `users.billing_cycle_reset`.
+`requirePlan(...allowedTiers)` in `middleware/requirePlan.js` gates routes by tier (accepts tier or legacy names, normalised before comparison); the resolved tier is attached to `req.user.tier`.
+
+`meteredLimiter` enforces monthly request quotas from `PLANS[tier].monthlyRequests`: 10k (sandbox), 100k (growth), unlimited (enterprise). Resets roll at 30-day intervals tracked in `user_billing.billing_cycle_reset`. Daily lead caps (`PLANS[tier].dailyLeadCap`: 500 / 10k / 100k) are seeded into `lead_counters` and enforced by both the rate limiter and the ingest path.
 
 ### Authentication
 
@@ -104,11 +106,11 @@ API key auth (`x-api-key` header) is an alternative path handled by `middleware/
 ### Database Schema
 
 All tables are owned and managed by `db/connection.js:initializeDatabase()`. Key tables:
-- `users` — identity, plan_type, tier, Stripe fields, 2FA, monthly_request_count
+- `users` / `user_billing` — identity + billing; `user_billing.tier` (`sandbox`/`growth`/`enterprise`) is the sole plan axis, plus Stripe fields, 2FA, monthly_request_count
 - `webhook_keys` — per-user webhook endpoints with `target_url`, `http_method`, `custom_headers`
 - `destinations` — named delivery targets with `daily_cap`
 - `ghl_leads` — lead vault; `delivery_status` tracks `PENDING → DELIVERED/RETRYING/FAILED/CANCELED`
-- `webhook_logs` — delivery audit log; retention is plan-gated (7d free, 30d pro, unlimited plus)
+- `webhook_logs` — delivery audit log; retention is tier-gated (7d sandbox, 30d growth, unlimited enterprise)
 - `lead_counters` — daily ingress caps per user (row-lock increment)
 - `api_keys` — hashed API keys (never store plaintext)
 - `otps` — email OTP codes with `expires_at`
@@ -129,7 +131,7 @@ All outbound URLs go through two layers:
 1. **Zod validation** (`middleware/validateRequest.js`) at input time — blocks internal IP ranges and requires `https://`
 2. **DNS rebinding check** (`WebhookDispatcher.attemptHttpRequest`) at dispatch time — resolves hostname and blocks private ranges
 
-Custom headers on webhook destinations are only forwarded for `pro`/`plus` plans, and headers like `host`, `content-length`, `connection` are always blocked.
+Custom headers on webhook destinations are only forwarded for `growth`/`enterprise` tiers (`PLANS[tier].customHeaders`), and headers like `host`, `content-length`, `connection` are always blocked.
 
 ### Rate Limiters
 All rate limiters are Redis-backed (`RedisStore`) and are automatically **skipped in development** (when `NODE_ENV === 'development'` or request comes from localhost). Each limiter uses a unified `globalKeyGenerator` that prefers `req.user.id` over IP to prevent shared-IP false positives.
