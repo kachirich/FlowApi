@@ -1,5 +1,5 @@
 import React from 'react';
-import { PLAN_PERKS, displayPlan } from '../constants/plans';
+import { TIER_PERKS, displayPlan, normalizeTier } from '../constants/plans';
 
 /**
  * Post-checkout celebration modal.
@@ -8,10 +8,10 @@ import { PLAN_PERKS, displayPlan } from '../constants/plans';
  * Fires after a successful Stripe checkout once the plan flip has been confirmed.
  */
 export default function CheckoutSuccessModal({ user, onClose }) {
-  const perks = PLAN_PERKS[(user?.plan_type || '').toLowerCase()] || [];
+  const perks = TIER_PERKS[normalizeTier(user?.tier)] || [];
   const raw = user?.last_name || user?.first_name || 'there';
   const name = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
-  const planLabel = displayPlan(user?.plan_type);
+  const planLabel = displayPlan(user?.tier);
 
   return (
     <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/75 backdrop-blur-sm">

@@ -50,6 +50,7 @@ import {
   Gauge,
 } from "lucide-react";
 
+import { normalizeTier, TIER_API_KEY_LIMIT, NEXT_TIER, displayPlan } from "./constants/plans";
 import BookingWidget from "./components/BookingWidget";
 import Pricing from "./components/Pricing";
 import WebhookLogs from "./components/WebhookLogs";
@@ -1012,7 +1013,7 @@ function OneTimeSecretModal({ webhook, onClose }) {
    Webhooks Table Component (Smart List)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleCollapse, onDeleteAll, planType, setUpgradeModal, onTestPing, flows = [], onAssignFlow }) {
+function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleCollapse, onDeleteAll, tier, setUpgradeModal, onTestPing, flows = [], onAssignFlow }) {
   const [expanded, setExpanded] = useState(false);
   const [configModal, setConfigModal] = useState(null);
   const [configTargetUrl, setConfigTargetUrl] = useState("");
@@ -1136,7 +1137,7 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
             await onConfigure(id, url, method);
             setConfigModal(null);
           }}
-          planType={planType}
+          tier={tier}
           setUpgradeModal={setUpgradeModal}
         />
       )}
@@ -1148,7 +1149,7 @@ function WebhooksTable({ webhooks, onRevoke, onConfigure, isCollapsed, onToggleC
    Lead Ledger Component
    ═══════════════════════════════════════════════════════════════════════════ */
 
-function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefire, onCancelJob, planType, setActiveTab }) {
+function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefire, onCancelJob, tier, setActiveTab }) {
   // Client-side pagination over the leads already in memory. The backend
   // GET /api/admin/leads currently returns a fixed window (LIMIT 100) with no
   // page/offset params, so true server-side pagination is gated on a backend
@@ -1178,7 +1179,7 @@ function LeadLedger({ leads, isCollapsed, onToggleCollapse, onDeleteAll, onRefir
     [setSearchParams]
   );
 
-  if (planType === 'free') {
+  if (tier === 'sandbox') {
     return (
       <div id="tour-lead-ledger" className="rounded-2xl border border-slate-800/60 bg-surface p-6 animate-fade-in flex flex-col items-center justify-center min-h-[300px] text-center">
         <div className="h-12 w-12 rounded-xl bg-slate-800/50 border border-slate-700/50 flex items-center justify-center mb-4">
@@ -1873,12 +1874,11 @@ function EgressTester({ leads, destinations = [] }) {
    Dashboard (Main Export)
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const getBrandConfig = (plan) => {
-  const planRankStr = plan ? String(plan).toLowerCase() : 'free';
-  if (planRankStr === 'basic') return 'text-blue-500 bg-blue-500/10 border-blue-500/20 drop-shadow-md';
-  if (planRankStr === 'pro') return 'text-purple-500 bg-purple-500/10 border-purple-500/20 drop-shadow-lg';
-  if (planRankStr === 'plus') return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20 animate-pulse drop-shadow-xl';
-  return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
+const getBrandConfig = (tier) => {
+  const t = tier ? String(tier).toLowerCase() : 'sandbox';
+  if (t === 'growth') return 'text-purple-500 bg-purple-500/10 border-purple-500/20 drop-shadow-lg';
+  if (t === 'enterprise') return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20 animate-pulse drop-shadow-xl';
+  return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'; // sandbox
 };
 
 /**
@@ -1949,7 +1949,7 @@ export default function Dashboard() {
       localStorage.removeItem("just_registered");
     }
   }, []);
-  const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00", planType: "free", dailyLeadCap: 100, dailyLeadsReceived: 0, monthlyRequestCount: 0, monthlyRequestLimit: 10000 });
+  const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00", tier: "sandbox", dailyLeadCap: 100, dailyLeadsReceived: 0, monthlyRequestCount: 0, monthlyRequestLimit: 10000 });
   const [generatedWebhook, setGeneratedWebhook] = useState(null);
   // API-key expiry chosen at generation time: '30d' | '90d' | '1y' | 'never' | 'custom'.
   const [keyExpiry, setKeyExpiry] = useState("90d");
@@ -2009,14 +2009,14 @@ export default function Dashboard() {
     }, 2500);
   }, []);
 
-  // ── Post-checkout: poll until the Stripe webhook flips the plan ─────────
+  // ── Post-checkout: poll until the Stripe webhook flips the tier ─────────
   // The webhook can land 1–3s after the browser redirect, so never trust the
-  // redirect alone — poll /api/auth/me until plan_type changes off the old value.
+  // redirect alone — poll /api/auth/me until tier changes off the old value.
   const handleCheckoutSuccess = useCallback(async () => {
-    const before = user?.plan_type;
+    const before = user?.tier;
     for (let i = 0; i < 8; i++) {
       const fresh = await refreshUser();
-      if (fresh?.plan_type && fresh.plan_type !== before && fresh.plan_type !== 'free') {
+      if (fresh?.tier && fresh.tier !== before && fresh.tier !== 'sandbox') {
         setShowCheckoutModal(true);
         return;
       }
@@ -2033,7 +2033,7 @@ export default function Dashboard() {
       handleCheckoutSuccess();
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('canceled') === 'true') {
-      showToast(`No changes — you're still on the ${user?.plan_type || 'free'} plan.`, 'error');
+      showToast(`No changes — you're still on the ${user?.tier || 'sandbox'} tier.`, 'error');
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2112,8 +2112,8 @@ export default function Dashboard() {
       if (res.ok) {
         const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server (possible 502)" }));
         setStats((prev) => {
-          if (data.planType && prev.planType && data.planType !== prev.planType) {
-            // Plan changed in the DB — refresh AuthContext so user.plan_type is in sync.
+          if (data.tier && prev.tier && data.tier !== prev.tier) {
+            // Tier changed in the DB — refresh AuthContext so user.tier is in sync.
             setTimeout(() => refreshUserRef.current?.(), 0);
           }
           return {
@@ -2561,29 +2561,16 @@ export default function Dashboard() {
     // const token = localStorage.getItem("flow_token");
     if (!token) return;
 
-    // Pre-Check Limit Capacity
+    // Pre-Check Limit Capacity (server-side is authoritative; this is just UX)
     const currentCount = webhooks.length;
-    const plan = (stats.planType || "free").toLowerCase();
-    
-    let isLimitReached = false;
-    let nextTier = "";
+    const tier = normalizeTier(stats.tier);
+    const limit = TIER_API_KEY_LIMIT[tier] ?? TIER_API_KEY_LIMIT.sandbox;
 
-    if (plan === "free" && currentCount >= 2) {
-      isLimitReached = true;
-      nextTier = "Basic";
-    } else if (plan === "basic" && currentCount >= 10) {
-      isLimitReached = true;
-      nextTier = "Pro";
-    } else if (plan === "pro" && currentCount >= 50) {
-      isLimitReached = true;
-      nextTier = "Plus";
-    }
-
-    if (isLimitReached) {
+    if (currentCount >= limit && NEXT_TIER[tier]) {
       setUpgradeModal({
         isOpen: true,
         feature: "Expanded Webhook Capacity",
-        tier: nextTier
+        tier: displayPlan(NEXT_TIER[tier]),
       });
       return;
     }
@@ -2867,7 +2854,7 @@ export default function Dashboard() {
         {/* Row 1: brand + utility actions */}
         <div className="flex items-center justify-between px-8 h-16 border-b border-slate-800/60">
           <div className="flex items-center gap-3">
-            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getBrandConfig(user?.tier || 'sandbox')}`}>
               <Zap className="h-4 w-4" />
             </div>
             <div>
@@ -2922,7 +2909,7 @@ export default function Dashboard() {
           </button>
           <button
             onClick={() => {
-              if (stats.planType === 'free') {
+              if (stats.tier === 'sandbox') {
                 setUpgradeModal({ isOpen: true, feature: 'Analytics Dashboard', tier: 'Basic or higher' });
               } else {
                 setActiveTab("logs");
@@ -2930,7 +2917,7 @@ export default function Dashboard() {
             }}
             className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "logs" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}
           >
-            {stats.planType === 'free' ? <Lock className="h-4 w-4 text-slate-500" /> : <Activity className="h-4 w-4" />} Analytics
+            {stats.tier === 'sandbox' ? <Lock className="h-4 w-4 text-slate-500" /> : <Activity className="h-4 w-4" />} Analytics
           </button>
           <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors ${activeTab === "tutorial" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-400 hover:text-zinc-100"}`}>
             <BookOpen className="h-4 w-4" /> Setup Tutorial
@@ -2952,7 +2939,7 @@ export default function Dashboard() {
         {/* Mobile Header */}
         <header className="md:hidden sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-800/60 bg-surface/80 px-4 backdrop-blur-xl">
           <div className="flex items-center gap-3">
-            <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${getBrandConfig(user?.plan_type || 'free')}`}>
+            <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${getBrandConfig(user?.tier || 'sandbox')}`}>
               <Zap className="h-4 w-4" />
             </div>
             <h1 className="flex items-center gap-2 text-sm font-medium tracking-tight text-zinc-50">
@@ -2975,7 +2962,7 @@ export default function Dashboard() {
           <button onClick={() => setActiveTab("integrations")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "integrations" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Integrations</button>
           <button 
             onClick={() => {
-              if (stats.planType === 'free') {
+              if (stats.tier === 'sandbox') {
                 setUpgradeModal({ isOpen: true, feature: 'Analytics Dashboard', tier: 'Basic or higher' });
               } else {
                 setActiveTab("logs");
@@ -2983,7 +2970,7 @@ export default function Dashboard() {
             }} 
             className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "logs" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}
           >
-            {stats.planType === 'free' && <Lock className="h-3 w-3 text-slate-500" />} Analytics
+            {stats.tier === 'sandbox' && <Lock className="h-3 w-3 text-slate-500" />} Analytics
           </button>
           <button onClick={() => setActiveTab("tutorial")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "tutorial" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Tutorial</button>
           <button onClick={() => setActiveTab("consulting")} className={`whitespace-nowrap flex items-center gap-1.5 border-b-2 px-1 py-3 text-xs font-medium ${activeTab === "consulting" ? "border-indigo-500 text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}>Consulting</button>
@@ -3094,7 +3081,7 @@ export default function Dashboard() {
                 isCollapsed={webhooksCollapsed}
                 onToggleCollapse={() => setWebhooksCollapsed(!webhooksCollapsed)}
                 onDeleteAll={() => setWipeModal("webhooks")}
-                planType={stats.planType}
+                tier={stats.tier}
                 setUpgradeModal={setUpgradeModal}
                 onTestPing={handleTestPing}
                 flows={flows}
@@ -3109,7 +3096,7 @@ export default function Dashboard() {
                 onDeleteAll={() => setWipeModal("leads")}
                 onRefire={handleRefireLead}
                 onCancelJob={handleCancelJob}
-                planType={stats.planType}
+                tier={stats.tier}
                 setActiveTab={setActiveTab}
               />
             </>
@@ -3122,7 +3109,7 @@ export default function Dashboard() {
           ) : activeTab === "integrations" ? (
             <IntegrationsTab setActiveTab={setActiveTab} />
           ) : activeTab === "logs" ? (
-            <WebhookLogs planType={stats.planType} setUpgradeModal={setUpgradeModal} />
+            <WebhookLogs tier={stats.tier} setUpgradeModal={setUpgradeModal} />
           ) : activeTab === "consulting" ? (
             <div className="w-full h-full min-h-[800px] rounded-2xl overflow-hidden border border-slate-800/60 bg-surface">
               <BookingWidget />

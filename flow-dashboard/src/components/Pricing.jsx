@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 
 export default function Pricing({ setActiveTab }) {
   const { user } = useAuth() || {};
-  const planType = user?.tier || user?.plan_type || "sandbox";
+  const tier = user?.tier || "sandbox";
 
   const pricingTiers = [
     {
@@ -53,7 +53,7 @@ export default function Pricing({ setActiveTab }) {
     }
   ];
 
-  if (planType === "enterprise") {
+  if (tier === "enterprise") {
     return (
       <div className="w-full max-w-4xl mx-auto px-4 py-16 flex flex-col items-center justify-center text-center">
         <div className="relative mb-8">

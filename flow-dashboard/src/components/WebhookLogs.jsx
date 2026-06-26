@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Activity, X, FileJson, Loader2, AlertCircle, Lock } from "lucide-react";
 import apiClient from "../utils/api";
 
-export default function WebhookLogs({ planType, setUpgradeModal }) {
+export default function WebhookLogs({ tier, setUpgradeModal }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -93,7 +93,7 @@ export default function WebhookLogs({ planType, setUpgradeModal }) {
                       {getStatusBadge(log.status_code)}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      {planType === 'plus' ? (
+                      {tier === 'enterprise' ? (
                         <button
                           onClick={() => setActivePayload(log)}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-[11px] font-semibold text-cyan-400 hover:bg-slate-700 hover:text-cyan-300 transition-colors shadow-sm"

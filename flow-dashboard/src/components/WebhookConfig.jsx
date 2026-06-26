@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Settings, X, Save, Loader2, Lock } from 'lucide-react';
+import { normalizeTier } from '../constants/plans';
 
-export default function WebhookConfig({ 
-  configModal, 
-  onClose, 
-  onSave, 
-  planType,
+export default function WebhookConfig({
+  configModal,
+  onClose,
+  onSave,
+  tier,
   setUpgradeModal
 }) {
   const [targetUrl, setTargetUrl] = useState(configModal.target_url || "");
@@ -18,7 +19,7 @@ export default function WebhookConfig({
     setSaving(false);
   };
 
-  const isAdvancedLocked = planType === 'free' || planType === 'basic';
+  const isAdvancedLocked = normalizeTier(tier) === 'sandbox';
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fade-in" onClick={onClose}>
