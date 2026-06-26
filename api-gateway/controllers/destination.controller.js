@@ -257,7 +257,10 @@ export const browseDestination = async (req, res, next) => {
   } catch (error) {
     const status = error.response?.status;
     if (status === 401 || status === 403) {
-      return res.status(401).json({ success: false, message: `${req.body?.provider} rejected the token. Check the API token and try again.` });
+      // 422, NOT 401 — this is the *provider's* token being rejected, not the
+      // user's FlowAPI session. A 401 here trips the dashboard's global Axios
+      // interceptor, which logs the user out ("Session expired").
+      return res.status(422).json({ success: false, message: `${req.body?.provider} rejected the token. Check the API token and try again.` });
     }
     // Never surface the raw upstream body — it can leak internal detail.
     console.error('Error browsing provider:', error.message);
