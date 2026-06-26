@@ -10,13 +10,27 @@ import "./services/notification.queue.js";
 
 // Fail fast if critical secrets are missing or still set to placeholder values.
 const PLACEHOLDER = 'CHANGE_ME';
-const requiredSecrets = ['JWT_SECRET', 'PGPASSWORD'];
+const requiredSecrets = ['JWT_SECRET', 'PGPASSWORD', 'ENCRYPTION_KEY'];
 for (const key of requiredSecrets) {
   const val = process.env[key];
   if (!val || val === PLACEHOLDER || val === 'change_me_to_a_long_random_string') {
     logger.fatal(`${key} is not configured. Set a real value in .env before starting.`);
     process.exit(1);
   }
+}
+
+// ENCRYPTION_KEY has a strict format (AES-256-GCM key): exactly 64 hex chars
+// (32 bytes). Validate at boot so destination-token encryption can never fail
+// per-request — mirrors getKey() in utils/encryption.js. Generate with:
+//   openssl rand -hex 32
+if (!/^[0-9a-fA-F]{64}$/.test(process.env.ENCRYPTION_KEY)) {
+  logger.fatal(
+    'ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes). ' +
+    'Generate one with `openssl rand -hex 32` and set it in .env. ' +
+    'Do NOT change it once destination tokens have been stored — rotating it ' +
+    'makes existing encrypted tokens undecryptable.'
+  );
+  process.exit(1);
 }
 
 // Warn (not fatal) if Google OAuth vars are missing — server still starts so
