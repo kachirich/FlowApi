@@ -2948,30 +2948,49 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              {/* Destination health warning banners */}
-              {destinations.length === 0 ? (
-                <button
-                  onClick={() => setActiveTab("destinations")}
-                  className="flex w-full items-center gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 px-5 py-3.5 text-left transition hover:bg-rose-500/20"
-                >
-                  <ShieldAlert className="h-5 w-5 shrink-0 text-rose-400" />
-                  <span className="text-sm font-semibold text-rose-300">
-                    No destinations configured — incoming leads will be lost.
-                  </span>
-                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-rose-400" />
-                </button>
-              ) : destinations.every((d) => !d.is_active) ? (
-                <button
-                  onClick={() => setActiveTab("destinations")}
-                  className="flex w-full items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-5 py-3.5 text-left transition hover:bg-amber-500/20"
-                >
-                  <AlertTriangle className="h-5 w-5 shrink-0 text-amber-400" />
-                  <span className="text-sm font-semibold text-amber-300">
-                    All destinations are inactive — incoming leads will not be delivered.
-                  </span>
-                  <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-amber-400" />
-                </button>
-              ) : null}
+              {/* Destination health notice — severity scales with real risk:
+                  amber while it's just an unfinished setup step, rose only when
+                  a live webhook can actually receive leads with nowhere to go. */}
+              {(() => {
+                const noDest = destinations.length === 0;
+                const allInactive = !noDest && destinations.every((d) => !d.is_active);
+                if (!noDest && !allInactive) return null;
+
+                // A generated webhook key means leads can genuinely arrive.
+                const liveIngress = webhooks.length > 0;
+                const danger = liveIngress;
+                const Icon = danger ? AlertTriangle : Info;
+
+                const title = noDest ? "No delivery destination yet" : "All destinations are paused";
+                const body = noDest
+                  ? danger
+                    ? "Your webhook is live, but leads have nowhere to go — they won't be delivered until you add a destination."
+                    : "Add a destination so incoming leads have somewhere to be routed before you go live."
+                  : danger
+                    ? "Every destination is inactive, so incoming leads aren't being delivered. Re-enable at least one."
+                    : "All destinations are inactive. Re-enable one before your webhook starts receiving leads.";
+
+                const tone = danger
+                  ? { wrap: "border-rose-500/30 bg-rose-500/[0.07]", icon: "text-rose-400", title: "text-rose-200", btn: "bg-rose-500/15 text-rose-200 hover:bg-rose-500/25" }
+                  : { wrap: "border-amber-500/25 bg-amber-500/[0.06]", icon: "text-amber-400", title: "text-amber-200", btn: "bg-amber-500/15 text-amber-200 hover:bg-amber-500/25" };
+
+                return (
+                  <div className={`flex items-start gap-3 rounded-xl border px-5 py-4 ${tone.wrap}`}>
+                    <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${tone.icon}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-sm font-semibold ${tone.title}`}>{title}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{body}</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab("destinations")}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${tone.btn}`}
+                    >
+                      {noDest ? "Add destination" : "Manage"}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Dashboard Top Actions & Stats */}
               <DashboardTopActions
