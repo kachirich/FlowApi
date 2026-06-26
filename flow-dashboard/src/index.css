@@ -31,6 +31,16 @@
   }
 }
 
+@layer utilities {
+  /* Masks input text without using type="password", so browser password
+     managers don't offer to "save" API tokens / secrets. Chromium + Safari;
+     Firefox falls back to plaintext, which the show/hide toggle still covers. */
+  .secret-mask {
+    -webkit-text-security: disc;
+    text-security: disc;
+  }
+}
+
 @layer components {
   /* Flat metric/content card — Linear style: single hairline, no shadow/glow */
   .stat-card {

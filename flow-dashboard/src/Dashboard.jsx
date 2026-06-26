@@ -47,6 +47,7 @@ import {
   Shuffle,
   Workflow,
   Plug,
+  Gauge,
 } from "lucide-react";
 
 import BookingWidget from "./components/BookingWidget";
@@ -316,7 +317,7 @@ function LivePipeline({ session, polling, stats, isSandbox = false, sandboxStatu
                 <span className="text-slate-600">|</span>
                 <span className="text-xs text-emerald-400/60">Payload routed to destination</span>
                 <span className="text-slate-600">|</span>
-                <span className="text-xs text-emerald-400/60">Tax Avoided: $0.05</span>
+                <span className="text-xs text-emerald-400/60">Zapier Tax Saved: $0.05</span>
               </div>
             )}
             {stats.totalLeads > 1 && (
@@ -326,7 +327,7 @@ function LivePipeline({ session, polling, stats, isSandbox = false, sandboxStatu
                 <span className="text-slate-600">|</span>
                 <span className="text-xs text-emerald-400/60">Payload routed to destination</span>
                 <span className="text-slate-600">|</span>
-                <span className="text-xs text-emerald-400/60">Tax Avoided: $0.05</span>
+                <span className="text-xs text-emerald-400/60">Zapier Tax Saved: $0.05</span>
               </div>
             )}
 
@@ -1896,7 +1897,7 @@ export default function Dashboard() {
       localStorage.removeItem("just_registered");
     }
   }, []);
-  const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00", planType: "free" });
+  const [stats, setStats] = useState({ totalLeads: 0, totalWebhooks: 0, botsBlocked: 0, zapierTaxAvoided: "0.00", planType: "free", dailyLeadCap: 100, dailyLeadsReceived: 0, monthlyRequestCount: 0, monthlyRequestLimit: 10000 });
   const [generatedWebhook, setGeneratedWebhook] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [toast, setToast] = useState(null);
@@ -3058,14 +3059,14 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-4 w-full">
-              {/* Tax Avoided */}
+              {/* Zapier Tax Saved */}
               <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.02] p-5 w-full">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
                     <DollarSign className="h-4 w-4 text-emerald-400" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/60 leading-none">Tax Avoided</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/60 leading-none">Zapier Tax Saved</p>
                     <p className="text-[9px] text-slate-500 mt-1">{stats.totalLeads} leads × $0.05</p>
                   </div>
                 </div>
@@ -3089,6 +3090,76 @@ export default function Dashboard() {
                   {stats.botsBlocked}
                 </div>
               </div>
+
+              {/* Daily Lead Cap — leads ingested today vs the per-day cap */}
+              {(() => {
+                const used = stats.dailyLeadsReceived ?? 0;
+                const cap = stats.dailyLeadCap ?? 0;
+                const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+                const remaining = cap > 0 ? Math.max(0, cap - used) : null;
+                return (
+                  <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/[0.02] p-5 w-full">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10">
+                        <Gauge className="h-4 w-4 text-indigo-400" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400/60 leading-none">Daily Lead Cap</p>
+                        <p className="text-[9px] text-slate-500 mt-1">
+                          {remaining === null ? "Unlimited today" : `${remaining.toLocaleString()} leads left today`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="font-mono text-2xl font-extrabold text-indigo-300">
+                      {used.toLocaleString()}
+                      <span className="text-sm font-medium text-slate-500"> / {cap > 0 ? cap.toLocaleString() : "∞"}</span>
+                    </div>
+                    {cap > 0 && (
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-rose-500" : "bg-indigo-500"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Requests Remaining — monthly metered quota for the billing cycle */}
+              {(() => {
+                const used = stats.monthlyRequestCount ?? 0;
+                const limit = stats.monthlyRequestLimit; // null = unlimited (plus)
+                const unlimited = limit === null || limit === undefined;
+                const pct = !unlimited && limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                const remaining = unlimited ? null : Math.max(0, limit - used);
+                return (
+                  <div className="rounded-xl border border-sky-500/20 bg-sky-500/[0.02] p-5 w-full">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-500/10">
+                        <Activity className="h-4 w-4 text-sky-400" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-sky-400/60 leading-none">Requests Available</p>
+                        <p className="text-[9px] text-slate-500 mt-1">
+                          {unlimited ? "Unlimited this cycle" : `${remaining.toLocaleString()} of ${limit.toLocaleString()} left (30d)`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="font-mono text-2xl font-extrabold text-sky-300">
+                      {unlimited ? "∞" : remaining.toLocaleString()}
+                    </div>
+                    {!unlimited && (
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${pct >= 100 ? "bg-rose-500" : "bg-sky-500"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Lead Credits — Growth/Enterprise only */}
               {(user?.tier === "growth" || user?.tier === "enterprise") && creditSummary && (

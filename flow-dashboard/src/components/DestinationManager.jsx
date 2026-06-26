@@ -1,48 +1,101 @@
 import { useState, useEffect, useRef } from 'react';
 import apiClient from '../utils/api';
-import { Plus, Trash2, Loader2, Shuffle, Edit2, Pencil, X, Webhook, Plug, Database, Workflow } from 'lucide-react';
+import {
+  Plus, Trash2, Loader2, Shuffle, Edit2, Pencil, X, Webhook, Plug, Database, Workflow, Send, Eye, EyeOff, Check,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
 import { DestinationTypeBadge, TokenBadge } from './DestinationBadges';
 import { apiTokenSchema } from '../utils/validators';
 
 const fmtNum = (n) => (n ?? 0).toLocaleString();
 
 /**
- * Per-type presentation + guidance. Drives the type-selector buttons, the URL
- * placeholder, and the doc help-link under the token field.
+ * Channels — the single source of truth for the destination picker. Each tile
+ * maps to a backend (destination_type, provider) pair. `needsToken` drives the
+ * encrypted-token field; `picker` swaps the URL field for the NocoDB browser.
+ * Mirrors api-gateway/services/providers/registry.js.
  */
-const DEST_TYPE_META = {
-  webhook: {
-    label: 'Webhook',
-    Icon: Webhook,
+const CHANNELS = [
+  {
+    id: 'webhook', label: 'Webhook', Icon: Webhook,
+    blurb: 'POST leads as JSON to any HTTPS endpoint.',
+    type: 'webhook', provider: 'generic', needsToken: false,
     urlPlaceholder: 'https://your-buyer.com/webhook',
   },
-  rest_api: {
-    label: 'REST API',
-    Icon: Plug,
-    urlPlaceholder: 'https://your-api.example.com/endpoint',
-    helpText: 'Any REST endpoint that accepts a Bearer token.',
+  {
+    id: 'gohighlevel', label: 'GoHighLevel', Icon: Send,
+    blurb: 'Push leads into a GHL Workflow inbound webhook.',
+    type: 'webhook', provider: 'gohighlevel', needsToken: false,
+    urlPlaceholder: 'https://services.leadconnectorhq.com/hooks/<location>/webhook-trigger/<id>',
   },
-};
+  {
+    id: 'rest_api', label: 'REST API', Icon: Plug,
+    blurb: 'Any endpoint that accepts a Bearer token.',
+    type: 'rest_api', provider: 'generic', needsToken: true,
+    urlPlaceholder: 'https://your-api.example.com/endpoint',
+  },
+  {
+    id: 'nocodb', label: 'NocoDB', Icon: Database,
+    blurb: 'Insert rows straight into a NocoDB table.',
+    type: 'rest_api', provider: 'nocodb', needsToken: true, picker: true,
+  },
+  {
+    id: 'n8n', label: 'n8n', Icon: Workflow,
+    blurb: 'Trigger an n8n workflow over webhook.',
+    type: 'rest_api', provider: 'n8n', needsToken: true,
+    urlPlaceholder: 'https://<your-n8n-host>/webhook/<path>',
+  },
+];
 
-const DEST_TYPE_ORDER = ['webhook', 'rest_api'];
+const channelFor = (type, provider) =>
+  CHANNELS.find((c) => c.type === (type || 'webhook') && c.provider === (provider || 'generic')) || CHANNELS[0];
+const channelById = (id) => CHANNELS.find((c) => c.id === id) || CHANNELS[0];
+
+const labelCls = 'text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5';
+const inputCls =
+  'w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 placeholder:text-zinc-600';
 
 /**
- * rest_api provider presets. `generic` = custom free-text URL + Bearer.
- * `nocodb` = base/table picker (URL is resolved, not typed). `n8n` = free-text
- * webhook URL + Bearer. Mirrors api-gateway/services/providers/registry.js.
+ * Masked secret field that is NOT type="password" — that's deliberate. A
+ * password-type input makes the browser's password manager offer to "save" the
+ * API token (the "Save password?" popup). We mask via the `.secret-mask` CSS
+ * class instead and opt out of every known manager (1Password, LastPass,
+ * Bitwarden, Chrome), while still offering a show/hide toggle.
  */
-const PROVIDER_META = {
-  generic: { label: 'Custom URL', Icon: Plug, urlPlaceholder: 'https://your-api.example.com/endpoint' },
-  nocodb: { label: 'NocoDB', Icon: Database, picker: true },
-  n8n: { label: 'n8n', Icon: Workflow, urlPlaceholder: 'https://<your-n8n-host>/webhook/<path>' },
-};
-const PROVIDER_ORDER = ['generic', 'nocodb', 'n8n'];
+function SecretInput({ value, onChange, placeholder, error }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        data-1p-ignore=""
+        data-lpignore="true"
+        data-bwignore=""
+        data-form-type="other"
+        className={`${inputCls} pr-10 font-mono ${show ? '' : 'secret-mask'} ${error ? 'border-rose-500/60 focus:border-rose-500' : ''}`}
+      />
+      <button
+        type="button"
+        onClick={() => setShow((s) => !s)}
+        tabIndex={-1}
+        title={show ? 'Hide token' : 'Show token'}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-500 transition-colors hover:text-zinc-300"
+      >
+        {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  );
+}
 
 const pickerInputCls =
   'w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 placeholder:text-zinc-600';
-const pickerLabelCls = 'text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5';
 
 /**
  * NocoDB base → table picker. Uses the entered API token to browse the user's
@@ -111,7 +164,7 @@ function NocoDbPicker({ apiToken, resolvedUrl, onResolved }) {
 
   return (
     <div className="space-y-2">
-      <label className={pickerLabelCls}>NocoDB table</label>
+      <label className={labelCls}>NocoDB table</label>
       <button
         type="button"
         onClick={loadBases}
@@ -222,59 +275,298 @@ function CapChipSelector({ value, onChange, inline = false }) {
   );
 }
 
-export default function DestinationManager({ setActiveTab }) {
-  const { user } = useAuth();
+/**
+ * Integration-style tile grid for picking the destination channel. Mirrors the
+ * Integrations tab cards — icon chip + name + one-line blurb, single indigo
+ * accent for the selected tile.
+ */
+function ChannelPicker({ value, onSelect }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {CHANNELS.map((c) => {
+        const active = c.id === value;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onSelect(c.id)}
+            className={`group flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+              active
+                ? 'border-indigo-500 bg-indigo-500/10'
+                : 'border-zinc-800 bg-zinc-950 hover:border-zinc-700'
+            }`}
+          >
+            <span
+              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${
+                active
+                  ? 'border-indigo-500/30 bg-indigo-500/15 text-indigo-300'
+                  : 'border-zinc-700 bg-zinc-900 text-zinc-400 group-hover:text-zinc-300'
+              }`}
+            >
+              <c.Icon className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5">
+                <span className={`text-sm font-medium ${active ? 'text-zinc-50' : 'text-zinc-200'}`}>{c.label}</span>
+                {active && <Check className="h-3.5 w-3.5 text-indigo-400" />}
+              </span>
+              <span className="mt-0.5 block text-xs leading-snug text-zinc-500">{c.blurb}</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
-  const [destinations, setDestinations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
+/**
+ * Shared add/edit modal — gives both flows the same "integration modal" feel.
+ * mode='add' starts blank; mode='edit' seeds from `dest`. Mounted only while
+ * open (keyed by dest id), so state resets cleanly each time.
+ */
+function DestinationFormModal({ mode, dest, onClose, onSaved }) {
+  const origChannel = mode === 'edit' ? channelFor(dest.destination_type, dest.provider) : CHANNELS[0];
 
-  // Collapsible add form
-  const [addFormOpen, setAddFormOpen] = useState(false);
-
-  // Form
-  const [name, setName] = useState('');
-  const [targetUrl, setTargetUrl] = useState('');
-  const [dailyCap, setDailyCap] = useState(0);
-  const [destinationType, setDestinationType] = useState('webhook');
-  const [provider, setProvider] = useState('generic');
+  const [channelId, setChannelId] = useState(origChannel.id);
+  const [name, setName] = useState(dest?.name || '');
+  const [targetUrl, setTargetUrl] = useState(dest?.target_url || '');
+  const [dailyCap, setDailyCap] = useState(dest?.daily_cap ?? 0);
   const [apiToken, setApiToken] = useState('');
   const [tokenError, setTokenError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  // Inline cap edit
-  const [editingCapId, setEditingCapId] = useState(null);
-  const [updatingCapId, setUpdatingCapId] = useState(null);
+  const channel = channelById(channelId);
+  const hasStoredToken = mode === 'edit' && origChannel.id === channelId && !!dest.has_token;
 
-  // Inline edit modal (rename / change type / rotate token)
-  const [editingDest, setEditingDest] = useState(null);
-  const [editName, setEditName] = useState('');
-  const [editUrl, setEditUrl] = useState('');
-  const [editType, setEditType] = useState('webhook');
-  const [editProvider, setEditProvider] = useState('generic');
-  const [editToken, setEditToken] = useState('');
-  const [editTokenError, setEditTokenError] = useState('');
-  const [editSubmitting, setEditSubmitting] = useState(false);
-
-  // Real-time token validation for the create form (mirrors webhookDestinationSchema usage)
+  // Real-time token validation (mirrors the backend api_token rule).
   useEffect(() => {
-    if (destinationType === 'webhook' || !apiToken) {
+    if (!channel.needsToken || !apiToken) {
       setTokenError('');
       return;
     }
     const result = apiTokenSchema.safeParse(apiToken);
     setTokenError(result.success ? '' : result.error.issues[0].message);
-  }, [apiToken, destinationType]);
+  }, [apiToken, channel.needsToken]);
 
-  // Real-time token validation for the edit modal
-  useEffect(() => {
-    if (editType === 'webhook' || !editToken) {
-      setEditTokenError('');
+  const selectChannel = (id) => {
+    setChannelId(id);
+    setApiToken('');
+    setTokenError('');
+    // Restore the saved URL when re-selecting the original channel in edit mode;
+    // otherwise clear it so a stale URL never carries across channels.
+    setTargetUrl(mode === 'edit' && id === origChannel.id ? (dest.target_url || '') : '');
+  };
+
+  const tokenRequired = channel.needsToken && !apiToken.trim() && !hasStoredToken;
+
+  const hasChanges =
+    mode === 'add' ||
+    name.trim() !== (dest.name || '') ||
+    targetUrl.trim() !== (dest.target_url || '') ||
+    dailyCap !== (dest.daily_cap ?? 0) ||
+    channelId !== origChannel.id ||
+    !!apiToken.trim();
+
+  const submitDisabled =
+    submitting || !name.trim() || !targetUrl.trim() || tokenRequired || !!tokenError || !hasChanges;
+
+  const close = () => {
+    if (submitting) return;
+    onClose();
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || !targetUrl.trim()) {
+      toast.error('Name and Target URL are required');
       return;
     }
-    const result = apiTokenSchema.safeParse(editToken);
-    setEditTokenError(result.success ? '' : result.error.issues[0].message);
-  }, [editToken, editType]);
+    if (channel.needsToken && apiToken.trim()) {
+      const result = apiTokenSchema.safeParse(apiToken);
+      if (!result.success) {
+        setTokenError(result.error.issues[0].message);
+        return;
+      }
+    }
+    if (tokenRequired) {
+      setTokenError('A token is required for this destination type');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      if (mode === 'add') {
+        const res = await apiClient.post('/api/destinations', {
+          name: name.trim(),
+          target_url: targetUrl.trim(),
+          daily_cap: dailyCap,
+          destination_type: channel.type,
+          provider: channel.provider,
+          ...(channel.needsToken && apiToken.trim() ? { api_token: apiToken.trim() } : {}),
+        });
+        if (res.data?.success) {
+          toast.success('Destination created successfully');
+          onSaved();
+          onClose();
+        }
+        return;
+      }
+
+      // Edit — send only changed fields. Backend rules: token typed → rotate;
+      // type → webhook → clear token; blank → unchanged.
+      const payload = {};
+      if (name.trim() !== (dest.name || '')) payload.name = name.trim();
+      if (targetUrl.trim() !== (dest.target_url || '')) payload.target_url = targetUrl.trim();
+      if (dailyCap !== (dest.daily_cap ?? 0)) payload.daily_cap = dailyCap;
+      if (channel.type !== (dest.destination_type || 'webhook')) payload.destination_type = channel.type;
+      if (channel.provider !== (dest.provider || 'generic')) payload.provider = channel.provider;
+      if (channel.needsToken && apiToken.trim()) payload.api_token = apiToken.trim();
+
+      if (Object.keys(payload).length === 0) {
+        onClose();
+        return;
+      }
+      const res = await apiClient.put(`/api/destinations/${dest.id}`, payload);
+      if (res.data?.success) {
+        toast.success('Destination updated');
+        onSaved();
+        onClose();
+      }
+    } catch (err) {
+      console.error(`Failed to ${mode} destination:`, err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={close}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-fade-in" />
+      <div
+        className="relative z-10 w-full max-w-lg animate-modal-in overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between border-b border-zinc-800 p-6 pb-4">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-widest text-indigo-300">
+              {mode === 'add' ? 'New Destination' : 'Edit Destination'}
+            </p>
+            <h3 className="text-lg font-medium text-zinc-50 truncate">
+              {mode === 'add' ? 'Connect a destination' : dest.name}
+            </h3>
+          </div>
+          <button
+            onClick={close}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit}>
+          <div className="max-h-[60vh] overflow-y-auto p-6 space-y-4">
+            <div>
+              <label className={labelCls}>Channel</label>
+              <ChannelPicker value={channelId} onSelect={selectChannel} />
+            </div>
+
+            <div>
+              <label className={labelCls}>Destination name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. KCB Bank, Pesapal"
+                className={inputCls}
+              />
+            </div>
+
+            {channel.needsToken && (
+              <div>
+                <label className={labelCls}>API token</label>
+                <SecretInput
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  placeholder={hasStoredToken ? 'Leave blank to keep current token' : 'Paste your API token'}
+                  error={tokenError}
+                />
+                {tokenError ? (
+                  <p className="mt-1 text-xs text-rose-400">{tokenError}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {hasStoredToken
+                      ? channel.picker
+                        ? 'Type your token to re-pick a table, or leave blank to keep the current one.'
+                        : 'A token is already stored. Type a new value to rotate it.'
+                      : channel.picker
+                        ? 'Used to list your NocoDB tables, then stored encrypted.'
+                        : 'Stored encrypted. Never shown again after save.'}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {channel.picker ? (
+              <NocoDbPicker apiToken={apiToken} resolvedUrl={targetUrl} onResolved={setTargetUrl} />
+            ) : (
+              <div>
+                <label className={labelCls}>Target URL</label>
+                <input
+                  type="url"
+                  value={targetUrl}
+                  onChange={(e) => setTargetUrl(e.target.value)}
+                  placeholder={channel.urlPlaceholder}
+                  className={`${inputCls} font-mono`}
+                />
+              </div>
+            )}
+
+            <div>
+              <label className={labelCls}>Daily lead cap (0 = unlimited)</label>
+              <CapChipSelector value={dailyCap} onChange={setDailyCap} />
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t border-zinc-800 px-6 py-4 flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={close}
+              disabled={submitting}
+              className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:bg-zinc-700 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitDisabled}
+              className="flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> {mode === 'add' ? 'Creating...' : 'Saving...'}</>
+              ) : (
+                mode === 'add' ? <><Plus className="h-4 w-4" /> Add destination</> : 'Save Changes'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default function DestinationManager() {
+  const [destinations, setDestinations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
+
+  // Add/edit modal: null | { mode: 'add' } | { mode: 'edit', dest }
+  const [modal, setModal] = useState(null);
+
+  // Inline cap edit
+  const [editingCapId, setEditingCapId] = useState(null);
 
   const fetchDestinations = async () => {
     try {
@@ -293,39 +585,6 @@ export default function DestinationManager({ setActiveTab }) {
   useEffect(() => {
     fetchDestinations();
   }, []);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!name.trim() || !targetUrl.trim()) {
-      toast.error('Name and Target URL are required');
-      return;
-    }
-    try {
-      setSubmitting(true);
-      const res = await apiClient.post('/api/destinations', {
-        name,
-        target_url: targetUrl,
-        daily_cap: dailyCap,
-        destination_type: destinationType,
-        ...(destinationType === 'rest_api' ? { provider } : {}),
-        ...(destinationType !== 'webhook' && apiToken ? { api_token: apiToken } : {}),
-      });
-      if (res.data && res.data.success) {
-        toast.success('Destination created successfully');
-        setName('');
-        setTargetUrl('');
-        setDailyCap(0);
-        setDestinationType('webhook');
-        setProvider('generic');
-        setApiToken('');
-        fetchDestinations();
-      }
-    } catch (err) {
-      console.error('Failed to create destination:', err);
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleDelete = async (id) => {
     if (!confirm('Are you sure you want to delete this destination?')) return;
@@ -357,7 +616,6 @@ export default function DestinationManager({ setActiveTab }) {
 
   const handleUpdateCap = async (destId, newCap) => {
     try {
-      setUpdatingCapId(destId);
       const res = await apiClient.put(`/api/destinations/${destId}`, { daily_cap: newCap });
       if (res.data && res.data.success) {
         toast.success('Daily cap updated');
@@ -366,226 +624,29 @@ export default function DestinationManager({ setActiveTab }) {
       }
     } catch (err) {
       console.error('Failed to update daily cap:', err);
-    } finally {
-      setUpdatingCapId(null);
     }
   };
-
-  const openEdit = (dest) => {
-    setEditingDest(dest);
-    setEditName(dest.name || '');
-    setEditUrl(dest.target_url || '');
-    setEditType(dest.destination_type || 'webhook');
-    setEditProvider(dest.provider || 'generic');
-    setEditToken('');
-    setEditTokenError('');
-  };
-
-  const closeEdit = () => {
-    if (editSubmitting) return;
-    setEditingDest(null);
-  };
-
-  // Require a token only when switching a token type on with no existing credential.
-  const editTokenRequired =
-    !!editingDest && editType !== 'webhook' && !editToken.trim() && !editingDest.has_token;
-
-  const editHasChanges =
-    !!editingDest &&
-    (editName.trim() !== (editingDest.name || '') ||
-      editUrl.trim() !== (editingDest.target_url || '') ||
-      editType !== (editingDest.destination_type || 'webhook') ||
-      editProvider !== (editingDest.provider || 'generic') ||
-      !!editToken.trim());
-
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
-    if (!editingDest) return;
-    if (!editName.trim() || !editUrl.trim()) {
-      toast.error('Name and Target URL are required');
-      return;
-    }
-    if (editType !== 'webhook' && editToken.trim()) {
-      const result = apiTokenSchema.safeParse(editToken);
-      if (!result.success) {
-        setEditTokenError(result.error.issues[0].message);
-        return;
-      }
-    }
-    if (editTokenRequired) {
-      setEditTokenError('A token is required for this destination type');
-      return;
-    }
-
-    // Send only changed fields. Backend rules: token typed → rotate;
-    // type → webhook → clear token; blank → unchanged.
-    const payload = {};
-    if (editName.trim() !== (editingDest.name || '')) payload.name = editName.trim();
-    if (editUrl.trim() !== (editingDest.target_url || '')) payload.target_url = editUrl.trim();
-    if (editType !== (editingDest.destination_type || 'webhook')) payload.destination_type = editType;
-    if (editType === 'rest_api' && editProvider !== (editingDest.provider || 'generic')) payload.provider = editProvider;
-    if (editType !== 'webhook' && editToken.trim()) payload.api_token = editToken.trim();
-
-    if (Object.keys(payload).length === 0) {
-      closeEdit();
-      return;
-    }
-
-    try {
-      setEditSubmitting(true);
-      const res = await apiClient.put(`/api/destinations/${editingDest.id}`, payload);
-      if (res.data && res.data.success) {
-        toast.success('Destination updated');
-        setEditingDest(null);
-        fetchDestinations();
-      }
-    } catch (err) {
-      console.error('Failed to update destination:', err);
-    } finally {
-      setEditSubmitting(false);
-    }
-  };
-
-  const labelCls = 'text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-1.5';
-  const inputCls =
-    'w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 placeholder:text-zinc-600';
 
   return (
     <div className="space-y-6 w-full max-w-4xl mx-auto">
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-medium tracking-tight text-zinc-50 flex items-center gap-2">
-          <Shuffle className="h-6 w-6 text-indigo-400" />
-          Destinations
-        </h2>
-        <p className="text-sm text-zinc-400 mt-1 leading-relaxed">
-          Configure where leads are delivered. Define daily caps per buyer.
-        </p>
-      </div>
-
-      {/* Create form — collapsible */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-medium tracking-tight text-zinc-50 flex items-center gap-2">
+            <Shuffle className="h-6 w-6 text-indigo-400" />
+            Destinations
+          </h2>
+          <p className="text-sm text-zinc-400 mt-1 leading-relaxed">
+            Configure where leads are delivered. Define daily caps per buyer.
+          </p>
+        </div>
         <button
-          type="button"
-          onClick={() => setAddFormOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-zinc-800/50 transition-colors duration-150"
+          onClick={() => setModal({ mode: 'add' })}
+          className="flex shrink-0 items-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-400"
         >
-          <span className="text-base font-medium text-zinc-100 flex items-center gap-2">
-            <Plus className="h-4 w-4 text-indigo-400" />
-            Add routing destination
-          </span>
-          <span className={`text-zinc-500 transition-transform duration-150 ${addFormOpen ? 'rotate-180' : ''}`}>▾</span>
+          <Plus className="h-4 w-4" />
+          Add destination
         </button>
-        {addFormOpen && (
-          <div className="px-6 pb-6 border-t border-zinc-800 pt-4">
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className={labelCls}>Destination type</label>
-                <div className="flex gap-2">
-                  {DEST_TYPE_ORDER.map((value) => {
-                    const { label, Icon } = DEST_TYPE_META[value];
-                    return (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => { setDestinationType(value); setProvider('generic'); setApiToken(''); setTargetUrl(''); }}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                          destinationType === value
-                            ? 'bg-indigo-500 text-white border-indigo-400'
-                            : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600'
-                        }`}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {destinationType === 'rest_api' && (
-                <div>
-                  <label className={labelCls}>Provider</label>
-                  <div className="flex gap-2">
-                    {PROVIDER_ORDER.map((value) => {
-                      const { label, Icon } = PROVIDER_META[value];
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => { setProvider(value); setTargetUrl(''); }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                            provider === value
-                              ? 'bg-indigo-500 text-white border-indigo-400'
-                              : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600'
-                          }`}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {destinationType === 'rest_api' && (
-                <div>
-                  <label className={labelCls}>API token</label>
-                  <input
-                    type="password"
-                    value={apiToken}
-                    onChange={(e) => setApiToken(e.target.value)}
-                    placeholder="Paste your API token"
-                    autoComplete="new-password"
-                    className={`${inputCls} font-mono ${tokenError ? 'border-rose-500/60 focus:border-rose-500' : ''}`}
-                  />
-                  {tokenError ? (
-                    <p className="mt-1 text-xs text-rose-400">{tokenError}</p>
-                  ) : (
-                    <p className="mt-1 text-xs text-zinc-500">
-                      {provider === 'nocodb' ? 'Used to list your NocoDB tables, then stored encrypted.' : 'Stored encrypted. Never shown again after save.'}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Destination name</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. KCB Bank, Pesapal" className={inputCls} />
-                </div>
-                {!(destinationType === 'rest_api' && provider === 'nocodb') && (
-                  <div>
-                    <label className={labelCls}>Target URL</label>
-                    <input
-                      type="url"
-                      value={targetUrl}
-                      onChange={(e) => setTargetUrl(e.target.value)}
-                      placeholder={destinationType === 'webhook' ? DEST_TYPE_META.webhook.urlPlaceholder : (PROVIDER_META[provider]?.urlPlaceholder || DEST_TYPE_META.rest_api.urlPlaceholder)}
-                      className={`${inputCls} font-mono`}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {destinationType === 'rest_api' && provider === 'nocodb' && (
-                <NocoDbPicker apiToken={apiToken} resolvedUrl={targetUrl} onResolved={setTargetUrl} />
-              )}
-              <div>
-                <label className={labelCls}>Daily lead cap (0 = unlimited)</label>
-                <CapChipSelector value={dailyCap} onChange={setDailyCap} />
-              </div>
-              <button
-                type="submit"
-                disabled={submitting || !name || !targetUrl || (destinationType !== 'webhook' && !apiToken) || !!tokenError}
-                className="flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto"
-              >
-                {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating...</> : <><Plus className="h-4 w-4" /> Add destination</>}
-              </button>
-            </form>
-          </div>
-        )}
       </div>
 
       {/* Destination cards */}
@@ -598,7 +659,14 @@ export default function DestinationManager({ setActiveTab }) {
         <div className="py-12 flex flex-col items-center justify-center text-center">
           <Shuffle className="h-8 w-8 text-zinc-700 mb-3" />
           <h4 className="text-sm font-medium text-zinc-300 mb-1">No destinations yet</h4>
-          <p className="text-xs text-zinc-500">Add your first routing destination above.</p>
+          <p className="text-xs text-zinc-500 mb-4">Connect your first routing destination.</p>
+          <button
+            onClick={() => setModal({ mode: 'add' })}
+            className="flex items-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white transition-colors duration-150 hover:bg-indigo-400"
+          >
+            <Plus className="h-4 w-4" />
+            Add destination
+          </button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -651,7 +719,7 @@ export default function DestinationManager({ setActiveTab }) {
 
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
-                    onClick={() => openEdit(dest)}
+                    onClick={() => setModal({ mode: 'edit', dest })}
                     className="rounded-md bg-zinc-800 p-2 text-zinc-300 transition-colors duration-150 hover:bg-zinc-700 hover:text-zinc-100 border border-zinc-700"
                     title="Edit destination"
                   >
@@ -674,148 +742,14 @@ export default function DestinationManager({ setActiveTab }) {
         </div>
       )}
 
-      {/* Inline edit modal — rename / change type / rotate token */}
-      {editingDest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeEdit}>
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-fade-in" />
-          <div
-            className="relative z-10 w-full max-w-lg animate-modal-in overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between border-b border-zinc-800 p-6 pb-4">
-              <div>
-                <p className="mb-1 text-xs font-medium uppercase tracking-widest text-indigo-300">Edit Destination</p>
-                <h3 className="text-lg font-medium text-zinc-50 truncate">{editingDest.name}</h3>
-              </div>
-              <button
-                onClick={closeEdit}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <form onSubmit={handleEditSubmit}>
-              <div className="max-h-[60vh] overflow-y-auto p-6 space-y-4">
-                <div>
-                  <label className={labelCls}>Destination type</label>
-                  <div className="flex gap-2">
-                    {DEST_TYPE_ORDER.map((value) => {
-                      const { label, Icon } = DEST_TYPE_META[value];
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          onClick={() => { setEditType(value); setEditProvider('generic'); setEditToken(''); }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                            editType === value
-                              ? 'bg-indigo-500 text-white border-indigo-400'
-                              : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600'
-                          }`}
-                        >
-                          <Icon className="h-3.5 w-3.5" />
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {editType === 'rest_api' && (
-                  <div>
-                    <label className={labelCls}>Provider</label>
-                    <div className="flex gap-2">
-                      {PROVIDER_ORDER.map((value) => {
-                        const { label, Icon } = PROVIDER_META[value];
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setEditProvider(value)}
-                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                              editProvider === value
-                                ? 'bg-indigo-500 text-white border-indigo-400'
-                                : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:border-zinc-600'
-                            }`}
-                          >
-                            <Icon className="h-3.5 w-3.5" />
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className={labelCls}>Destination name</label>
-                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className={inputCls} />
-                </div>
-
-                {editType !== 'webhook' && (
-                  <div>
-                    <label className={labelCls}>API token</label>
-                    <input
-                      type="password"
-                      value={editToken}
-                      onChange={(e) => setEditToken(e.target.value)}
-                      placeholder="Leave blank to keep current token"
-                      autoComplete="new-password"
-                      className={`${inputCls} font-mono ${editTokenError ? 'border-rose-500/60 focus:border-rose-500' : ''}`}
-                    />
-                    {editTokenError ? (
-                      <p className="mt-1 text-xs text-rose-400">{editTokenError}</p>
-                    ) : (
-                      <p className="mt-1 text-xs text-zinc-500">
-                        {editingDest.has_token
-                          ? (editProvider === 'nocodb' ? 'Type your token to re-pick a table, or leave blank to keep the current one.' : 'A token is already stored. Type a new value to rotate it.')
-                          : 'Stored encrypted. Never shown again after save.'}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {!(editType === 'rest_api' && editProvider === 'nocodb') && (
-                  <div>
-                    <label className={labelCls}>Target URL</label>
-                    <input
-                      type="url"
-                      value={editUrl}
-                      onChange={(e) => setEditUrl(e.target.value)}
-                      placeholder={editType === 'webhook' ? DEST_TYPE_META.webhook.urlPlaceholder : (PROVIDER_META[editProvider]?.urlPlaceholder || DEST_TYPE_META.rest_api.urlPlaceholder)}
-                      className={`${inputCls} font-mono`}
-                    />
-                  </div>
-                )}
-
-                {editType === 'rest_api' && editProvider === 'nocodb' && (
-                  <NocoDbPicker apiToken={editToken} resolvedUrl={editUrl} onResolved={setEditUrl} />
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="border-t border-zinc-800 px-6 py-4 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={closeEdit}
-                  disabled={editSubmitting}
-                  className="rounded-md border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 transition-colors duration-150 hover:bg-zinc-700 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={editSubmitting || !editName.trim() || !editUrl.trim() || editTokenRequired || !!editTokenError || !editHasChanges}
-                  className="flex items-center justify-center gap-2 rounded-md bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400 transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {editSubmitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</> : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {modal && (
+        <DestinationFormModal
+          key={modal.mode === 'edit' ? modal.dest.id : 'add'}
+          mode={modal.mode}
+          dest={modal.dest}
+          onClose={() => setModal(null)}
+          onSaved={fetchDestinations}
+        />
       )}
     </div>
   );

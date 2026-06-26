@@ -375,7 +375,7 @@ export default function Login() {
           <span className="text-emerald-500">Routing Infrastructure</span>
         </h1>
         <p className="text-lg text-zinc-400 max-w-lg">
-          Zero data loss. Tax avoidance. Vaulted lead data. Watch how FlowGateway protects your CRM in real-time.
+          Zero data loss. No Zapier tax. Vaulted lead data. Watch how FlowGateway protects your CRM in real-time.
         </p>
 
         {/* Feature Highlights */}

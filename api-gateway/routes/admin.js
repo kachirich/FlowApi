@@ -231,7 +231,7 @@ router.post("/generate-webhook", authenticate, adminLimiter, webhookCreationLimi
  */
 router.get("/stats", authenticate, async (req, res, next) => {
   try {
-    const [leadsResult, keysResult, botsResult, userResult] = await Promise.all([
+    const [leadsResult, keysResult, botsResult, userResult, counterResult, usageResult] = await Promise.all([
       query("SELECT COUNT(*)::int AS count FROM ghl_leads WHERE user_id = $1 AND is_test = false", [req.user.id]),
       query("SELECT COUNT(*)::int AS count FROM webhook_keys WHERE user_id = $1", [req.user.id]),
       query("SELECT value::int AS count FROM gateway_counters WHERE key = 'bots_blocked'"),
@@ -243,6 +243,8 @@ router.get("/stats", authenticate, async (req, res, next) => {
          WHERE ua.user_id = $1`,
         [req.user.id]
       ),
+      query("SELECT daily_lead_cap, daily_leads_received, last_reset_date FROM lead_counters WHERE user_id = $1", [req.user.id]),
+      query("SELECT monthly_request_count, billing_cycle_reset FROM user_billing WHERE user_id = $1", [req.user.id]),
     ]);
 
     const totalLeads = leadsResult.rows[0].count;
@@ -253,6 +255,31 @@ router.get("/stats", authenticate, async (req, res, next) => {
     const hasCompletedOnboarding = userResult.rows[0]?.has_completed_onboarding ?? false;
     const planType = userResult.rows[0]?.plan_type || 'free';
 
+    // ── Daily lead cap usage (read-only mirror of services/leadIngest.js) ──
+    // Counter row may not exist until the first lead; default to the 100/day seed.
+    const counter = counterResult.rows[0];
+    const dailyLeadCap = counter?.daily_lead_cap ?? 100;
+    let dailyLeadsReceived = counter?.daily_leads_received ?? 0;
+    if (counter?.last_reset_date) {
+      const today = new Date().toISOString().split("T")[0];
+      const lastReset = new Date(counter.last_reset_date).toISOString().split("T")[0];
+      if (today !== lastReset) dailyLeadsReceived = 0; // odometer resets at midnight
+    }
+
+    // ── Monthly request quota usage (read-only mirror of meteredLimiter) ──
+    const usage = usageResult.rows[0];
+    let monthlyRequestCount = usage?.monthly_request_count ?? 0;
+    if (usage?.billing_cycle_reset) {
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      if (Date.now() - new Date(usage.billing_cycle_reset).getTime() >= thirtyDaysMs) {
+        monthlyRequestCount = 0; // cycle rolled over
+      }
+    }
+    // null = unlimited (plus). JSON can't carry Infinity.
+    let monthlyRequestLimit = 10000;
+    if (planType === 'pro') monthlyRequestLimit = 100000;
+    if (planType === 'plus') monthlyRequestLimit = null;
+
     return res.json({
       totalLeads,
       totalWebhooks,
@@ -261,6 +288,10 @@ router.get("/stats", authenticate, async (req, res, next) => {
       twoFactorEnabled,
       hasCompletedOnboarding,
       planType,
+      dailyLeadCap,
+      dailyLeadsReceived,
+      monthlyRequestCount,
+      monthlyRequestLimit,
     });
   } catch (err) {
     next(err);

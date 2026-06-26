@@ -62,6 +62,18 @@ const PROVIDERS = {
     urlPlaceholder: "https://<your-n8n-host>/webhook/<path>",
     auth: { header: "Authorization", value: (t) => `Bearer ${t}` },
   },
+
+  gohighlevel: {
+    label: "GoHighLevel",
+    icon: "Send",
+    // Inbound-webhook delivery: the user pastes a GHL Workflow "Inbound Webhook"
+    // trigger URL. No auth header — GHL authenticates by the unguessable URL, so
+    // this rides the plain webhook dispatch path (destination_type 'webhook', no
+    // token). The auth entry is a harmless Bearer fallback that is only consulted
+    // when a token is present, which it never is for this provider.
+    urlPlaceholder: "https://services.leadconnectorhq.com/hooks/<location>/webhook-trigger/<id>",
+    auth: { header: "Authorization", value: (t) => `Bearer ${t}` },
+  },
 };
 
 export const PROVIDER_IDS = Object.keys(PROVIDERS);

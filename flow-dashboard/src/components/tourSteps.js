@@ -38,7 +38,7 @@ export function getTourSteps() {
       target: '#tour-metrics-panel',
       title: 'Live Metrics',
       content:
-        "You're all set. Throughput, blocked spam, and tax avoided update live. Upgrade to Growth to unlock retries, custom headers, and broadcast routing.",
+        "You're all set. Throughput, blocked spam, and Zapier tax saved update live. Upgrade to Growth to unlock retries, custom headers, and broadcast routing.",
     },
   ];
 }

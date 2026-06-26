@@ -87,7 +87,7 @@ const FAQ = [
 const SHOWCASE = [
   {
     title: 'Live Dashboard',
-    body: 'A real-time view of inbound activity, vaulted leads, lead scores, and delivery status. Spam Shield and Tax Avoided counters show the dollar value FlowGateway is saving you in real time.',
+    body: 'A real-time view of inbound activity, vaulted leads, lead scores, and delivery status. Spam Shield and Zapier Tax Saved counters show the dollar value FlowGateway is saving you in real time.',
     src: '/screenshots/dashboard.png',
     alt: 'FlowGateway live dashboard with recent inbound activity, lead ledger and active API keys',
   },
