@@ -66,12 +66,14 @@ const PROVIDERS = {
           return (data?.list || []).map((t) => ({ id: t.id, name: t.title || t.id, leaf: false }));
         }
 
+        // NocoDB Cloud 403s the dedicated /meta/tables/{id}/views endpoint, but
+        // the table-meta read (200) embeds the views array — use that.
         const tableId = path[2];
         const { data } = await axios.get(
-          `${NOCODB_BASE}/api/v2/meta/tables/${encodeURIComponent(tableId)}/views`,
+          `${NOCODB_BASE}/api/v2/meta/tables/${encodeURIComponent(tableId)}`,
           { headers, timeout: 5000 }
         );
-        return (data?.list || []).map((v) => ({
+        return (data?.views || []).map((v) => ({
           id: v.id,
           name: v.title || v.id,
           leaf: true,
