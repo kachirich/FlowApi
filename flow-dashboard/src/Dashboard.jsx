@@ -1399,6 +1399,11 @@ function EgressTester({ leads, destinations = [] }) {
   });
   
   const [passThrough, setPassThrough] = useState(true);
+  // Payload source: 'mapped' = GHL schema + key mappings; 'raw' = free-text JSON
+  // editor (sends exactly what you type — best for destinations like NocoDB that
+  // require an exact column-shaped body).
+  const [payloadMode, setPayloadMode] = useState("mapped");
+  const [rawPayloadText, setRawPayloadText] = useState(() => JSON.stringify(GHL_STANDARD_SCHEMA, null, 2));
   const [sending, setSending] = useState(false);
   const [log, setLog] = useState(null);
   const [showRawTraceDrawer, setShowRawTraceDrawer] = useState(false);
@@ -1527,14 +1532,32 @@ function EgressTester({ leads, destinations = [] }) {
     return payload;
   };
   
-  const egressPayload = buildEgressPayload();
+  // Raw-mode payload: parse the free-text editor. rawError surfaces JSON issues.
+  let rawPayload = null;
+  let rawError = "";
+  if (payloadMode === "raw") {
+    try {
+      const parsed = JSON.parse(rawPayloadText);
+      if (parsed === null || typeof parsed !== "object") {
+        rawError = "Payload must be a JSON object or array.";
+      } else {
+        rawPayload = parsed;
+      }
+    } catch (e) {
+      rawError = `Invalid JSON: ${e.message}`;
+    }
+  }
 
-  // Can fire if URL is valid and has mappings (or pass-through is enabled).
+  const egressPayload = payloadMode === "raw" ? (rawPayload ?? {}) : buildEgressPayload();
+
+  // Can fire if URL is valid and the payload is ready. In raw mode the payload
+  // must be valid JSON; in mapped mode it needs mappings or pass-through.
   // Token-based saved destinations skip the manual URL check entirely.
   const hasMappings = Object.values(mappings).some(v => v && v.trim() !== "");
+  const payloadReady = payloadMode === "raw" ? (!rawError && rawPayload !== null) : (hasMappings || passThrough);
   const canFire = isTokenBased
-    ? (hasMappings || passThrough)
-    : !urlError && destinationUrl && destinationUrl.trim() !== "" && (hasMappings || passThrough);
+    ? payloadReady
+    : !urlError && destinationUrl && destinationUrl.trim() !== "" && payloadReady;
 
   const handleFireEgress = async () => {
     if (!canFire) return;
@@ -1690,49 +1713,109 @@ function EgressTester({ leads, destinations = [] }) {
           </div>
           )}
 
-          {/* Pass-Through Toggle */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Pass-Through Unmapped Keys
-              </label>
-              <p className="text-[9px] text-slate-500">
-                {passThrough ? "ON: Unmapped keys included as-is" : "OFF: Only mapped keys included"}
-              </p>
-            </div>
-            <button
-              onClick={() => setPassThrough(!passThrough)}
-              className={`relative h-6 w-11 rounded-full border-2 transition-all ${passThrough ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700/40 bg-slate-900/50"}`}
-            >
-              <div className={`absolute top-0.5 h-5 w-5 rounded-full transition-transform ${passThrough ? "translate-x-5 bg-emerald-500/80" : "translate-x-0.5 bg-slate-600/60"}`} />
-            </button>
-          </div>
-
-          {/* Key-Value Mapper */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">FlowAPI Property</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Destination JSON Key</span>
-            </div>
-
-            <div className="space-y-3.5 max-h-[320px] overflow-y-auto pr-2">
-              {Object.keys(GHL_STANDARD_SCHEMA).map((sourceKey) => (
-                <div key={sourceKey} className="flex flex-col gap-1">
-                  <div className="flex items-center gap-4">
-                    <span className="flex-1 font-mono text-xs text-slate-300 truncate">{sourceKey}</span>
-                    <input
-                      type="text"
-                      value={mappings[sourceKey] || ""}
-                      onChange={(e) => setMappings({ ...mappings, [sourceKey]: e.target.value })}
-                      placeholder={passThrough ? "(optional)" : "(required)"}
-                      className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors[sourceKey] ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
-                    />
-                  </div>
-                  {mappingErrors[sourceKey] && <span className="text-right text-[10px] text-rose-500">{mappingErrors[sourceKey]}</span>}
-                </div>
+          {/* Payload Mode — Mapped (schema + key map) vs Raw JSON (free-text) */}
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Payload Mode</label>
+            <div className="flex gap-1.5 rounded-xl border border-slate-800 bg-slate-900/50 p-1">
+              {[
+                { id: "mapped", label: "Mapped" },
+                { id: "raw", label: "Raw JSON" },
+              ].map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setPayloadMode(m.id)}
+                  className={`flex-1 rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider transition ${
+                    payloadMode === m.id ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {m.label}
+                </button>
               ))}
             </div>
+            <p className="text-[9px] text-slate-500">
+              {payloadMode === "raw"
+                ? "Sends exactly what you type below — ignores the schema + mappings."
+                : "Builds the body from the standard schema reshaped by your key mappings."}
+            </p>
           </div>
+
+          {payloadMode === "mapped" ? (
+            <>
+              {/* Pass-Through Toggle */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Pass-Through Unmapped Keys
+                  </label>
+                  <p className="text-[9px] text-slate-500">
+                    {passThrough ? "ON: Unmapped keys included as-is" : "OFF: Only mapped keys included"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setPassThrough(!passThrough)}
+                  className={`relative h-6 w-11 rounded-full border-2 transition-all ${passThrough ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700/40 bg-slate-900/50"}`}
+                >
+                  <div className={`absolute top-0.5 h-5 w-5 rounded-full transition-transform ${passThrough ? "translate-x-5 bg-emerald-500/80" : "translate-x-0.5 bg-slate-600/60"}`} />
+                </button>
+              </div>
+
+              {/* Key-Value Mapper */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">FlowAPI Property</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Destination JSON Key</span>
+                </div>
+
+                <div className="space-y-3.5 max-h-[320px] overflow-y-auto pr-2">
+                  {Object.keys(GHL_STANDARD_SCHEMA).map((sourceKey) => (
+                    <div key={sourceKey} className="flex flex-col gap-1">
+                      <div className="flex items-center gap-4">
+                        <span className="flex-1 font-mono text-xs text-slate-300 truncate">{sourceKey}</span>
+                        <input
+                          type="text"
+                          value={mappings[sourceKey] || ""}
+                          onChange={(e) => setMappings({ ...mappings, [sourceKey]: e.target.value })}
+                          placeholder={passThrough ? "(optional)" : "(required)"}
+                          className={`w-44 rounded-lg border bg-slate-950 px-3 py-1.5 font-mono text-xs focus:outline-none ${mappingErrors[sourceKey] ? "border-rose-500/50 text-rose-400 focus:border-rose-500" : "border-slate-800 text-amber-400 focus:border-amber-500"}`}
+                        />
+                      </div>
+                      {mappingErrors[sourceKey] && <span className="text-right text-[10px] text-rose-500">{mappingErrors[sourceKey]}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Raw JSON editor — sent verbatim to the destination */
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Raw JSON Body</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      setRawPayloadText(JSON.stringify(JSON.parse(rawPayloadText), null, 2));
+                    } catch { /* leave as-is when invalid */ }
+                  }}
+                  className="text-[10px] font-medium text-slate-500 hover:text-slate-300 transition"
+                >
+                  Format
+                </button>
+              </div>
+              <textarea
+                value={rawPayloadText}
+                onChange={(e) => setRawPayloadText(e.target.value)}
+                spellCheck={false}
+                rows={14}
+                placeholder='{ "Title": "Acme Corporation", "email": "ceo@acmecorp.com" }'
+                className={`w-full resize-y rounded-xl border bg-slate-950 px-4 py-3 font-mono text-xs leading-relaxed focus:outline-none transition ${rawError ? "border-rose-500/50 text-rose-300 focus:border-rose-500" : "border-slate-800 text-emerald-300 focus:border-amber-500"}`}
+              />
+              {rawError
+                ? <p className="text-[10px] text-rose-500 font-medium animate-fade-in">{rawError}</p>
+                : <p className="text-[9px] text-slate-500">Valid JSON object or array. Sent exactly as written.</p>}
+            </div>
+          )}
 
           <button
             onClick={handleFireEgress}
@@ -1760,8 +1843,8 @@ function EgressTester({ leads, destinations = [] }) {
             <div className="flex items-center gap-2 border-b border-slate-800/60 bg-surface px-5 py-3">
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
               <span className="ml-2 font-mono text-[11px] text-slate-500">outgoing_payload.json</span>
-              <span className={`ml-auto rounded px-2 py-0.5 font-mono text-[10px] uppercase ${passThrough ? "bg-emerald-500/10 text-emerald-400" : "bg-cyan-500/10 text-cyan-400"}`}>
-                {passThrough ? "MAPPED + PASS-THROUGH" : "MAPPED PREVIEW"}
+              <span className={`ml-auto rounded px-2 py-0.5 font-mono text-[10px] uppercase ${payloadMode === "raw" ? "bg-amber-500/10 text-amber-400" : passThrough ? "bg-emerald-500/10 text-emerald-400" : "bg-cyan-500/10 text-cyan-400"}`}>
+                {payloadMode === "raw" ? "RAW JSON" : passThrough ? "MAPPED + PASS-THROUGH" : "MAPPED PREVIEW"}
               </span>
             </div>
             <pre className="p-5 font-mono text-[11px] leading-relaxed text-emerald-300 overflow-auto max-h-[160px]">
