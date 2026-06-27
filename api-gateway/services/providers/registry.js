@@ -81,6 +81,21 @@ const PROVIDERS = {
         }));
       },
     },
+    // List existing column titles for the destination's table. Powers the
+    // sandbox "Check columns" diff. Reading schema is allowed for API tokens;
+    // CREATING columns is NOT (NocoDB forbids columnAdd via token), so we can
+    // only report which columns are missing — the user adds them in NocoDB.
+    listColumns: async (token, targetUrl) => {
+      const m = String(targetUrl || "").match(/\/api\/v2\/tables\/([^/?]+)\/records/);
+      if (!m) return [];
+      const { data } = await axios.get(
+        `${NOCODB_BASE}/api/v2/meta/tables/${encodeURIComponent(m[1])}`,
+        { headers: { "xc-token": token }, timeout: 5000 }
+      );
+      // Drop NocoDB's internal/system columns (nc_*, audit fields) — the user
+      // can only map into real, user-facing columns.
+      return (data?.columns || []).filter((c) => !c.system).map((c) => c.title).filter(Boolean);
+    },
   },
 
   n8n: {

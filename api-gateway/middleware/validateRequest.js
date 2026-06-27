@@ -238,6 +238,11 @@ export const signatureRequiredSchema = z.object({
   required: z.boolean({ message: "required must be a boolean" }),
 });
 
+/** POST /api/admin/destination-columns — list a destination's existing columns */
+export const destinationColumnsSchema = z.object({
+  destinationId: z.string().uuid("Invalid destination id"),
+});
+
 /**
  * POST /api/keys — optional user-chosen expiry.
  * `expires_at` is an ISO-8601 timestamp (or null/omitted = never expires).

@@ -13,8 +13,8 @@ import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
 import { planFor, normalizeTier } from "../config/plans.js";
-import { getAuthHeader } from "../services/providers/registry.js";
-import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
+import { getAuthHeader, getAdapter } from "../services/providers/registry.js";
+import { validateRequest, egressTestBodySchema, destinationColumnsSchema } from "../middleware/validateRequest.js";
 import { webhookQueue } from "../services/queue.js";
 import { decrypt } from "../utils/encryption.js";
 
@@ -612,6 +612,49 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
       responseText,
       durationMs,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/destination-columns
+ *
+ * Returns the existing column titles for a token destination's table (NocoDB).
+ * Powers the sandbox "Check columns" diff so users know which columns to add —
+ * reading schema is permitted for API tokens; creating columns is not.
+ */
+router.post("/destination-columns", authenticate, sandboxEgressLimiter, validateRequest(destinationColumnsSchema), async (req, res, next) => {
+  try {
+    const { destinationId } = req.body;
+    const destResult = await query(
+      `SELECT target_url, provider, api_token_encrypted FROM destinations WHERE id = $1 AND user_id = $2`,
+      [destinationId, req.user.id]
+    );
+    if (destResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "Destination not found" });
+    }
+    const dest = destResult.rows[0];
+    const adapter = getAdapter(dest.provider);
+    if (!adapter.listColumns) {
+      return res.status(400).json({ success: false, message: `Provider '${dest.provider}' does not expose columns` });
+    }
+    if (!dest.api_token_encrypted) {
+      return res.status(400).json({ success: false, message: "Destination has no stored token" });
+    }
+
+    let columns;
+    try {
+      columns = await adapter.listColumns(decrypt(dest.api_token_encrypted), dest.target_url);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 401 || status === 403) {
+        return res.status(422).json({ success: false, message: `${dest.provider} rejected the token. Check the API token and try again.` });
+      }
+      console.error("Error listing destination columns:", err.message);
+      return res.status(502).json({ success: false, message: "Could not reach the provider. Please try again." });
+    }
+    return res.json({ success: true, columns });
   } catch (err) {
     next(err);
   }

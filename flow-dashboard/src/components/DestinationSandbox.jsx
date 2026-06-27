@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { FlaskConical, Webhook, ChevronDown, Lock, Loader2, Send, AlertTriangle, Info, Terminal, X } from "lucide-react";
+import { FlaskConical, Webhook, ChevronDown, Lock, Loader2, Send, AlertTriangle, Info, Terminal, X, Database } from "lucide-react";
 import { API_BASE_URL } from "../utils/apiConfig";
 import { webhookDestinationSchema, jsonKeyMappingSchema } from "../utils/validators";
 import { GHL_STANDARD_SCHEMA, egressStatusHelp } from "../constants/sandboxSchema";
@@ -50,6 +50,8 @@ export default function DestinationSandbox({ destinations = [] }) {
   const [showRawTraceDrawer, setShowRawTraceDrawer] = useState(false);
   const [urlError, setUrlError] = useState("");
   const [mappingErrors, setMappingErrors] = useState({});
+  // NocoDB column diff: null | {loading} | {error} | {missing, present}
+  const [columnCheck, setColumnCheck] = useState(null);
 
   const selectedDest = useMemo(
     () => destinations.find((d) => String(d.id) === String(selectedDestId)) || null,
@@ -70,10 +72,38 @@ export default function DestinationSandbox({ destinations = [] }) {
 
   const handleSelectDestination = (id) => {
     setSelectedDestId(id);
+    setColumnCheck(null); // result is per-destination
     const dest = destinations.find((d) => String(d.id) === String(id));
     if (dest) {
       setDestinationUrl(dest.target_url || "");
       setMethod(dest.http_method || dest.method || "POST");
+    }
+  };
+
+  // Read the NocoDB table's columns and diff against the current payload keys so
+  // the user knows exactly which columns to add (NocoDB silently drops unknown
+  // keys, and tokens can't create columns). Exact, case-sensitive match.
+  const handleCheckColumns = async () => {
+    if (!selectedDestId) return;
+    setColumnCheck({ loading: true });
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/destination-columns`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ destinationId: selectedDestId }),
+      });
+      const data = await res.json().catch(() => ({ success: false, message: "Invalid response from server" }));
+      if (!res.ok || !data.success) {
+        setColumnCheck({ error: data.message || `Error ${res.status}` });
+        return;
+      }
+      const columns = data.columns || [];
+      const colSet = new Set(columns);
+      const missing = Object.keys(egressPayload).filter((k) => !colSet.has(k));
+      setColumnCheck({ missing, present: columns });
+    } catch (err) {
+      setColumnCheck({ error: err.message || "Network error" });
     }
   };
 
@@ -339,6 +369,40 @@ export default function DestinationSandbox({ destinations = [] }) {
                 {rawError
                   ? <p className="animate-fade-in text-[10px] font-medium text-rose-500">{rawError}</p>
                   : <p className="text-[9px] text-slate-500">Valid JSON object or array. Sent exactly as written.</p>}
+              </div>
+            )}
+
+            {/* NocoDB column diff — NocoDB silently drops keys with no matching
+                column, and tokens can't create columns, so surface the gap. */}
+            {selectedDest?.provider === "nocodb" && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleCheckColumns}
+                  disabled={columnCheck?.loading}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-[11px] font-semibold text-slate-200 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {columnCheck?.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Database className="h-3.5 w-3.5" />}
+                  Check columns
+                </button>
+                {columnCheck && !columnCheck.loading && (
+                  columnCheck.error ? (
+                    <p className="text-[10px] font-medium text-rose-400">{columnCheck.error}</p>
+                  ) : (
+                    <div className="space-y-1.5 rounded-lg border border-slate-800 bg-slate-950 p-3 text-[10px]">
+                      {columnCheck.missing.length > 0 ? (
+                        <>
+                          <p className="font-bold uppercase tracking-wider text-amber-400">Missing columns ({columnCheck.missing.length})</p>
+                          <p className="break-words font-mono text-amber-300">{columnCheck.missing.join(", ")}</p>
+                          <p className="text-slate-500">Add these in NocoDB → Fields (exact, case-sensitive), then re-fire. Unmatched keys are silently dropped.</p>
+                        </>
+                      ) : (
+                        <p className="font-bold uppercase tracking-wider text-emerald-400">✓ All payload keys exist as columns</p>
+                      )}
+                      <p className="text-slate-600">Present: <span className="font-mono">{columnCheck.present.join(", ")}</span></p>
+                    </div>
+                  )
+                )}
               </div>
             )}
 
