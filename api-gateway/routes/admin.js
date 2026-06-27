@@ -13,6 +13,7 @@ import { sendTierUpgradeEmail } from "../services/email.service.js";
 import { redisClient, sandboxEgressLimiter } from "../middleware/rateLimiter.js";
 import { planCacheKey } from "../middleware/requirePlan.js";
 import { planFor, normalizeTier } from "../config/plans.js";
+import { getAuthHeader } from "../services/providers/registry.js";
 import { validateRequest, egressTestBodySchema } from "../middleware/validateRequest.js";
 import { webhookQueue } from "../services/queue.js";
 import { decrypt } from "../utils/encryption.js";
@@ -514,7 +515,7 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
 
     if (destinationId) {
       const destResult = await query(
-        `SELECT target_url, destination_type, api_token_encrypted
+        `SELECT target_url, destination_type, provider, api_token_encrypted
          FROM destinations
          WHERE id = $1 AND user_id = $2`,
         [destinationId, req.user.id]
@@ -527,7 +528,11 @@ router.post("/egress-test", authenticate, sandboxEgressLimiter, validateRequest(
 
       if (dest.destination_type !== "webhook" && dest.api_token_encrypted) {
         try {
-          outboundHeaders["Authorization"] = `Bearer ${decrypt(dest.api_token_encrypted)}`;
+          // Use the provider's real auth scheme (NocoDB → xc-token, generic/n8n →
+          // Authorization: Bearer) so the sandbox matches actual delivery in
+          // WebhookDispatcher — never a hardcoded Bearer.
+          const authHeader = getAuthHeader(dest.provider, decrypt(dest.api_token_encrypted));
+          if (authHeader) outboundHeaders[authHeader.name] = authHeader.value;
         } catch (decryptErr) {
           return res.status(500).json({
             success: false,
