@@ -30,11 +30,16 @@ const PROVIDERS = {
     baseUrl: NOCODB_BASE,
     auth: { header: "xc-token", value: (t) => t },
     browse: {
-      // Three-level cascade. NocoDB Cloud scopes base listing to a workspace —
-      // the bare /meta/bases/ endpoint 403s — so we start at the workspace.
-      // path=[] → workspaces; path=[wsId] → bases; path=[wsId,baseId] → tables.
+      // Four-level cascade mirroring NocoDB's hierarchy. Cloud scopes base
+      // listing to a workspace (the bare /meta/bases/ endpoint 403s), so we
+      // start at the workspace and end at the view (every table has at least a
+      // default view; records are written to a specific view via ?viewId=).
+      //   path=[]                    → workspaces
+      //   path=[wsId]                → bases
+      //   path=[wsId,baseId]         → tables
+      //   path=[wsId,baseId,tableId] → views (leaf)
       // Leaf items carry the fully-resolved records URL so ids stay server-side.
-      levels: ["Workspace", "Base", "Table"],
+      levels: ["Workspace", "Base", "Table", "View"],
       list: async (token, path = []) => {
         const headers = { "xc-token": token };
 
@@ -52,16 +57,25 @@ const PROVIDERS = {
           return (data?.list || []).map((b) => ({ id: b.id, name: b.title || b.id, leaf: false }));
         }
 
-        const baseId = path[1];
+        if (path.length === 2) {
+          const baseId = path[1];
+          const { data } = await axios.get(
+            `${NOCODB_BASE}/api/v2/meta/bases/${encodeURIComponent(baseId)}/tables`,
+            { headers, timeout: 5000 }
+          );
+          return (data?.list || []).map((t) => ({ id: t.id, name: t.title || t.id, leaf: false }));
+        }
+
+        const tableId = path[2];
         const { data } = await axios.get(
-          `${NOCODB_BASE}/api/v2/meta/bases/${encodeURIComponent(baseId)}/tables`,
+          `${NOCODB_BASE}/api/v2/meta/tables/${encodeURIComponent(tableId)}/views`,
           { headers, timeout: 5000 }
         );
-        return (data?.list || []).map((t) => ({
-          id: t.id,
-          name: t.title || t.id,
+        return (data?.list || []).map((v) => ({
+          id: v.id,
+          name: v.title || v.id,
           leaf: true,
-          target_url: `${NOCODB_BASE}/api/v2/tables/${encodeURIComponent(t.id)}/records`,
+          target_url: `${NOCODB_BASE}/api/v2/tables/${encodeURIComponent(tableId)}/records?viewId=${encodeURIComponent(v.id)}`,
         }));
       },
     },
